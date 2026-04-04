@@ -4,7 +4,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps.auth import require_staff, require_student
@@ -25,6 +25,10 @@ from app.schemas.common import ApiResponse
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff
 
 router = APIRouter()
+QUIZ_SORT_MODES = {"updated_desc", "updated_asc", "attempt_desc", "attempt_asc"}
+QUIZ_STATUS_FILTERS = {"active", "inactive"}
+QUIZ_PAGE_SIZE_OPTIONS = {5, 10, 20, 50}
+QUIZ_BOOTSTRAP_MODES = {"full", "quiz_list"}
 
 
 class StartQuizPayload(BaseModel):
@@ -267,9 +271,21 @@ def serialize_bank(bank: QuestionBank) -> dict:
     }
 
 
-def serialize_quiz_for_staff(quiz: Quiz) -> dict:
-    submitted_attempts = [item for item in quiz.attempts if item.status == "submitted" and item.score is not None]
-    average_score = round(sum(item.score or 0 for item in submitted_attempts) / len(submitted_attempts)) if submitted_attempts else None
+def serialize_quiz_for_staff(
+    quiz: Quiz,
+    *,
+    attempt_count: int | None = None,
+    average_score: float | None = None,
+) -> dict:
+    resolved_attempt_count = attempt_count
+    resolved_average_score = average_score
+    if resolved_attempt_count is None:
+        submitted_attempts = [item for item in quiz.attempts if item.status == "submitted" and item.score is not None]
+        resolved_attempt_count = len(submitted_attempts)
+        if submitted_attempts:
+            resolved_average_score = sum(item.score or 0 for item in submitted_attempts) / len(submitted_attempts)
+        else:
+            resolved_average_score = None
     return {
         "id": quiz.id,
         "title": quiz.title,
@@ -279,8 +295,8 @@ def serialize_quiz_for_staff(quiz: Quiz) -> dict:
         "class_name": quiz.school_class.class_name if quiz.school_class else "全部班级",
         "question_count": len(quiz.question_links),
         "question_ids": [link.question_id for link in quiz.question_links],
-        "attempt_count": len(submitted_attempts),
-        "average_score": average_score,
+        "attempt_count": max(int(resolved_attempt_count or 0), 0),
+        "average_score": round(resolved_average_score) if resolved_average_score is not None else None,
         "updated_at": quiz.updated_at.isoformat() if quiz.updated_at else None,
     }
 
@@ -604,51 +620,161 @@ def quiz_daily_rankings(
 
 @router.get("/staff/bootstrap", response_model=ApiResponse)
 def quiz_staff_bootstrap(
+    quiz_keyword: str | None = None,
+    quiz_class_id: int | None = None,
+    quiz_status: str | None = None,
+    quiz_sort_mode: str = "updated_desc",
+    quiz_page: int = 1,
+    quiz_page_size: int = 10,
+    bootstrap_mode: str = "full",
     user: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
+    normalized_keyword = (quiz_keyword or "").strip()
+    normalized_status = (quiz_status or "").strip().lower() or None
+    normalized_sort_mode = quiz_sort_mode.strip().lower()
+    normalized_page_size = quiz_page_size
+    normalized_bootstrap_mode = (bootstrap_mode or "full").strip().lower() or "full"
+    if normalized_status is not None and normalized_status not in QUIZ_STATUS_FILTERS:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="不支持的测验状态筛选")
+    if normalized_sort_mode not in QUIZ_SORT_MODES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="不支持的测验排序方式")
+    if normalized_page_size not in QUIZ_PAGE_SIZE_OPTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"分页大小仅支持 {sorted(QUIZ_PAGE_SIZE_OPTIONS)}",
+        )
+
+    if quiz_page < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="分页页码必须大于等于 1")
+    if quiz_class_id is not None and quiz_class_id < 1:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="班级筛选参数非法")
+
+    if normalized_bootstrap_mode not in QUIZ_BOOTSTRAP_MODES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="bootstrap_mode 涓嶆敮鎸?full 鎴?quiz_list")
+
     accessible_class_ids = get_accessible_class_ids(user, db)
-    classes = list(
-        db.scalars(
-            select(SchoolClass)
-            .where(SchoolClass.id.in_(accessible_class_ids))
-            .order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())
-        ).all()
-    )
-    banks = list(
-        db.scalars(
-            select(QuestionBank)
-            .options(
-                selectinload(QuestionBank.owner_staff),
-                selectinload(QuestionBank.questions).selectinload(QuizQuestion.options),
+    if quiz_class_id is not None and quiz_class_id not in accessible_class_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="不能筛选无权限班级")
+
+    include_reference_data = normalized_bootstrap_mode == "full"
+    classes: list[SchoolClass] = []
+    if include_reference_data:
+        classes = list(
+            db.scalars(
+                select(SchoolClass)
+                .where(SchoolClass.id.in_(accessible_class_ids))
+                .order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())
+            ).all()
+        )
+    banks: list[QuestionBank] = []
+    if include_reference_data:
+        banks = list(
+            db.scalars(
+                select(QuestionBank)
+                .options(
+                    selectinload(QuestionBank.owner_staff),
+                    selectinload(QuestionBank.questions).selectinload(QuizQuestion.options),
+                )
+                .order_by(QuestionBank.updated_at.desc(), QuestionBank.id.desc())
+            ).all()
+        )
+    overall_total = db.scalar(select(func.count(Quiz.id)).where(Quiz.class_id.in_(accessible_class_ids))) or 0
+
+    quiz_filters = [Quiz.class_id.in_(accessible_class_ids)]
+    if quiz_class_id is not None:
+        quiz_filters.append(Quiz.class_id == quiz_class_id)
+    if normalized_status is not None:
+        quiz_filters.append(Quiz.status == normalized_status)
+    if normalized_keyword:
+        keyword_like = f"%{normalized_keyword}%"
+        quiz_filters.append(
+            or_(
+                Quiz.title.ilike(keyword_like),
+                Quiz.description.ilike(keyword_like),
+                SchoolClass.class_name.ilike(keyword_like),
             )
-            .order_by(QuestionBank.updated_at.desc(), QuestionBank.id.desc())
-        ).all()
+        )
+
+    filtered_total_query = (
+        select(func.count(Quiz.id))
+        .select_from(Quiz)
+        .outerjoin(SchoolClass, SchoolClass.id == Quiz.class_id)
+        .where(*quiz_filters)
     )
-    quizzes = list(
-        db.scalars(
-            select(Quiz)
-            .where(Quiz.class_id.in_(accessible_class_ids))
-            .options(selectinload(Quiz.school_class), selectinload(Quiz.question_links), selectinload(Quiz.attempts))
-            .order_by(Quiz.updated_at.desc(), Quiz.id.desc())
-        ).all()
+    filtered_total = db.scalar(filtered_total_query) or 0
+    page_count = max(1, (filtered_total + normalized_page_size - 1) // normalized_page_size)
+    resolved_page = min(quiz_page, page_count)
+    offset = (resolved_page - 1) * normalized_page_size
+
+    attempt_stats_subquery = (
+        select(
+            QuizAttempt.quiz_id.label("quiz_id"),
+            func.count(QuizAttempt.id).label("attempt_count"),
+            func.avg(QuizAttempt.score).label("average_score"),
+        )
+        .where(QuizAttempt.status == "submitted", QuizAttempt.score.is_not(None))
+        .group_by(QuizAttempt.quiz_id)
+        .subquery()
     )
-    return ApiResponse(
-        data={
-            "classes": [
-                {
-                    "id": item.id,
-                    "class_name": item.class_name,
-                    "grade_no": item.grade_no,
-                    "class_no": item.class_no,
-                    "student_count": len(item.students),
-                }
-                for item in classes
-            ],
-            "banks": [serialize_bank(item) for item in banks],
-            "quizzes": [serialize_quiz_for_staff(item) for item in quizzes],
-        }
-    )
+    attempt_count_expr = func.coalesce(attempt_stats_subquery.c.attempt_count, 0)
+    order_by_columns = []
+    if normalized_sort_mode == "updated_desc":
+        order_by_columns = [Quiz.updated_at.desc(), Quiz.id.desc()]
+    elif normalized_sort_mode == "updated_asc":
+        order_by_columns = [Quiz.updated_at.asc(), Quiz.id.asc()]
+    elif normalized_sort_mode == "attempt_desc":
+        order_by_columns = [attempt_count_expr.desc(), Quiz.updated_at.desc(), Quiz.id.desc()]
+    else:
+        order_by_columns = [attempt_count_expr.asc(), Quiz.updated_at.asc(), Quiz.id.asc()]
+
+    quiz_rows = db.execute(
+        select(
+            Quiz,
+            attempt_count_expr.label("attempt_count"),
+            attempt_stats_subquery.c.average_score.label("average_score"),
+        )
+        .outerjoin(SchoolClass, SchoolClass.id == Quiz.class_id)
+        .outerjoin(attempt_stats_subquery, attempt_stats_subquery.c.quiz_id == Quiz.id)
+        .where(*quiz_filters)
+        .options(selectinload(Quiz.school_class), selectinload(Quiz.question_links))
+        .order_by(*order_by_columns)
+        .offset(offset)
+        .limit(normalized_page_size)
+    ).all()
+
+    quizzes = [
+        serialize_quiz_for_staff(
+            quiz,
+            attempt_count=int(attempt_count or 0),
+            average_score=float(average_score) if average_score is not None else None,
+        )
+        for quiz, attempt_count, average_score in quiz_rows
+    ]
+    payload_data: dict[str, object] = {
+        "quizzes": quizzes,
+        "quiz_list": {
+            "total": filtered_total,
+            "overall_total": overall_total,
+            "page": resolved_page,
+            "page_size": normalized_page_size,
+            "page_count": page_count,
+            "sort_mode": normalized_sort_mode,
+        },
+    }
+    if include_reference_data:
+        payload_data["classes"] = [
+            {
+                "id": item.id,
+                "class_name": item.class_name,
+                "grade_no": item.grade_no,
+                "class_no": item.class_no,
+                "student_count": len(item.students),
+            }
+            for item in classes
+        ]
+        payload_data["banks"] = [serialize_bank(item) for item in banks]
+    return ApiResponse(data=payload_data)
 
 
 @router.post("/staff/banks", response_model=ApiResponse)

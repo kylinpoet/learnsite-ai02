@@ -1557,6 +1557,194 @@ def test_staff_can_create_quiz_bank_question_and_quiz():
         assert created_quiz["question_count"] == 1
 
 
+def test_staff_bootstrap_supports_server_side_quiz_sorting_and_pagination():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, username="t1")
+        bootstrap_payload = client.get(f"{API_PREFIX}/quizzes/staff/bootstrap", headers=teacher).json()["data"]
+        class_701 = next(item for item in bootstrap_payload["classes"] if item["class_name"].startswith("701"))
+
+        question_id = next(
+            (
+                question["id"]
+                for bank in bootstrap_payload["banks"]
+                for question in bank.get("questions", [])
+            ),
+            None,
+        )
+        if question_id is None:
+            create_bank_response = client.post(
+                f"{API_PREFIX}/quizzes/staff/banks",
+                headers=teacher,
+                json={"title": "server-sort-page-bank", "description": "bootstrap sort/page smoke"},
+            )
+            assert create_bank_response.status_code == 200
+            create_bank_payload = create_bank_response.json()["data"]
+            created_bank = next(item for item in create_bank_payload["banks"] if item["title"] == "server-sort-page-bank")
+            create_question_response = client.post(
+                f"{API_PREFIX}/quizzes/staff/questions",
+                headers=teacher,
+                json={
+                    "bank_id": created_bank["id"],
+                    "content": "server-sort-page question",
+                    "difficulty": "鍩虹",
+                    "options": [
+                        {"option_key": "A", "option_text": "A", "is_correct": True},
+                        {"option_key": "B", "option_text": "B", "is_correct": False},
+                    ],
+                },
+            )
+            assert create_question_response.status_code == 200
+            created_bank_payload = next(
+                item
+                for item in create_question_response.json()["data"]["banks"]
+                if item["id"] == created_bank["id"]
+            )
+            question_id = created_bank_payload["questions"][0]["id"]
+        assert question_id is not None
+
+        quiz_titles = [
+            "server-sort-page-alpha",
+            "server-sort-page-beta",
+            "server-sort-page-gamma",
+            "server-sort-page-delta",
+            "server-sort-page-epsilon",
+            "server-sort-page-zeta",
+        ]
+        created_quiz_by_title: dict[str, int] = {}
+        for title in quiz_titles:
+            create_quiz_response = client.post(
+                f"{API_PREFIX}/quizzes/staff/quizzes",
+                headers=teacher,
+                json={
+                    "title": title,
+                    "description": "server sorting and pagination smoke",
+                    "class_id": class_701["id"],
+                    "question_ids": [question_id],
+                },
+            )
+            assert create_quiz_response.status_code == 200
+            create_quiz_payload = create_quiz_response.json()["data"]
+            created_quiz = next(item for item in create_quiz_payload["quizzes"] if item["title"] == title)
+            created_quiz_by_title[title] = created_quiz["id"]
+
+        def submit_once(student_no: str, quiz_id: int) -> None:
+            student = student_headers(client, username=student_no)
+            start_response = client.post(
+                f"{API_PREFIX}/quizzes/start",
+                headers=student,
+                json={"quiz_id": quiz_id},
+            )
+            assert start_response.status_code == 200
+            start_payload = start_response.json()["data"]
+            attempt_id = start_payload["attempt"]["id"]
+            submit_response = client.post(
+                f"{API_PREFIX}/quizzes/attempts/{attempt_id}/submit",
+                headers=student,
+                json={
+                    "answers": [
+                        {
+                            "question_id": question["id"],
+                            "selected_option_key": question["options"][0]["key"],
+                        }
+                        for question in start_payload["questions"]
+                    ]
+                },
+            )
+            assert submit_response.status_code == 200
+
+        submit_once("70101", created_quiz_by_title["server-sort-page-alpha"])
+        submit_once("70102", created_quiz_by_title["server-sort-page-alpha"])
+        submit_once("70103", created_quiz_by_title["server-sort-page-beta"])
+
+        attempt_desc_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={
+                "quiz_keyword": "server-sort-page-",
+                "quiz_sort_mode": "attempt_desc",
+                "quiz_page": 1,
+                "quiz_page_size": 5,
+            },
+        )
+        assert attempt_desc_response.status_code == 200
+        attempt_desc_payload = attempt_desc_response.json()["data"]
+        attempt_desc_quizzes = attempt_desc_payload["quizzes"]
+        assert attempt_desc_payload["quiz_list"]["total"] >= 3
+        assert attempt_desc_quizzes[0]["title"] == "server-sort-page-alpha"
+        assert attempt_desc_quizzes[1]["title"] == "server-sort-page-beta"
+        assert attempt_desc_quizzes[0]["attempt_count"] == 2
+        assert attempt_desc_quizzes[1]["attempt_count"] == 1
+        attempt_counts = [item["attempt_count"] for item in attempt_desc_quizzes]
+        assert attempt_counts == sorted(attempt_counts, reverse=True)
+
+        page1_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={
+                    "quiz_keyword": "server-sort-page-",
+                    "quiz_sort_mode": "updated_desc",
+                    "quiz_page": 1,
+                    "quiz_page_size": 5,
+                },
+            )
+        assert page1_response.status_code == 200
+        page1_payload = page1_response.json()["data"]
+        assert page1_payload["quiz_list"]["page"] == 1
+        assert page1_payload["quiz_list"]["page_size"] == 5
+        assert page1_payload["quiz_list"]["page_count"] >= 2
+        assert len(page1_payload["quizzes"]) == 5
+
+        page2_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={
+                    "quiz_keyword": "server-sort-page-",
+                    "quiz_sort_mode": "updated_desc",
+                    "quiz_page": 2,
+                    "quiz_page_size": 5,
+                },
+            )
+        assert page2_response.status_code == 200
+        page2_payload = page2_response.json()["data"]
+        assert page2_payload["quiz_list"]["page"] == 2
+        assert len(page2_payload["quizzes"]) >= 1
+        assert {
+            item["id"] for item in page1_payload["quizzes"]
+        }.isdisjoint({item["id"] for item in page2_payload["quizzes"]})
+
+        quiz_list_only_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={
+                    "quiz_keyword": "server-sort-page-",
+                    "quiz_sort_mode": "updated_desc",
+                    "quiz_page": 1,
+                    "quiz_page_size": 5,
+                    "bootstrap_mode": "quiz_list",
+                },
+            )
+        assert quiz_list_only_response.status_code == 200
+        quiz_list_only_payload = quiz_list_only_response.json()["data"]
+        assert "quizzes" in quiz_list_only_payload
+        assert "quiz_list" in quiz_list_only_payload
+        assert "classes" not in quiz_list_only_payload
+        assert "banks" not in quiz_list_only_payload
+
+        invalid_page_size_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={"quiz_page_size": 7},
+        )
+        assert invalid_page_size_response.status_code == 422
+
+        invalid_bootstrap_mode_response = client.get(
+            f"{API_PREFIX}/quizzes/staff/bootstrap",
+            headers=teacher,
+            params={"bootstrap_mode": "invalid"},
+        )
+        assert invalid_bootstrap_mode_response.status_code == 422
+
+
 def test_staff_can_update_quiz_bank_and_delete_only_when_empty():
     with TestClient(app) as client:
         teacher = staff_headers(client, username="t1")

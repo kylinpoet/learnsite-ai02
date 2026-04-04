@@ -43,7 +43,7 @@
             </article>
             <article class="metric-tile">
               <p class="metric-label">已发布测验</p>
-              <p class="metric-value">{{ bootstrap.quizzes.length }}</p>
+              <p class="metric-value">{{ quizListMeta.overall_total }}</p>
               <p class="metric-note">按当前账号可见班级统计</p>
             </article>
           </div>
@@ -407,7 +407,7 @@
                       <h3>已发布测验</h3>
                       <p class="section-note">展示当前账号可见班级的测验发布情况与参与概览。</p>
                     </div>
-                    <el-tag round type="info">共 {{ filteredQuizzes.length }} / {{ bootstrap.quizzes.length }} 条</el-tag>
+                    <el-tag round type="info">共 {{ quizListMeta.total }} / {{ quizListMeta.overall_total }} 条</el-tag>
                   </div>
                 </template>
 
@@ -451,9 +451,13 @@
                   </el-select>
                 </div>
 
-                <el-empty v-if="!filteredQuizzes.length" :description="bootstrap.quizzes.length ? '当前筛选条件下没有测验' : '当前还没有发布测验'" />
+                <el-empty
+                  v-if="!quizRows.length"
+                  v-loading="isQuizTableLoading"
+                  :description="quizListMeta.overall_total ? '当前筛选条件下没有测验' : '当前还没有发布测验'"
+                />
 
-                <el-table v-else :data="pagedQuizzes" stripe>
+                <el-table v-else v-loading="isQuizTableLoading" :data="quizRows" stripe>
                   <el-table-column label="测验标题" min-width="220" prop="title" />
                   <el-table-column label="班级" min-width="100" prop="class_name" />
                   <el-table-column label="状态" min-width="100">
@@ -512,7 +516,7 @@
                   <el-pagination
                     v-model:current-page="quizPage"
                     v-model:page-size="quizPageSize"
-                    :page-sizes="[5, 10, 20, 50]"
+                    :page-sizes="quizPageSizeOptions"
                     :total="quizPaginationTotal"
                     background
                     layout="total, sizes, prev, pager, next, jumper"
@@ -738,11 +742,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
+import { createDebouncedAbortableRequestRunner } from '@/utils/debouncedAbortableRequest';
+
+type QuizSortMode = 'updated_desc' | 'updated_asc' | 'attempt_desc' | 'attempt_asc';
+type QuizStatusFilter = '' | 'active' | 'inactive';
 
 type StaffBootstrapPayload = {
   classes: Array<{
@@ -785,21 +793,119 @@ type StaffBootstrapPayload = {
     average_score: number | null;
     updated_at: string | null;
   }>;
+  quiz_list: {
+    total: number;
+    overall_total: number;
+    page: number;
+    page_size: number;
+    page_count: number;
+    sort_mode: QuizSortMode;
+  };
 };
+type QuizBootstrapMode = 'full' | 'quiz_list';
+type StaffBootstrapResponsePayload = Pick<StaffBootstrapPayload, 'quizzes' | 'quiz_list'> &
+  Partial<Pick<StaffBootstrapPayload, 'classes' | 'banks'>>;
 
 type StaffBankRecord = StaffBootstrapPayload['banks'][number];
 type StaffBankQuestion = StaffBootstrapPayload['banks'][number]['questions'][number];
 type StaffQuizRecord = StaffBootstrapPayload['quizzes'][number];
+type QuizListPreferences = {
+  keyword: string;
+  class_id: number | null;
+  status: QuizStatusFilter;
+  sort_mode: QuizSortMode;
+  page: number;
+  page_size: number;
+};
+type QuizListMeta = StaffBootstrapPayload['quiz_list'];
 
 type QuestionOptionForm = {
   option_key: string;
   option_text: string;
 };
 
+const QUIZ_LIST_PREFERENCES_KEY = 'learnsite.staff.quizzes.list.preferences.v1';
+const quizPageSizeOptions = [5, 10, 20, 50] as const;
+const defaultQuizListPreferences: QuizListPreferences = {
+  keyword: '',
+  class_id: null,
+  status: '',
+  sort_mode: 'updated_desc',
+  page: 1,
+  page_size: 10,
+};
+const quizSortModes: QuizSortMode[] = ['updated_desc', 'updated_asc', 'attempt_desc', 'attempt_asc'];
+const quizStatusFilters: QuizStatusFilter[] = ['', 'active', 'inactive'];
+const defaultQuizListMeta: QuizListMeta = {
+  total: 0,
+  overall_total: 0,
+  page: 1,
+  page_size: 10,
+  page_count: 1,
+  sort_mode: 'updated_desc',
+};
+
+function loadQuizListPreferences(): QuizListPreferences {
+  if (typeof window === 'undefined') {
+    return { ...defaultQuizListPreferences };
+  }
+  try {
+    const raw = window.localStorage.getItem(QUIZ_LIST_PREFERENCES_KEY);
+    if (!raw) {
+      return { ...defaultQuizListPreferences };
+    }
+    const parsed = JSON.parse(raw) as Partial<QuizListPreferences>;
+    const classId =
+      typeof parsed.class_id === 'number' && Number.isInteger(parsed.class_id) && parsed.class_id > 0
+        ? parsed.class_id
+        : null;
+    const status = quizStatusFilters.includes(parsed.status as QuizStatusFilter)
+      ? (parsed.status as QuizStatusFilter)
+      : defaultQuizListPreferences.status;
+    const sortMode = quizSortModes.includes(parsed.sort_mode as QuizSortMode)
+      ? (parsed.sort_mode as QuizSortMode)
+      : defaultQuizListPreferences.sort_mode;
+    const pageSize =
+      typeof parsed.page_size === 'number' &&
+      Number.isInteger(parsed.page_size) &&
+      quizPageSizeOptions.includes(parsed.page_size as (typeof quizPageSizeOptions)[number])
+        ? parsed.page_size
+        : defaultQuizListPreferences.page_size;
+    const page =
+      typeof parsed.page === 'number' && Number.isInteger(parsed.page) && parsed.page > 0
+        ? parsed.page
+        : defaultQuizListPreferences.page;
+
+    return {
+      keyword: typeof parsed.keyword === 'string' ? parsed.keyword : defaultQuizListPreferences.keyword,
+      class_id: classId,
+      status,
+      sort_mode: sortMode,
+      page,
+      page_size: pageSize,
+    };
+  } catch {
+    return { ...defaultQuizListPreferences };
+  }
+}
+
+function saveQuizListPreferences(payload: QuizListPreferences) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  try {
+    window.localStorage.setItem(QUIZ_LIST_PREFERENCES_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore localStorage failures so the main flow keeps working.
+  }
+}
+
 const authStore = useAuthStore();
+const initialQuizListPreferences = loadQuizListPreferences();
 
 const isLoading = ref(true);
 const errorMessage = ref('');
+const isQuizTableLoading = ref(false);
 const bootstrap = ref<StaffBootstrapPayload | null>(null);
 
 const creatingBank = ref(false);
@@ -823,12 +929,16 @@ const activeBankId = ref<number | null>(null);
 const selectedQuestionIds = ref<number[]>([]);
 const bankFilterKeyword = ref('');
 const bankFilterScope = ref('');
-const quizFilterKeyword = ref('');
-const quizFilterClassId = ref<number | null>(null);
-const quizFilterStatus = ref('');
-const quizSortMode = ref<'updated_desc' | 'updated_asc' | 'attempt_desc' | 'attempt_asc'>('updated_desc');
-const quizPage = ref(1);
-const quizPageSize = ref(10);
+const quizFilterKeyword = ref(initialQuizListPreferences.keyword);
+const quizFilterClassId = ref<number | null>(initialQuizListPreferences.class_id);
+const quizFilterStatus = ref<QuizStatusFilter>(initialQuizListPreferences.status);
+const quizSortMode = ref<QuizSortMode>(initialQuizListPreferences.sort_mode);
+const quizPage = ref(initialQuizListPreferences.page);
+const quizPageSize = ref(initialQuizListPreferences.page_size);
+const isSyncingQuizQueryState = ref(false);
+const quizQueryWatcherReady = ref(false);
+const bootstrapRequestRunner = createDebouncedAbortableRequestRunner();
+let latestBootstrapLoadSequence = 0;
 
 const bankForm = reactive({
   title: '',
@@ -925,82 +1035,87 @@ const quizQuestionOptions = computed(() =>
     }))
   )
 );
-const filteredQuizzes = computed(() => {
-  const quizzes = bootstrap.value?.quizzes || [];
-  const keyword = quizFilterKeyword.value.trim().toLowerCase();
-  const classId = quizFilterClassId.value;
-  const status = quizFilterStatus.value;
-
-  return quizzes.filter((quiz) => {
-    if (classId && quiz.class_id !== classId) {
-      return false;
-    }
-    if (status && quiz.status !== status) {
-      return false;
-    }
-    if (!keyword) {
-      return true;
-    }
-    return [quiz.title, quiz.description || '', quiz.class_name]
-      .join(' ')
-      .toLowerCase()
-      .includes(keyword);
-  });
-});
-const sortedFilteredQuizzes = computed(() => {
-  const mode = quizSortMode.value;
-  const items = [...filteredQuizzes.value];
-  const parseTime = (value: string | null) => (value ? Date.parse(value) : 0);
-
-  items.sort((left, right) => {
-    if (mode === 'updated_desc') {
-      const delta = parseTime(right.updated_at) - parseTime(left.updated_at);
-      return delta || right.id - left.id;
-    }
-    if (mode === 'updated_asc') {
-      const delta = parseTime(left.updated_at) - parseTime(right.updated_at);
-      return delta || left.id - right.id;
-    }
-    if (mode === 'attempt_desc') {
-      const delta = right.attempt_count - left.attempt_count;
-      if (delta !== 0) {
-        return delta;
-      }
-      const timeDelta = parseTime(right.updated_at) - parseTime(left.updated_at);
-      return timeDelta || right.id - left.id;
-    }
-    const delta = left.attempt_count - right.attempt_count;
-    if (delta !== 0) {
-      return delta;
-    }
-    const timeDelta = parseTime(left.updated_at) - parseTime(right.updated_at);
-    return timeDelta || left.id - right.id;
-  });
-
-  return items;
-});
-const quizPaginationTotal = computed(() => sortedFilteredQuizzes.value.length);
-const quizPageCount = computed(() => Math.max(1, Math.ceil(quizPaginationTotal.value / quizPageSize.value)));
-const pagedQuizzes = computed(() => {
-  const startIndex = (quizPage.value - 1) * quizPageSize.value;
-  return sortedFilteredQuizzes.value.slice(startIndex, startIndex + quizPageSize.value);
-});
+const quizRows = computed(() => bootstrap.value?.quizzes || []);
+const quizListMeta = computed<QuizListMeta>(() => bootstrap.value?.quiz_list || defaultQuizListMeta);
+const quizPaginationTotal = computed(() => quizListMeta.value.total);
 
 watch(
-  [quizFilterKeyword, quizFilterClassId, quizFilterStatus, quizSortMode],
-  () => {
-    quizPage.value = 1;
+  [quizFilterKeyword, quizFilterClassId, quizFilterStatus, quizSortMode, quizPage, quizPageSize],
+  (nextValue, prevValue) => {
+    const [nextKeyword, nextClassId, nextStatus, nextSortMode, nextPage, nextPageSize] = nextValue;
+    if (prevValue) {
+      const [prevKeyword, prevClassId, prevStatus, prevSortMode] = prevValue;
+      const quizFilterChanged =
+        nextKeyword !== prevKeyword ||
+        nextClassId !== prevClassId ||
+        nextStatus !== prevStatus ||
+        nextSortMode !== prevSortMode;
+      if (quizFilterChanged && nextPage !== 1) {
+        quizPage.value = 1;
+        return;
+      }
+    }
+
+    saveQuizListPreferences({
+      keyword: nextKeyword,
+      class_id: nextClassId,
+      status: nextStatus,
+      sort_mode: nextSortMode,
+      page: nextPage,
+      page_size: nextPageSize,
+    });
+
+    if (!quizQueryWatcherReady.value || isSyncingQuizQueryState.value) {
+      return;
+    }
+    void loadBootstrap({ withLoading: false, mode: 'quiz_list', debounceMs: 160 });
   }
 );
 
-watch([quizPaginationTotal, quizPageSize], () => {
-  if (quizPage.value > quizPageCount.value) {
-    quizPage.value = quizPageCount.value;
+function buildQuizBootstrapPath(mode: QuizBootstrapMode = 'full') {
+  const query = new URLSearchParams();
+  const keyword = quizFilterKeyword.value.trim();
+  if (keyword) {
+    query.set('quiz_keyword', keyword);
   }
-  if (quizPage.value < 1) {
-    quizPage.value = 1;
+  if (quizFilterClassId.value) {
+    query.set('quiz_class_id', String(quizFilterClassId.value));
   }
-});
+  if (quizFilterStatus.value) {
+    query.set('quiz_status', quizFilterStatus.value);
+  }
+  query.set('quiz_sort_mode', quizSortMode.value);
+  query.set('quiz_page', String(Math.max(1, quizPage.value)));
+  const safePageSize = quizPageSizeOptions.includes(quizPageSize.value as (typeof quizPageSizeOptions)[number])
+    ? quizPageSize.value
+    : defaultQuizListPreferences.page_size;
+  query.set('quiz_page_size', String(safePageSize));
+  if (mode === 'quiz_list') {
+    query.set('bootstrap_mode', 'quiz_list');
+  }
+  return `/quizzes/staff/bootstrap?${query.toString()}`;
+}
+
+function applyBootstrapQuizMeta(payload: StaffBootstrapPayload, options: { hasClassScope?: boolean } = {}) {
+  const listMeta = payload.quiz_list || defaultQuizListMeta;
+  const hasClassScope = options.hasClassScope ?? true;
+  isSyncingQuizQueryState.value = true;
+  try {
+    if (hasClassScope && quizFilterClassId.value && !payload.classes.some((item) => item.id === quizFilterClassId.value)) {
+      quizFilterClassId.value = null;
+    }
+    if (quizSortModes.includes(listMeta.sort_mode)) {
+      quizSortMode.value = listMeta.sort_mode;
+    }
+    const safePageSize = quizPageSizeOptions.includes(listMeta.page_size as (typeof quizPageSizeOptions)[number])
+      ? listMeta.page_size
+      : defaultQuizListPreferences.page_size;
+    quizPageSize.value = safePageSize;
+    quizPage.value = Math.max(1, listMeta.page || 1);
+  } finally {
+    isSyncingQuizQueryState.value = false;
+  }
+}
 
 function createDefaultOptions() {
   return ['A', 'B', 'C', 'D'].map((key) => ({
@@ -1194,28 +1309,62 @@ function removeSelectedQuestion(questionId: number) {
   selectedQuestionIds.value = selectedQuestionIds.value.filter((id) => id !== questionId);
 }
 
-async function loadBootstrap() {
+async function loadBootstrap(options: { withLoading?: boolean; mode?: QuizBootstrapMode; debounceMs?: number } = {}) {
+  const withLoading = options.withLoading ?? true;
+  const mode = options.mode ?? 'full';
+  const debounceMs = Math.max(0, options.debounceMs ?? 0);
   if (!authStore.token) {
+    bootstrapRequestRunner.cancel();
     errorMessage.value = '请先登录教师账号';
     isLoading.value = false;
+    isQuizTableLoading.value = false;
     return;
   }
 
-  isLoading.value = true;
+  const loadSequence = latestBootstrapLoadSequence + 1;
+  latestBootstrapLoadSequence = loadSequence;
+
+  if (withLoading) {
+    isLoading.value = true;
+  } else {
+    isQuizTableLoading.value = true;
+  }
   errorMessage.value = '';
 
   try {
-    bootstrap.value = await apiGet<StaffBootstrapPayload>('/quizzes/staff/bootstrap', authStore.token);
-    if (!activeBankId.value || !bootstrap.value.banks.some((bank) => bank.id === activeBankId.value)) {
-      activeBankId.value = bootstrap.value.banks[0]?.id ?? null;
+    const payload = await bootstrapRequestRunner.run(
+      (signal) => apiGet<StaffBootstrapResponsePayload>(buildQuizBootstrapPath(mode), authStore.token, signal),
+      { delayMs: debounceMs }
+    );
+    if (loadSequence !== latestBootstrapLoadSequence || payload === null) {
+      return;
     }
-    if (questionForm.bank_id === null) {
+    const mergedPayload: StaffBootstrapPayload = {
+      classes: payload.classes ?? bootstrap.value?.classes ?? [],
+      banks: payload.banks ?? bootstrap.value?.banks ?? [],
+      quizzes: payload.quizzes,
+      quiz_list: payload.quiz_list,
+    };
+    bootstrap.value = mergedPayload;
+    applyBootstrapQuizMeta(mergedPayload, { hasClassScope: Array.isArray(payload.classes) });
+    if (!activeBankId.value || !mergedPayload.banks.some((bank) => bank.id === activeBankId.value)) {
+      activeBankId.value = mergedPayload.banks[0]?.id ?? null;
+    }
+    if (questionForm.bank_id === null || !mergedPayload.banks.some((item) => item.id === questionForm.bank_id)) {
       questionForm.bank_id = activeBankId.value;
     }
   } catch (error) {
+    if (loadSequence !== latestBootstrapLoadSequence) {
+      return;
+    }
     errorMessage.value = error instanceof Error ? error.message : '加载题库数据失败';
   } finally {
-    isLoading.value = false;
+    if (withLoading && loadSequence === latestBootstrapLoadSequence) {
+      isLoading.value = false;
+    }
+    if (!withLoading && loadSequence === latestBootstrapLoadSequence) {
+      isQuizTableLoading.value = false;
+    }
   }
 }
 
@@ -1231,7 +1380,7 @@ async function submitBank() {
 
   creatingBank.value = true;
   try {
-    const payload = await apiPost<StaffBootstrapPayload>(
+    await apiPost<StaffBootstrapPayload>(
       '/quizzes/staff/banks',
       {
         title: bankForm.title.trim(),
@@ -1239,11 +1388,11 @@ async function submitBank() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
-    activeBankId.value = payload.banks[0]?.id ?? null;
+    activeBankId.value = null;
+    questionForm.bank_id = null;
+    await loadBootstrap({ withLoading: false });
     bankForm.title = '';
     bankForm.description = '';
-    questionForm.bank_id = activeBankId.value;
     ElMessage.success('题库已创建');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '创建题库失败');
@@ -1268,7 +1417,7 @@ async function submitBankUpdate() {
 
   updatingBank.value = true;
   try {
-    const payload = await apiPut<StaffBootstrapPayload>(
+    await apiPut<StaffBootstrapPayload>(
       `/quizzes/staff/banks/${editingBankId.value}`,
       {
         title: bankEditorForm.title.trim(),
@@ -1276,7 +1425,7 @@ async function submitBankUpdate() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false });
     closeBankEditor();
     ElMessage.success('题库已更新');
   } catch (error) {
@@ -1308,18 +1457,11 @@ async function deleteBank(bank: StaffBankRecord) {
 
   deletingBankId.value = bank.id;
   try {
-    const payload = await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/banks/${bank.id}`, authStore.token);
-    bootstrap.value = payload;
-
-    if (!payload.banks.some((item) => item.id === activeBankId.value)) {
-      activeBankId.value = payload.banks[0]?.id ?? null;
-    }
+    await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/banks/${bank.id}`, authStore.token);
+    await loadBootstrap({ withLoading: false });
     selectedQuestionIds.value = selectedQuestionIds.value.filter((id) =>
-      payload.banks.some((item) => item.questions.some((question) => question.id === id))
+      (bootstrap.value?.banks || []).some((item) => item.questions.some((question) => question.id === id))
     );
-    if (!questionForm.bank_id || !payload.banks.some((item) => item.id === questionForm.bank_id)) {
-      questionForm.bank_id = activeBankId.value;
-    }
     if (editingBankId.value === bank.id) {
       closeBankEditor();
     }
@@ -1352,7 +1494,7 @@ async function submitQuestion() {
 
   creatingQuestion.value = true;
   try {
-    const payload = await apiPost<StaffBootstrapPayload>(
+    await apiPost<StaffBootstrapPayload>(
       '/quizzes/staff/questions',
       {
         bank_id: questionForm.bank_id,
@@ -1367,7 +1509,7 @@ async function submitQuestion() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false });
     if (questionForm.bank_id) {
       activeBankId.value = questionForm.bank_id;
     }
@@ -1400,7 +1542,7 @@ async function submitQuestionUpdate() {
 
   updatingQuestion.value = true;
   try {
-    const payload = await apiPut<StaffBootstrapPayload>(
+    await apiPut<StaffBootstrapPayload>(
       `/quizzes/staff/questions/${editingQuestionId.value}`,
       {
         content: questionEditorForm.content.trim(),
@@ -1414,7 +1556,7 @@ async function submitQuestionUpdate() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false });
     closeQuestionEditor();
     ElMessage.success('题目已更新');
   } catch (error) {
@@ -1448,18 +1590,11 @@ async function deleteQuestion(questionId: number) {
 
   deletingQuestionId.value = questionId;
   try {
-    const payload = await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/questions/${questionId}`, authStore.token);
-    bootstrap.value = payload;
-
-    if (!payload.banks.some((bank) => bank.id === activeBankId.value)) {
-      activeBankId.value = payload.banks[0]?.id ?? null;
-    }
+    await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/questions/${questionId}`, authStore.token);
+    await loadBootstrap({ withLoading: false });
     selectedQuestionIds.value = selectedQuestionIds.value.filter((id) =>
-      payload.banks.some((bank) => bank.questions.some((item) => item.id === id))
+      (bootstrap.value?.banks || []).some((bank) => bank.questions.some((item) => item.id === id))
     );
-    if (!questionForm.bank_id || !payload.banks.some((bank) => bank.id === questionForm.bank_id)) {
-      questionForm.bank_id = activeBankId.value;
-    }
     if (editingQuestionId.value === questionId) {
       closeQuestionEditor();
     }
@@ -1491,7 +1626,7 @@ async function submitQuiz() {
 
   creatingQuiz.value = true;
   try {
-    const payload = await apiPost<StaffBootstrapPayload>(
+    await apiPost<StaffBootstrapPayload>(
       '/quizzes/staff/quizzes',
       {
         title: quizForm.title.trim(),
@@ -1501,7 +1636,7 @@ async function submitQuiz() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false, mode: 'quiz_list' });
     quizForm.title = '';
     quizForm.description = '';
     quizForm.class_id = null;
@@ -1538,7 +1673,7 @@ async function submitQuizUpdate() {
 
   updatingQuiz.value = true;
   try {
-    const payload = await apiPut<StaffBootstrapPayload>(
+    await apiPut<StaffBootstrapPayload>(
       `/quizzes/staff/quizzes/${editingQuizId.value}`,
       {
         title: quizEditorForm.title.trim(),
@@ -1548,7 +1683,7 @@ async function submitQuizUpdate() {
       },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false, mode: 'quiz_list' });
     closeQuizEditor();
     ElMessage.success('测验已更新');
   } catch (error) {
@@ -1580,8 +1715,8 @@ async function deleteQuiz(quiz: StaffQuizRecord) {
 
   deletingQuizId.value = quiz.id;
   try {
-    const payload = await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/quizzes/${quiz.id}`, authStore.token);
-    bootstrap.value = payload;
+    await apiDelete<StaffBootstrapPayload>(`/quizzes/staff/quizzes/${quiz.id}`, authStore.token);
+    await loadBootstrap({ withLoading: false, mode: 'quiz_list' });
     if (editingQuizId.value === quiz.id) {
       closeQuizEditor();
     }
@@ -1618,12 +1753,12 @@ async function toggleQuizStatus(quiz: StaffBootstrapPayload['quizzes'][number]) 
 
   updatingQuizStatusId.value = quiz.id;
   try {
-    const payload = await apiPut<StaffBootstrapPayload>(
+    await apiPut<StaffBootstrapPayload>(
       `/quizzes/staff/quizzes/${quiz.id}/status`,
       { status: nextStatus },
       authStore.token
     );
-    bootstrap.value = payload;
+    await loadBootstrap({ withLoading: false, mode: 'quiz_list' });
     ElMessage.success(nextStatus === 'active' ? '测验已启用' : '测验已停用');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '更新测验状态失败');
@@ -1635,6 +1770,11 @@ async function toggleQuizStatus(quiz: StaffBootstrapPayload['quizzes'][number]) 
 onMounted(async () => {
   await loadBootstrap();
   resetQuestionForm();
+  quizQueryWatcherReady.value = true;
+});
+
+onUnmounted(() => {
+  bootstrapRequestRunner.cancel();
 });
 </script>
 

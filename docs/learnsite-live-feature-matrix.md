@@ -113,7 +113,7 @@
 | `teacher/workcheck.aspx` | 已确认存在 | 作品评分页 | `/staff/submissions/:taskId` | `submissions`, `rubrics` | `submissions`, `submission_rubric_scores` | Phase 2 | 单个任务评分、批量评分；已支持课堂任务卡 `focus=pending_submit|pending_review` 快捷跳转 |
 | `teacher/signin.aspx` | 已实测 | 签到管理 | `/staff/attendance` | `attendance` | `attendance_sessions`, `attendance_records` | Phase 2 | 查看、导出签到 |
 | `teacher/student.aspx` | 已实测 | 学生管理 | `/staff/students` | `classes`, `profiles`, `auth` | `student_profiles`, `class_memberships`, `users` | Phase 2 | 重置密码、分组、导出等 |
-| `quiz/quiz.aspx` | 已实测 | 常识 / 题库管理 | `/staff/quizzes` | `quizzes`, `questions` | `question_banks`, `questions`, `quizzes` | Phase 2 | 已接通题库创建、题库/题目/测验编辑删除保护、按班发布测验；测验列表支持按更新时间/参与人数排序与分页 |
+| `quiz/quiz.aspx` | 已实测 | 常识 / 题库管理 | `/staff/quizzes` | `quizzes`, `questions` | `question_banks`, `questions`, `quizzes` | Phase 2 | 已接通题库创建、题库/题目/测验编辑删除保护、按班发布测验；测验列表已改为服务端按更新时间/参与人数排序与分页，并记忆筛选/排序/分页偏好；列表筛选/分页刷新使用 `bootstrap_mode=quiz_list` 轻量响应，避免重复下发全量题库题目数据；“已发布测验”统计卡展示可见总量，列表 loading 限定在表格区 |
 | `teacher/typer.aspx` | 已实测 | 中文打字内容管理 | `/staff/typing` | `typing` | `typing_sets`, `typing_records` | Phase 2 | 已统一收口到同页筛选，支持内容维护与成绩概览 |
 | `teacher/typechinese.aspx` | 已实测 | 拼音打字内容管理 | `/staff/typing` | `typing` | `typing_sets`, `typing_records` | Phase 2 | 已统一收口到同页筛选，按模式查看即可 |
 | `teacher/soft.aspx` | 已实测 | 资源管理 | `/staff/resources` | `resources`, `files` | `resources`, `resource_categories`, `files` | Phase 2 | 已接通分类维护、资源创建、发布控制与正文预览 |
