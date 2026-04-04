@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.vite/
+.DS_Store
+Thumbs.db
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+apps/api/.env
+apps/api/learnsite.db
+apps/api/*.db
+coverage/

@@ -1,0 +1,17 @@
+{
+  "name": "learnsite-platform",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:up": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-up.ps1",
+    "dev:down": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-down.ps1",
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "typecheck:web": "npm --workspace apps/web run typecheck",
+    "dev:api": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010 --app-dir apps/api",
+    "check:api": "python -m compileall apps/api/app apps/api/tests"
+  }
+}
