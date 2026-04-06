@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, status
+from fastapi import Cookie, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -8,19 +8,22 @@ from app.models import User
 from app.services.staff_access import is_admin_staff
 
 bearer_scheme = HTTPBearer(auto_error=False)
+TASK_RUNTIME_COOKIE_NAME = "learnsite_task_token"
 
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    task_runtime_token: str | None = Cookie(default=None, alias=TASK_RUNTIME_COOKIE_NAME),
     db: Session = Depends(get_db),
 ) -> User:
-    if credentials is None:
+    raw_token = credentials.credentials if credentials is not None else (task_runtime_token or "").strip()
+    if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authentication credentials",
         )
 
-    token_data = decode_access_token(credentials.credentials)
+    token_data = decode_access_token(raw_token)
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

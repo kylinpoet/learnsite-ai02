@@ -46,6 +46,7 @@ from app.models import (
     Submission,
     SubmissionFile,
     Task,
+    TaskTemplate,
     TeacherClassAssignment,
     TypingRecord,
     TypingSet,
@@ -371,11 +372,16 @@ def ensure_runtime_schema() -> None:
     submission_columns = {column["name"] for column in inspector.get_columns("submissions")}
     student_profile_columns = {column["name"] for column in inspector.get_columns("student_profiles")}
     profile_change_audit_columns = {column["name"] for column in inspector.get_columns("profile_change_audit_logs")}
+    task_template_columns = {column["name"] for column in inspector.get_columns("task_templates")} if "task_templates" in inspector.get_table_names() else set()
 
     with engine.begin() as connection:
         if "submission_scope" not in task_columns:
             connection.execute(
                 text("ALTER TABLE tasks ADD COLUMN submission_scope VARCHAR(20) NOT NULL DEFAULT 'individual'")
+            )
+        if "config_json" not in task_columns:
+            connection.execute(
+                text("ALTER TABLE tasks ADD COLUMN config_json TEXT")
             )
         if "group_id" not in submission_columns:
             connection.execute(
@@ -397,7 +403,40 @@ def ensure_runtime_schema() -> None:
             connection.execute(
                 text("ALTER TABLE profile_change_audit_logs ADD COLUMN batch_token VARCHAR(48)")
             )
+        if task_template_columns and "group_name" not in task_template_columns:
+            connection.execute(
+                text("ALTER TABLE task_templates ADD COLUMN group_name VARCHAR(60) NOT NULL DEFAULT ''")
+            )
+        if task_template_columns and "sort_order" not in task_template_columns:
+            connection.execute(
+                text("ALTER TABLE task_templates ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 1000")
+            )
+        if task_template_columns and "is_pinned" not in task_template_columns:
+            connection.execute(
+                text("ALTER TABLE task_templates ADD COLUMN is_pinned BOOLEAN NOT NULL DEFAULT 0")
+            )
+        if task_template_columns and "last_used_at" not in task_template_columns:
+            connection.execute(
+                text("ALTER TABLE task_templates ADD COLUMN last_used_at DATETIME")
+            )
+        if task_template_columns and "use_count" not in task_template_columns:
+            connection.execute(
+                text("ALTER TABLE task_templates ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0")
+            )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_submissions_group_id ON submissions (group_id)"))
+        if task_template_columns:
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_task_templates_group_name ON task_templates (group_name)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_task_templates_sort_order ON task_templates (sort_order)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_task_templates_is_pinned ON task_templates (is_pinned)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_task_templates_last_used_at ON task_templates (last_used_at)")
+            )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_profile_change_audit_logs_actor_username ON profile_change_audit_logs (actor_username)")
         )
@@ -410,6 +449,19 @@ def ensure_runtime_schema() -> None:
         connection.execute(
             text("UPDATE tasks SET submission_scope = 'individual' WHERE submission_scope IS NULL OR submission_scope = ''")
         )
+        if task_template_columns:
+            connection.execute(
+                text("UPDATE task_templates SET group_name = '' WHERE group_name IS NULL")
+            )
+            connection.execute(
+                text("UPDATE task_templates SET sort_order = 1000 WHERE sort_order IS NULL OR sort_order < 1")
+            )
+            connection.execute(
+                text("UPDATE task_templates SET is_pinned = 0 WHERE is_pinned IS NULL")
+            )
+            connection.execute(
+                text("UPDATE task_templates SET use_count = 0 WHERE use_count IS NULL")
+            )
 
 
 def ensure_demo_group_tasks(session) -> None:

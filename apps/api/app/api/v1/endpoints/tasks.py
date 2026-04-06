@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime
 from math import ceil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps.auth import require_student
+from app.api.deps.auth import TASK_RUNTIME_COOKIE_NAME, get_current_user, require_student
 from app.api.deps.db import get_db
+from app.core.security import decode_access_token
 from app.models import (
     CurriculumLesson,
     CurriculumUnit,
@@ -24,7 +27,10 @@ from app.models import (
     Submission,
     SubmissionFile,
     Task,
+    TaskDataSubmission,
+    TaskDiscussionPost,
     TaskReadRecord,
+    TaskWebAsset,
     User,
 )
 from app.schemas.common import ApiResponse
@@ -42,13 +48,21 @@ from app.services.submission_files import (
     stored_file_path,
     submission_dir,
 )
+from app.services.task_assets import normalize_relative_path, resolve_asset_file_path
 
 router = APIRouter()
+SUPPORTED_TASK_ASSET_SLOTS = {"web", "data_submit_form", "data_submit_visualization"}
+TASK_RUNTIME_COOKIE_MAX_AGE = 60 * 60 * 8
 
 
 class GroupTaskDraftUpdateRequest(BaseModel):
     submission_note: str | None = Field(default="")
     source_code: str | None = Field(default="")
+
+
+class TaskDiscussionPostCreateRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=4000)
+    parent_post_id: int | None = Field(default=None, ge=1)
 
 
 def load_task(task_id: int, db: Session) -> Task:
@@ -223,6 +237,271 @@ def normalize_draft_source_code(source_code: str | None) -> str | None:
         return None
     normalized = source_code.replace("\r\n", "\n")
     return normalized if normalized.strip() else None
+
+
+def parse_task_config(task: Task) -> dict[str, object]:
+    if not task.config_json:
+        return {}
+    try:
+        parsed = json.loads(task.config_json)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+    return parsed
+
+
+def build_absolute_api_url(request: Request | None, path: str) -> str:
+    normalized = path.strip()
+    if not normalized:
+        return ""
+    if normalized.startswith(("http://", "https://")):
+        return normalized
+    if request is None:
+        return normalized
+    base_url = str(request.base_url)
+    if normalized.startswith("/"):
+        return f"{base_url.rstrip('/')}{normalized}"
+    return f"{base_url}{normalized}"
+
+
+def serialize_task_config(task: Task, request: Request | None = None) -> dict[str, object] | None:
+    config = parse_task_config(task)
+    config.pop("entry_html_source", None)
+    config.pop("submit_html_source", None)
+    config.pop("visualization_html_source", None)
+    if task.task_type == "data_submit":
+        config.pop("schema_json", None)
+        token = str(config.get("endpoint_token") or "").strip()
+        if token:
+            submit_path = f"/api/v1/tasks/{task.id}/data-submit/{token}"
+            config["submit_api_path"] = build_absolute_api_url(request, submit_path)
+            config["records_api_path"] = build_absolute_api_url(request, f"{submit_path}/records")
+    return config or None
+
+
+def allowed_asset_slots_for_task(task: Task) -> set[str]:
+    normalized_type = (task.task_type or "").strip().lower()
+    if normalized_type == "web_page":
+        return {"web"}
+    if normalized_type == "data_submit":
+        return {"data_submit_form", "data_submit_visualization"}
+    return set()
+
+
+def serialize_discussion_post(post: TaskDiscussionPost) -> dict:
+    author = post.author
+    profile = author.student_profile if author else None
+    return {
+        "id": post.id,
+        "task_id": post.task_id,
+        "parent_post_id": post.parent_post_id,
+        "content": post.content,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+        "updated_at": post.updated_at.isoformat() if post.updated_at else None,
+        "author": {
+            "user_id": author.id if author else None,
+            "display_name": author.display_name if author else "未知用户",
+            "user_type": author.user_type if author else "unknown",
+            "student_no": profile.student_no if profile else None,
+        },
+    }
+
+
+def parse_query_token_user(task: Task, access_token: str | None, db: Session) -> User | None:
+    if not access_token:
+        return None
+    token_data = decode_access_token(access_token)
+    if token_data is None:
+        return None
+    user = db.get(User, int(token_data.get("user_id", 0)))
+    if user is None or not user.is_active:
+        return None
+    if user.user_type == "student":
+        # Keep access model consistent with current task APIs: a logged-in student can access task payload.
+        return user
+    if user.user_type == "staff":
+        return user
+    return None
+
+
+def extract_request_access_token(request: Request, access_token: str | None = None) -> str | None:
+    token_to_validate = (access_token or "").strip()
+    if token_to_validate:
+        return token_to_validate
+
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        bearer_token = authorization.split(" ", 1)[1].strip()
+        if bearer_token:
+            return bearer_token
+
+    cookie_token = (request.cookies.get(TASK_RUNTIME_COOKIE_NAME) or "").strip()
+    return cookie_token or None
+
+
+def task_request_base_path(request: Request, task_id: int) -> str:
+    path = request.url.path
+    asset_separator = "/assets/"
+    if asset_separator in path:
+        return path.split(asset_separator, 1)[0]
+    task_separator = f"/tasks/{task_id}/"
+    if task_separator in path:
+        return path.split(task_separator, 1)[0] + f"/tasks/{task_id}"
+    return f"/api/v1/tasks/{task_id}"
+
+
+def build_task_runtime_context(task: Task, slot: str, asset_path: str, request: Request) -> dict[str, object]:
+    config = serialize_task_config(task, request) or {}
+    task_base_path = task_request_base_path(request, task.id)
+    api_base_path = task_base_path.rsplit("/tasks/", 1)[0] if "/tasks/" in task_base_path else "/api/v1"
+    asset_base_path = f"{task_base_path}/assets/{slot}"
+    return {
+        "taskId": task.id,
+        "taskType": task.task_type,
+        "slot": slot,
+        "assetPath": asset_path,
+        "assetBasePath": asset_base_path,
+        "assetEntryUrl": f"{asset_base_path}/{asset_path}",
+        "taskBasePath": task_base_path,
+        "apiBasePath": api_base_path,
+        "previewKey": f"task:{task.id}:{slot}",
+        "previewParentOrigin": str(request.base_url).rstrip("/"),
+        "config": config,
+        "dataSubmit": {
+            "endpointToken": str(config.get("endpoint_token") or ""),
+            "submitApiPath": str(config.get("submit_api_path") or ""),
+            "recordsApiPath": str(config.get("records_api_path") or ""),
+        },
+    }
+
+
+def is_html_asset(asset: TaskWebAsset, file_path: Path) -> bool:
+    content_type = (asset.content_type or "").split(";", 1)[0].strip().lower()
+    if content_type in {"text/html", "application/xhtml+xml"}:
+        return True
+    return file_path.suffix.lower() in {".html", ".htm", ".xhtml"}
+
+
+def decode_html_asset_bytes(raw_bytes: bytes) -> tuple[str, str]:
+    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
+        try:
+            decoded = raw_bytes.decode(encoding)
+            if encoding == "utf-8-sig":
+                return decoded, "utf-8"
+            return decoded, encoding
+        except UnicodeDecodeError:
+            continue
+    return raw_bytes.decode("latin-1"), "latin-1"
+
+
+def inject_task_runtime_context(html_text: str, context: dict[str, object]) -> str:
+    serialized_context = json.dumps(context, ensure_ascii=False)
+    runtime_block = (
+        "<script>"
+        "(function(){"
+        f"const context={serialized_context};"
+        "window.__LEARNSITE_TASK_CONTEXT__=context;"
+        "const previewKey=String(context.previewKey||'');"
+        "const previewParentOrigin=String(context.previewParentOrigin||window.location.origin||'*');"
+        "const previewErrors=[];"
+        "const previewErrorKeys=new Set();"
+        "window.__LEARNSITE_PREVIEW_ERRORS__=previewErrors;"
+        "const reportPreviewIssue=(code,message,detail)=>{"
+        "const normalizedMessage=String(message||'Preview failed').trim()||'Preview failed';"
+        "const normalizedDetail=String(detail||'').trim();"
+        "const dedupeKey=[code,normalizedMessage,normalizedDetail].join('::');"
+        "if(previewErrorKeys.has(dedupeKey)){return;}"
+        "previewErrorKeys.add(dedupeKey);"
+        "const payload={code,message:normalizedMessage,detail:normalizedDetail};"
+        "if(previewErrors.length<12){previewErrors.push(payload);}"
+        "try{"
+        "if(window.parent&&window.parent!==window){"
+        "window.parent.postMessage({source:'learnsite-task-preview',previewKey,code:payload.code,message:payload.message,detail:payload.detail},previewParentOrigin||'*');"
+        "}"
+        "}catch(error){}"
+        "};"
+        "window.addEventListener('error',(event)=>{"
+        "const target=event.target;"
+        "if(target&&target!==window&&typeof HTMLElement!=='undefined'&&target instanceof HTMLElement){"
+        "const source=target.getAttribute('src')||target.getAttribute('href')||'';"
+        "reportPreviewIssue('resource_error',String(target.tagName||'RESOURCE').toUpperCase()+' resource failed to load',source);"
+        "return;"
+        "}"
+        "const location=[event.filename||'',event.lineno||'',event.colno||''].filter(Boolean).join(':');"
+        "const stack=event.error&&typeof event.error==='object'&&'stack' in event.error?String(event.error.stack||''):'';"
+        "reportPreviewIssue('runtime_error',event.message||'Page script failed',stack||location);"
+        "},true);"
+        "window.addEventListener('unhandledrejection',(event)=>{"
+        "const reason=event.reason;"
+        "const message=reason&&typeof reason==='object'&&'message' in reason?String(reason.message||''):String(reason||'');"
+        "const detail=reason&&typeof reason==='object'&&'stack' in reason?String(reason.stack||''):'Check Promise / async logic.';"
+        "reportPreviewIssue('unhandled_rejection',message||'Page has an unhandled async error',detail||'Check Promise / async logic.');"
+        "});"
+        "const sameOriginFetch=async (input,init)=>{"
+        "const requestInit=Object.assign({credentials:'same-origin'},init||{});"
+        "try{"
+        "const response=await window.fetch(input,requestInit);"
+        "if(response&&response.status>=400){"
+        "const target=typeof input==='string'?input:((input&&input.url)||'');"
+        "reportPreviewIssue('http_error',`Request returned ${response.status}`,target);"
+        "}"
+        "return response;"
+        "}catch(error){"
+        "const target=typeof input==='string'?input:((input&&input.url)||'');"
+        "const message=error instanceof Error?error.message:String(error||'Request failed');"
+        "reportPreviewIssue('fetch_error',message,target);"
+        "throw error;"
+        "}"
+        "};"
+        "window.__LEARNSITE_TASK_HELPERS__={"
+        "fetch:sameOriginFetch,"
+        "async getJson(input,init){"
+        "const response=await sameOriginFetch(input,init);"
+        "if(!response.ok){throw new Error((await response.text())||`Request failed: ${response.status}`);}"
+        "return response.json();"
+        "},"
+        "async postJson(input,data,init){"
+        "const options=Object.assign({},init||{});"
+        "const headers=new Headers(options.headers||{});"
+        "if(!headers.has('Content-Type')){headers.set('Content-Type','application/json');}"
+        "options.method=options.method||'POST';"
+        "options.headers=headers;"
+        "options.body=JSON.stringify(data);"
+        "return sameOriginFetch(input,options);"
+        "}"
+        "};"
+        "})();"
+        "</script>"
+    )
+
+    head_open_match = re.search(r"<head\b[^>]*>", html_text, flags=re.IGNORECASE)
+    if head_open_match:
+        insert_at = head_open_match.end()
+        return f"{html_text[:insert_at]}{runtime_block}{html_text[insert_at:]}"
+
+    wrapped_runtime_block = f"<head>{runtime_block}</head>"
+    html_open_match = re.search(r"<html\b[^>]*>", html_text, flags=re.IGNORECASE)
+    if html_open_match:
+        insert_at = html_open_match.end()
+        return f"{html_text[:insert_at]}{wrapped_runtime_block}{html_text[insert_at:]}"
+
+    doctype_match = re.search(r"<!doctype[^>]*>", html_text, flags=re.IGNORECASE)
+    if doctype_match:
+        insert_at = doctype_match.end()
+        return f"{html_text[:insert_at]}{wrapped_runtime_block}{html_text[insert_at:]}"
+
+    body_open_match = re.search(r"<body\b[^>]*>", html_text, flags=re.IGNORECASE)
+    if body_open_match:
+        insert_at = body_open_match.start()
+        return f"{html_text[:insert_at]}{wrapped_runtime_block}{html_text[insert_at:]}"
+
+    lowered = html_text.lower()
+    body_index = lowered.find("</body>")
+    if body_index >= 0:
+        return f"{html_text[:body_index]}{runtime_block}{html_text[body_index:]}"
+
+    return f"{runtime_block}{html_text}"
 
 
 def serialize_submission_file(submission_file: SubmissionFile) -> dict:
@@ -403,6 +682,7 @@ def serialize_task_detail(
     submit_allowed: bool = True,
     submit_blocked_message: str = "",
     classroom_capabilities: dict | None = None,
+    request: Request | None = None,
 ) -> dict:
     plan = task.lesson_plan
     lesson = plan.lesson
@@ -418,6 +698,7 @@ def serialize_task_detail(
         "task_type": task.task_type,
         "submission_scope": task_submission_scope(task),
         "description": task.description or build_default_description(task),
+        "config": serialize_task_config(task, request),
         "is_required": task.is_required,
         "course": {
             "id": plan.id,
@@ -696,8 +977,261 @@ def task_detail(
             submit_allowed=programming_enabled,
             submit_blocked_message=programming_message if not programming_enabled else "",
             classroom_capabilities=classroom_capabilities,
+            request=request,
         )
     )
+
+
+@router.get("/{task_id}/assets/{slot}/{asset_path:path}")
+def task_asset_file(
+    task_id: int,
+    slot: str,
+    asset_path: str,
+    request: Request,
+    access_token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    task = load_task(task_id, db)
+    normalized_slot = slot.strip().lower()
+    if normalized_slot not in SUPPORTED_TASK_ASSET_SLOTS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+    if normalized_slot not in allowed_asset_slots_for_task(task):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+
+    token_to_validate = extract_request_access_token(request, access_token)
+    if parse_query_token_user(task, token_to_validate, db) is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+
+    try:
+        normalized_path = normalize_relative_path(asset_path)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源路径无效") from error
+
+    asset = db.scalar(
+        select(TaskWebAsset).where(
+            TaskWebAsset.task_id == task_id,
+            TaskWebAsset.slot == normalized_slot,
+            TaskWebAsset.relative_path == normalized_path,
+        )
+    )
+    if asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
+
+    file_path = resolve_asset_file_path(task_id, normalized_slot, normalized_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源文件不存在")
+
+    if is_html_asset(asset, file_path):
+        html_bytes = file_path.read_bytes()
+        html_text, encoding = decode_html_asset_bytes(html_bytes)
+        runtime_context = build_task_runtime_context(task, normalized_slot, normalized_path, request)
+        response = Response(
+            content=inject_task_runtime_context(html_text, runtime_context).encode(encoding, errors="replace"),
+            media_type=f"text/html; charset={encoding}",
+        )
+    else:
+        response = FileResponse(path=file_path, media_type=asset.content_type, filename=asset.original_name)
+
+    if token_to_validate:
+        response.set_cookie(
+            key=TASK_RUNTIME_COOKIE_NAME,
+            value=token_to_validate,
+            max_age=TASK_RUNTIME_COOKIE_MAX_AGE,
+            httponly=True,
+            samesite="lax",
+            path=f"{task_request_base_path(request, task_id)}/",
+        )
+    return response
+
+
+@router.get("/{task_id}/discussion", response_model=ApiResponse)
+def task_discussion_feed(
+    task_id: int,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    task = load_task(task_id, db)
+    if (task.task_type or "").strip().lower() != "discussion":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
+
+    config = parse_task_config(task)
+    topic = str(config.get("topic") or "").strip() or task.title
+
+    posts = list(
+        db.scalars(
+            select(TaskDiscussionPost)
+            .where(TaskDiscussionPost.task_id == task_id, TaskDiscussionPost.parent_post_id.is_(None))
+            .options(
+                selectinload(TaskDiscussionPost.author).selectinload(User.student_profile),
+                selectinload(TaskDiscussionPost.replies)
+                .selectinload(TaskDiscussionPost.author)
+                .selectinload(User.student_profile),
+            )
+            .order_by(TaskDiscussionPost.created_at.asc(), TaskDiscussionPost.id.asc())
+        ).all()
+    )
+
+    return ApiResponse(
+        data={
+            "task_id": task_id,
+            "topic": topic,
+            "count": len(posts),
+            "items": [
+                {
+                    **serialize_discussion_post(post),
+                    "replies": [serialize_discussion_post(reply) for reply in sorted(post.replies, key=lambda item: item.id)],
+                }
+                for post in posts
+            ],
+        }
+    )
+
+
+@router.post("/{task_id}/discussion/posts", response_model=ApiResponse)
+def create_task_discussion_post(
+    task_id: int,
+    payload: TaskDiscussionPostCreateRequest,
+    student: User = Depends(require_student),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    task = load_task(task_id, db)
+    if (task.task_type or "").strip().lower() != "discussion":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
+
+    content = payload.content.strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="回复内容不能为空")
+
+    parent_post: TaskDiscussionPost | None = None
+    if payload.parent_post_id is not None:
+        parent_post = db.get(TaskDiscussionPost, payload.parent_post_id)
+        if parent_post is None or parent_post.task_id != task_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="讨论主题不存在")
+        if parent_post.parent_post_id is not None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前版本只支持一级回复")
+
+    post = TaskDiscussionPost(
+        task_id=task_id,
+        parent_post_id=parent_post.id if parent_post else None,
+        author_user_id=student.id,
+        content=content,
+    )
+    db.add(post)
+    db.commit()
+
+    latest_post = db.scalar(
+        select(TaskDiscussionPost)
+        .where(TaskDiscussionPost.id == post.id)
+        .options(selectinload(TaskDiscussionPost.author).selectinload(User.student_profile))
+    )
+    if latest_post is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="讨论回复不存在")
+
+    return ApiResponse(message="讨论回复已发布", data=serialize_discussion_post(latest_post))
+
+
+@router.post("/{task_id}/data-submit/{endpoint_token}", response_model=ApiResponse)
+def submit_task_data_payload(
+    task_id: int,
+    endpoint_token: str,
+    request: Request,
+    payload: dict[str, object] | list[object] = Body(...),
+    source_label: str = Query(default="web", max_length=80),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    task = load_task(task_id, db)
+    if (task.task_type or "").strip().lower() != "data_submit":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
+
+    config = parse_task_config(task)
+    expected_token = str(config.get("endpoint_token") or "").strip()
+    if not expected_token or expected_token != endpoint_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据提交接口不存在")
+
+    submitted_by_user_id: int | None = None
+    token = extract_request_access_token(request)
+    if token:
+        user = parse_query_token_user(task, token, db)
+        if user is not None:
+            submitted_by_user_id = user.id
+
+    serialized_payload = json.dumps(payload, ensure_ascii=False)
+    if len(serialized_payload) > 200_000:
+        raise HTTPException(status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, detail="提交数据体积过大")
+
+    item = TaskDataSubmission(
+        task_id=task_id,
+        submitted_by_user_id=submitted_by_user_id,
+        source_label=source_label.strip() or "web",
+        payload_json=serialized_payload,
+    )
+    db.add(item)
+    db.commit()
+
+    return ApiResponse(
+        message="数据提交成功",
+        data={
+            "task_id": task_id,
+            "submission_id": item.id,
+            "submitted_by_user_id": submitted_by_user_id,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        },
+    )
+
+
+@router.get("/{task_id}/data-submit/{endpoint_token}/records", response_model=ApiResponse)
+def data_submit_records(
+    task_id: int,
+    endpoint_token: str,
+    limit: int = Query(default=100, ge=1, le=300),
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    task = load_task(task_id, db)
+    if (task.task_type or "").strip().lower() != "data_submit":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
+
+    config = parse_task_config(task)
+    expected_token = str(config.get("endpoint_token") or "").strip()
+    if not expected_token or expected_token != endpoint_token:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据接口不存在")
+
+    items = list(
+        db.scalars(
+            select(TaskDataSubmission)
+            .where(TaskDataSubmission.task_id == task_id)
+            .options(selectinload(TaskDataSubmission.submitted_by_user).selectinload(User.student_profile))
+            .order_by(TaskDataSubmission.created_at.desc(), TaskDataSubmission.id.desc())
+            .limit(limit)
+        ).all()
+    )
+
+    records: list[dict[str, object]] = []
+    for item in items:
+        parsed_payload: object
+        try:
+            parsed_payload = json.loads(item.payload_json)
+        except json.JSONDecodeError:
+            parsed_payload = item.payload_json
+        user = item.submitted_by_user
+        profile = user.student_profile if user else None
+        records.append(
+            {
+                "id": item.id,
+                "task_id": item.task_id,
+                "source_label": item.source_label,
+                "created_at": item.created_at.isoformat() if item.created_at else None,
+                "submitted_by": {
+                    "user_id": user.id if user else None,
+                    "display_name": user.display_name if user else None,
+                    "student_no": profile.student_no if profile else None,
+                    "user_type": user.user_type if user else None,
+                },
+                "payload": parsed_payload,
+            }
+        )
+
+    return ApiResponse(data={"task_id": task_id, "count": len(records), "items": records})
 
 
 @router.get("/{task_id}/prerequisites", response_model=ApiResponse)
@@ -734,6 +1268,7 @@ def task_prerequisites(
 @router.post("/{task_id}/mark-read", response_model=ApiResponse)
 def mark_task_as_read(
     task_id: int,
+    request: Request,
     student: User = Depends(require_student),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
@@ -759,6 +1294,7 @@ def mark_task_as_read(
             latest_read_record,
             group_membership,
             group_draft,
+            request=request,
         ),
     )
 
@@ -1020,5 +1556,6 @@ async def submit_task(
                     ),
                 },
             ),
+            request=request,
         ),
     )

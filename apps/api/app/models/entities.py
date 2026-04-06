@@ -104,6 +104,11 @@ class User(TimestampMixin, Base):
     submissions: Mapped[list[Submission]] = relationship(back_populates="student")
     read_task_records: Mapped[list[TaskReadRecord]] = relationship(back_populates="student")
     review_templates: Mapped[list[ReviewTemplate]] = relationship(back_populates="staff_user")
+    task_templates: Mapped[list[TaskTemplate]] = relationship(
+        back_populates="owner_staff",
+        cascade="all, delete-orphan",
+        order_by="(TaskTemplate.is_pinned.desc(), TaskTemplate.sort_order.asc(), TaskTemplate.last_used_at.desc(), TaskTemplate.id.desc())",
+    )
     peer_review_votes_given: Mapped[list[PeerReviewVote]] = relationship(
         back_populates="reviewer",
         foreign_keys="PeerReviewVote.reviewer_student_id",
@@ -284,6 +289,28 @@ class ReviewTemplate(TimestampMixin, Base):
     comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
 
     staff_user: Mapped[User] = relationship(back_populates="review_templates")
+
+
+class TaskTemplate(TimestampMixin, Base):
+    __tablename__ = "task_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_staff_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String(120), nullable=False)
+    group_name: Mapped[str] = mapped_column(String(60), nullable=False, default="", index=True)
+    summary: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    task_title: Mapped[str] = mapped_column(String(120), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    submission_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="individual")
+    task_description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1000, index=True)
+    is_pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    use_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    owner_staff: Mapped[User] = relationship(back_populates="task_templates")
 
 
 class DriveSpace(TimestampMixin, Base):
@@ -616,6 +643,7 @@ class Task(TimestampMixin, Base):
     task_type: Mapped[str] = mapped_column(String(50), nullable=False)
     submission_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="individual")
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
@@ -628,6 +656,77 @@ class Task(TimestampMixin, Base):
     )
     read_records: Mapped[list[TaskReadRecord]] = relationship(back_populates="task")
     peer_review_votes: Mapped[list[PeerReviewVote]] = relationship(back_populates="task")
+    web_assets: Mapped[list[TaskWebAsset]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="(TaskWebAsset.slot.asc(), TaskWebAsset.relative_path.asc(), TaskWebAsset.id.asc())",
+    )
+    discussion_posts: Mapped[list[TaskDiscussionPost]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="(TaskDiscussionPost.created_at.asc(), TaskDiscussionPost.id.asc())",
+    )
+    data_submissions: Mapped[list[TaskDataSubmission]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="(TaskDataSubmission.created_at.desc(), TaskDataSubmission.id.desc())",
+    )
+
+
+class TaskWebAsset(TimestampMixin, Base):
+    __tablename__ = "task_web_assets"
+    __table_args__ = (
+        UniqueConstraint("task_id", "slot", "relative_path", name="uq_task_web_assets_task_slot_path"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    slot: Mapped[str] = mapped_column(String(30), nullable=False, index=True, default="web")
+    relative_path: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    size_kb: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    task: Mapped[Task] = relationship(back_populates="web_assets")
+
+
+class TaskDiscussionPost(TimestampMixin, Base):
+    __tablename__ = "task_discussion_posts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    parent_post_id: Mapped[int | None] = mapped_column(
+        ForeignKey("task_discussion_posts.id"),
+        nullable=True,
+        index=True,
+    )
+    author_user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    task: Mapped[Task] = relationship(back_populates="discussion_posts")
+    author: Mapped[User] = relationship(foreign_keys=[author_user_id])
+    parent_post: Mapped[TaskDiscussionPost | None] = relationship(
+        remote_side="TaskDiscussionPost.id",
+        back_populates="replies",
+    )
+    replies: Mapped[list[TaskDiscussionPost]] = relationship(
+        back_populates="parent_post",
+        cascade="all, delete-orphan",
+        order_by="(TaskDiscussionPost.created_at.asc(), TaskDiscussionPost.id.asc())",
+    )
+
+
+class TaskDataSubmission(TimestampMixin, Base):
+    __tablename__ = "task_data_submissions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    submitted_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    source_label: Mapped[str] = mapped_column(String(80), nullable=False, default="webhook")
+    payload_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+
+    task: Mapped[Task] = relationship(back_populates="data_submissions")
+    submitted_by_user: Mapped[User | None] = relationship(foreign_keys=[submitted_by_user_id])
 
 
 class GroupTaskDraft(TimestampMixin, Base):

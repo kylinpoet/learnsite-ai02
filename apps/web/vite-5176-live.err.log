@@ -1,0 +1,7 @@
+npm error Lifecycle script `dev` failed with error:
+npm error code 4294967295
+npm error path D:\code\mycode-ai\learnsite-ai02\apps\web
+npm error workspace @learnsite/web@0.1.0
+npm error location D:\code\mycode-ai\learnsite-ai02\apps\web
+npm error command failed
+npm error command C:\Windows\system32\cmd.exe /d /s /c vite --host 127.0.0.1 --port 5176

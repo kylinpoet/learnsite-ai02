@@ -12,7 +12,7 @@
       <div class="action-group">
         <el-button plain @click="goToCourse">返回课程</el-button>
         <el-button plain @click="goToPeerReview">作品互评</el-button>
-        <el-button v-if="currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
+        <el-button v-if="usesStandardSubmissionFlow && currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
       </div>
     </section>
 
@@ -37,16 +37,14 @@
         <p class="metric-note">{{ submissionStatusNote }}</p>
       </article>
       <article class="mini-panel">
-        <p class="metric-label">提交规则</p>
-        <p class="metric-value metric-value--small">直接提交即保存</p>
-        <p class="metric-note">教师评价前，可以再次提交覆盖作品。</p>
+        <p class="metric-label">{{ ruleMetricLabel }}</p>
+        <p class="metric-value metric-value--small">{{ ruleMetricValue }}</p>
+        <p class="metric-note">{{ ruleMetricNote }}</p>
       </article>
       <article class="mini-panel">
-        <p class="metric-label">已保存附件</p>
-        <p class="metric-value">{{ currentSubmission?.files.length || 0 }}</p>
-        <p class="metric-note">
-          {{ selectedFiles.length ? '本次选中的附件将替换当前附件。' : '不重新选附件时，会保留当前附件。' }}
-        </p>
+        <p class="metric-label">{{ assetMetricLabel }}</p>
+        <p class="metric-value">{{ assetMetricValue }}</p>
+        <p class="metric-note">{{ assetMetricNote }}</p>
       </article>
       <article v-if="taskDetail.group_collaboration" class="mini-panel">
         <p class="metric-label">协作小组</p>
@@ -71,18 +69,116 @@
               <el-card class="soft-card">
                 <template #header>
                   <div class="info-row">
-                    <span>任务说明</span>
+                    <span>{{ isDataSubmitTask ? '任务内容' : '任务说明' }}</span>
                     <el-tag round>{{ taskTypeLabel(taskDetail.task_type) }}</el-tag>
                   </div>
                 </template>
 
-                <div class="description-block">
+                <div v-if="!isDataSubmitTask" class="description-block">
                   <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
                 </div>
 
-                <el-divider />
+                <el-divider v-if="!isDataSubmitTask" />
 
-                <div class="submission-form">
+                <div v-if="isDiscussionTask" class="discussion-shell">
+                  <div class="section-head">
+                    <h3>课堂讨论</h3>
+                    <span>围绕教师发布的主题直接回复，当前支持一层主题回复。</span>
+                  </div>
+                  <el-alert
+                    :closable="false"
+                    :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读任务说明后回复。'"
+                    type="info"
+                  />
+                  <div class="discussion-composer">
+                    <el-input
+                      v-model="discussionComposer"
+                      :autosize="{ minRows: 6, maxRows: 12 }"
+                      type="textarea"
+                      placeholder="写下你的观点、理由或回应。"
+                    />
+                    <div class="action-group">
+                      <el-button :loading="isPostingDiscussion" type="primary" @click="postDiscussionReply">
+                        发布回复
+                      </el-button>
+                      <el-button :loading="isDiscussionLoading" plain @click="loadDiscussionFeed">
+                        刷新讨论
+                      </el-button>
+                    </div>
+                  </div>
+                  <div class="stack-list">
+                    <article v-for="post in discussionPosts" :key="post.id" class="discussion-item">
+                      <div class="discussion-meta">
+                        <strong>{{ post.author.display_name }}</strong>
+                        <span>{{ post.author.student_no || '学号未登记' }}</span>
+                        <span>{{ formatDateTime(post.updated_at || post.created_at) }}</span>
+                      </div>
+                      <p class="discussion-text">{{ post.content }}</p>
+                      <div v-if="post.replies?.length" class="discussion-replies">
+                        <article v-for="reply in post.replies" :key="reply.id" class="discussion-reply">
+                          <div class="discussion-meta">
+                            <strong>{{ reply.author.display_name }}</strong>
+                            <span>{{ reply.author.student_no || '学号未登记' }}</span>
+                            <span>{{ formatDateTime(reply.updated_at || reply.created_at) }}</span>
+                          </div>
+                          <p class="discussion-text">{{ reply.content }}</p>
+                        </article>
+                      </div>
+                    </article>
+                    <el-empty
+                      v-if="!isDiscussionLoading && !discussionPosts.length"
+                      description="还没有同学参与讨论"
+                    />
+                  </div>
+                </div>
+
+                <div v-else-if="isWebTask" class="embed-shell">
+                  <div class="section-head">
+                    <h3>任务页面</h3>
+                    <span>教师发布的网页内容会直接嵌入到当前任务页中。</span>
+                  </div>
+                  <iframe
+                    v-if="webTaskUrl"
+                    :src="webTaskUrl"
+                    class="task-embed-frame"
+                    title="网页任务"
+                  ></iframe>
+                  <el-empty v-else description="教师暂未上传网页任务资源" />
+                </div>
+
+                <div v-else-if="isDataSubmitTask" class="embed-shell">
+                  <div class="section-head">
+                    <h3>数据提交任务</h3>
+                    <span>先在提交页完成数据上报，再切换到可视化页查看结果。</span>
+                  </div>
+                  <el-tabs v-model="dataSubmitActiveTab">
+                    <el-tab-pane label="学生提交页" name="submit">
+                      <div class="data-submit-tab-pane">
+                        <div class="description-block description-block--inline">
+                          <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
+                        </div>
+                        <iframe
+                          v-if="dataSubmitFormUrl"
+                          :src="dataSubmitFormUrl"
+                          class="task-embed-frame"
+                          title="数据提交页"
+                        ></iframe>
+                        <el-empty v-else description="教师暂未上传数据提交页面" />
+                      </div>
+                    </el-tab-pane>
+                    <el-tab-pane label="数据可视化页" name="visualization">
+                      <iframe
+                        v-if="dataSubmitVisualizationUrl"
+                        :src="dataSubmitVisualizationUrl"
+                        class="task-embed-frame"
+                        title="数据可视化页"
+                      ></iframe>
+                      <el-empty v-else description="教师暂未上传可视化页面" />
+                    </el-tab-pane>
+                  </el-tabs>
+                </div>
+
+                <div v-else class="submission-form">
                   <div class="section-head">
                     <h3>作品说明</h3>
                     <span>支持富文本排版，提交后即保存，教师评价前可再次提交。</span>
@@ -91,7 +187,7 @@
                     <RichTextEditor
                       v-model="submissionNote"
                       :min-height="260"
-                    placeholder="写下你的设计思路、步骤说明、图片说明或补充内容。支持标题、列表、加粗、链接和图片。"
+                      placeholder="写下你的设计思路、步骤说明、图片说明或补充内容。支持标题、列表、加粗、链接和图片。"
                     />
                   </div>
 
@@ -148,19 +244,19 @@
                       <div>
                         <p class="file-name">{{ file.name }}</p>
                         <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB · 已保存</p>
-                        </div>
-                        <div class="file-actions">
-                          <el-tag round type="info">{{ file.role }}</el-tag>
-                          <el-button
-                            :loading="downloadLoadingFileId === file.id"
-                            link
-                            type="primary"
-                            @click="downloadSavedFile(file)"
-                          >
-                            下载
-                          </el-button>
-                        </div>
-                      </article>
+                      </div>
+                      <div class="file-actions">
+                        <el-tag round type="info">{{ file.role }}</el-tag>
+                        <el-button
+                          :loading="downloadLoadingFileId === file.id"
+                          link
+                          type="primary"
+                          @click="downloadSavedFile(file)"
+                        >
+                          下载
+                        </el-button>
+                      </div>
+                    </article>
 
                     <el-empty
                       v-if="!selectedFiles.length && !displayedCurrentFiles.length"
@@ -193,13 +289,31 @@
 
                 <div class="tip-panel">
                   <p class="tip-title">本页规则</p>
-                  <p>1. 不再保存草稿，点击提交就是正式保存。</p>
-                  <p>2. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
-                  <p>3. 若本次不重新选择附件，将保留当前已保存附件。</p>
-                  <p v-if="taskDetail.submission_scope === 'group'">4. 可先同步共享草稿共同编辑作品说明，再由任一成员正式提交附件与最终版本。</p>
+                  <template v-if="usesStandardSubmissionFlow">
+                    <p>1. 不再保存草稿，点击提交就是正式保存。</p>
+                    <p>2. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
+                    <p>3. 若本次不重新选择附件，将保留当前已保存附件。</p>
+                    <p v-if="taskDetail.submission_scope === 'group'">4. 可先同步共享草稿共同编辑作品说明，再由任一成员正式提交附件与最终版本。</p>
+                  </template>
+                  <template v-else-if="isDiscussionTask">
+                    <p>1. 当前任务以讨论回复为主，不需要上传附件。</p>
+                    <p>2. 教师已设置讨论主题，可直接在左侧输入观点并发布。</p>
+                    <p>3. 刷新讨论后可以看到全班最新回复。</p>
+                  </template>
+                  <template v-else-if="isWebTask">
+                    <p>1. 当前任务通过网页页面完成，老师发布的网页会直接嵌入展示。</p>
+                    <p>2. 若页面内需要交互，请先阅读页面说明再操作。</p>
+                    <p>3. 教师更新网页资源后，刷新页面即可看到最新内容。</p>
+                  </template>
+                  <template v-else>
+                    <p>1. 当前任务通过数据页面完成，不需要在这里单独提交附件。</p>
+                    <p>2. 先在提交页完成数据上报，再切换到可视化页查看结果。</p>
+                    <p>3. 可视化页对学生开放，可直接查看全班结果展示。</p>
+                  </template>
                 </div>
 
                 <el-button
+                  v-if="usesStandardSubmissionFlow"
                   :disabled="!taskDetail.can_submit"
                   :loading="isSubmitting"
                   class="submit-button"
@@ -210,7 +324,7 @@
                 </el-button>
               </el-card>
 
-              <el-card v-if="taskDetail.group_collaboration" class="soft-card">
+              <el-card v-if="taskDetail.group_collaboration && usesStandardSubmissionFlow" class="soft-card">
                 <template #header>小组共同编辑</template>
 
                 <div class="tip-panel">
@@ -279,7 +393,7 @@ import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
-import { apiGet, apiGetBlob, apiPut, apiUpload } from '@/api/http';
+import { apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
@@ -344,12 +458,49 @@ type GroupTaskDraft = {
   updated_by_student_no: string | null;
 };
 
+type TaskAssetManifestItem = {
+  path: string;
+  size_kb: number;
+  mime_type?: string | null;
+  slot?: string;
+};
+
+type TaskConfigState = {
+  topic: string;
+  entry_path: string;
+  assets: TaskAssetManifestItem[];
+  endpoint_token: string;
+  submit_entry_path: string;
+  visualization_entry_path: string;
+  submit_assets: TaskAssetManifestItem[];
+  visualization_assets: TaskAssetManifestItem[];
+  submit_api_path: string;
+  records_api_path: string;
+};
+
+type DiscussionPost = {
+  id: number;
+  task_id: number;
+  parent_post_id: number | null;
+  content: string;
+  created_at: string | null;
+  updated_at: string | null;
+  author: {
+    user_id: number | null;
+    display_name: string;
+    student_no: string | null;
+    user_type: string;
+  };
+  replies?: DiscussionPost[];
+};
+
 type TaskDetailPayload = {
   id: number;
   title: string;
   task_type: string;
   submission_scope: 'individual' | 'group';
   description: string | null;
+  config: Record<string, unknown> | null;
   is_required: boolean;
   course: {
     id: number;
@@ -410,6 +561,7 @@ type TaskDetailPayload = {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 const taskDetail = ref<TaskDetailPayload | null>(null);
 const submissionNote = ref('');
@@ -422,6 +574,11 @@ const downloadLoadingFileId = ref<number | null>(null);
 const isGroupDraftSaving = ref(false);
 const isRefreshingTask = ref(false);
 const isGroupDraftHistoryVisible = ref(false);
+const discussionPosts = ref<DiscussionPost[]>([]);
+const discussionComposer = ref('');
+const isDiscussionLoading = ref(false);
+const isPostingDiscussion = ref(false);
+const dataSubmitActiveTab = ref<'submit' | 'visualization'>('submit');
 
 const currentSubmission = computed(() => taskDetail.value?.current_submission || null);
 const currentGroupDraft = computed(() => taskDetail.value?.group_draft || null);
@@ -432,19 +589,119 @@ const groupDiscussionMessage = computed(() => groupDiscussionCapability.value?.m
 const groupDraftActionsEnabled = computed(
   () => Boolean(taskDetail.value?.can_submit) && groupDiscussionEnabled.value
 );
+const isDiscussionTask = computed(() => taskDetail.value?.task_type === 'discussion');
+const isWebTask = computed(() => taskDetail.value?.task_type === 'web_page');
+const isDataSubmitTask = computed(() => taskDetail.value?.task_type === 'data_submit');
+const usesStandardSubmissionFlow = computed(
+  () => !isDiscussionTask.value && !isWebTask.value && !isDataSubmitTask.value
+);
 const displayedCurrentFiles = computed(() => {
   if (selectedFiles.value.length) {
     return [];
   }
   return currentSubmission.value?.files || [];
 });
+const ruleMetricLabel = computed(() => {
+  if (isDiscussionTask.value) {
+    return '互动方式';
+  }
+  if (isWebTask.value) {
+    return '任务形态';
+  }
+  if (isDataSubmitTask.value) {
+    return '任务形态';
+  }
+  return '提交规则';
+});
+const ruleMetricValue = computed(() => {
+  if (isDiscussionTask.value) {
+    return '主题回复';
+  }
+  if (isWebTask.value) {
+    return '网页互动';
+  }
+  if (isDataSubmitTask.value) {
+    return '数据提交';
+  }
+  return '直接提交即保存';
+});
+const ruleMetricNote = computed(() => {
+  if (isDiscussionTask.value) {
+    return '围绕教师主题直接回复，不需要上传附件。';
+  }
+  if (isWebTask.value) {
+    return '任务内容通过嵌入网页展示。';
+  }
+  if (isDataSubmitTask.value) {
+    return '提交页与可视化页都可直接在当前任务中打开。';
+  }
+  return '教师评价前，可以再次提交覆盖作品。';
+});
+const assetMetricLabel = computed(() => {
+  if (isDiscussionTask.value) {
+    return '讨论回复';
+  }
+  if (isWebTask.value) {
+    return '页面资源';
+  }
+  if (isDataSubmitTask.value) {
+    return '任务页面';
+  }
+  return '已保存附件';
+});
+const assetMetricValue = computed(() => {
+  if (isDiscussionTask.value) {
+    return discussionReplyCount.value;
+  }
+  if (isWebTask.value) {
+    return taskConfig.value.assets.length;
+  }
+  if (isDataSubmitTask.value) {
+    return Number(Boolean(dataSubmitFormUrl.value)) + Number(Boolean(dataSubmitVisualizationUrl.value));
+  }
+  return currentSubmission.value?.files.length || 0;
+});
+const assetMetricNote = computed(() => {
+  if (isDiscussionTask.value) {
+    return discussionReplyCount.value ? '包含主题下的全部回复数量。' : '还没有同学参与讨论。';
+  }
+  if (isWebTask.value) {
+    return webTaskUrl.value ? `入口文件：${taskConfig.value.entry_path}` : '教师暂未上传网页资源。';
+  }
+  if (isDataSubmitTask.value) {
+    return dataSubmitVisualizationUrl.value ? '提交页与可视化页都已就绪。' : '等待教师补充完整页面资源。';
+  }
+  return selectedFiles.value.length ? '本次选中的附件将替换当前附件。' : '不重新选附件时，会保留当前附件。';
+});
 const submissionStatusLabel = computed(() => {
+  if (isDiscussionTask.value) {
+    return discussionReplyCount.value ? '讨论进行中' : '待参与讨论';
+  }
+  if (isWebTask.value) {
+    return webTaskUrl.value ? '页面已就绪' : '等待资源';
+  }
+  if (isDataSubmitTask.value) {
+    return dataSubmitFormUrl.value ? '页面已就绪' : '等待资源';
+  }
   if (!currentSubmission.value) {
     return '未提交';
   }
   return currentSubmission.value.status === 'reviewed' ? '已评价' : '待教师评价';
 });
 const submissionStatusNote = computed(() => {
+  if (isDiscussionTask.value) {
+    return discussionReplyCount.value
+      ? `当前共有 ${discussionReplyCount.value} 条讨论回复。`
+      : '先阅读主题，再发布你的观点。';
+  }
+  if (isWebTask.value) {
+    return webTaskUrl.value ? '左侧已嵌入教师发布的网页任务内容。' : '教师暂未上传网页任务资源。';
+  }
+  if (isDataSubmitTask.value) {
+    return dataSubmitFormUrl.value
+      ? '先在提交页完成数据上报，再切换到可视化页查看结果。'
+      : '教师暂未配置完整的数据任务页面。';
+  }
   if (!currentSubmission.value) {
     return taskDetail.value?.submission_scope === 'group' ? '你的小组还没有提交这项任务。' : '你还没有提交这项任务。';
   }
@@ -504,6 +761,7 @@ function pickInitialSubmissionNote(payload: TaskDetailPayload) {
 
 function hydrateTaskDetail(payload: TaskDetailPayload) {
   taskDetail.value = payload;
+  dataSubmitActiveTab.value = 'submit';
   submissionNote.value = pickInitialSubmissionNote(payload);
   selectedFiles.value = [];
   if (fileInputRef.value) {
@@ -511,7 +769,105 @@ function hydrateTaskDetail(payload: TaskDetailPayload) {
   }
 }
 
+function parseAssetManifest(value: unknown): TaskAssetManifestItem[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    .map((item) => ({
+      path: typeof item.path === 'string' ? item.path : '',
+      size_kb: typeof item.size_kb === 'number' ? item.size_kb : 0,
+      mime_type: typeof item.mime_type === 'string' ? item.mime_type : null,
+      slot: typeof item.slot === 'string' ? item.slot : undefined,
+    }))
+    .filter((item) => item.path);
+}
+
+function normalizeTaskConfig(rawConfig: unknown): TaskConfigState {
+  const base: TaskConfigState = {
+    topic: '',
+    entry_path: 'index.html',
+    assets: [],
+    endpoint_token: '',
+    submit_entry_path: 'index.html',
+    visualization_entry_path: 'index.html',
+    submit_assets: [],
+    visualization_assets: [],
+    submit_api_path: '',
+    records_api_path: '',
+  };
+  if (!rawConfig || typeof rawConfig !== 'object') {
+    return base;
+  }
+  const config = rawConfig as Record<string, unknown>;
+  base.topic = typeof config.topic === 'string' ? config.topic : '';
+  base.entry_path = typeof config.entry_path === 'string' ? config.entry_path : base.entry_path;
+  base.assets = parseAssetManifest(config.assets);
+  base.endpoint_token = typeof config.endpoint_token === 'string' ? config.endpoint_token : '';
+  base.submit_entry_path =
+    typeof config.submit_entry_path === 'string' ? config.submit_entry_path : base.submit_entry_path;
+  base.visualization_entry_path =
+    typeof config.visualization_entry_path === 'string'
+      ? config.visualization_entry_path
+      : base.visualization_entry_path;
+  base.submit_assets = parseAssetManifest(config.submit_assets);
+  base.visualization_assets = parseAssetManifest(config.visualization_assets);
+  base.submit_api_path = typeof config.submit_api_path === 'string' ? config.submit_api_path : '';
+  base.records_api_path = typeof config.records_api_path === 'string' ? config.records_api_path : '';
+  return base;
+}
+
+const taskConfig = computed(() => normalizeTaskConfig(taskDetail.value?.config));
+
+function encodeAssetPath(path: string) {
+  return path
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+function taskAssetUrl(slot: 'web' | 'data_submit_form' | 'data_submit_visualization', entryPath: string) {
+  if (!taskDetail.value?.id || !authStore.token || !entryPath) {
+    return '';
+  }
+  return `${apiBaseUrl}/tasks/${taskDetail.value.id}/assets/${slot}/${encodeAssetPath(entryPath)}?access_token=${encodeURIComponent(authStore.token)}`;
+}
+
+const webTaskUrl = computed(() =>
+  taskConfig.value.assets.length ? taskAssetUrl('web', taskConfig.value.entry_path) : ''
+);
+const dataSubmitFormUrl = computed(() =>
+  taskConfig.value.submit_assets.length
+    ? taskAssetUrl('data_submit_form', taskConfig.value.submit_entry_path)
+    : ''
+);
+const dataSubmitVisualizationUrl = computed(() =>
+  taskConfig.value.visualization_assets.length
+    ? taskAssetUrl('data_submit_visualization', taskConfig.value.visualization_entry_path)
+    : ''
+);
+const discussionReplyCount = computed(() =>
+  discussionPosts.value.reduce((count, post) => count + 1 + (post.replies?.length || 0), 0)
+);
+
 function taskTypeLabel(taskType: string) {
+  if (taskType === 'rich_text') {
+    return '图文任务';
+  }
+  if (taskType === 'discussion') {
+    return '讨论任务';
+  }
+  if (taskType === 'web_page') {
+    return '网页任务';
+  }
+  if (taskType === 'data_submit') {
+    return '数据提交任务';
+  }
+  if (taskType === 'programming') {
+    return '编程任务';
+  }
   if (taskType === 'upload_image') {
     return '上传作品';
   }
@@ -630,10 +986,65 @@ async function loadTask() {
   try {
     const payload = await apiGet<TaskDetailPayload>(`/tasks/${route.params.taskId}`, authStore.token);
     hydrateTaskDetail(payload);
+    if (payload.task_type === 'discussion') {
+      await loadDiscussionFeed();
+    } else {
+      discussionPosts.value = [];
+      discussionComposer.value = '';
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载任务详情失败';
   } finally {
     isLoading.value = false;
+  }
+}
+
+async function loadDiscussionFeed() {
+  if (!taskDetail.value?.id || !authStore.token) {
+    discussionPosts.value = [];
+    return;
+  }
+
+  isDiscussionLoading.value = true;
+  try {
+    const payload = await apiGet<{ posts: DiscussionPost[] }>(
+      `/tasks/${taskDetail.value.id}/discussion`,
+      authStore.token
+    );
+    discussionPosts.value = payload.posts;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '加载讨论内容失败';
+    errorMessage.value = message;
+  } finally {
+    isDiscussionLoading.value = false;
+  }
+}
+
+async function postDiscussionReply() {
+  if (!taskDetail.value?.id || !authStore.token) {
+    return;
+  }
+  if (!discussionComposer.value.trim()) {
+    ElMessage.warning('请先输入讨论内容');
+    return;
+  }
+
+  isPostingDiscussion.value = true;
+  try {
+    await apiPost(
+      `/tasks/${taskDetail.value.id}/discussion/posts`,
+      { content: discussionComposer.value.trim() },
+      authStore.token
+    );
+    discussionComposer.value = '';
+    await loadDiscussionFeed();
+    ElMessage.success('讨论回复已发布');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '发布讨论回复失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isPostingDiscussion.value = false;
   }
 }
 
@@ -765,9 +1176,69 @@ onMounted(loadTask);
   min-height: 140px;
 }
 
+.description-block--inline {
+  min-height: auto;
+}
+
 .submission-form {
   display: grid;
   gap: 20px;
+}
+
+.discussion-shell,
+.embed-shell {
+  display: grid;
+  gap: 18px;
+}
+
+.data-submit-tab-pane {
+  display: grid;
+  gap: 16px;
+}
+
+.discussion-composer {
+  display: grid;
+  gap: 12px;
+}
+
+.discussion-item,
+.discussion-reply {
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--ls-border);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.discussion-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--ls-muted);
+  font-size: 13px;
+}
+
+.discussion-text {
+  margin: 0;
+  color: var(--ls-ink);
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.discussion-replies {
+  display: grid;
+  gap: 10px;
+  padding-left: 16px;
+  border-left: 2px solid rgba(67, 109, 185, 0.12);
+}
+
+.task-embed-frame {
+  width: 100%;
+  min-height: 520px;
+  border: 1px solid var(--ls-border);
+  border-radius: 20px;
+  background: #fff;
 }
 
 .submission-editor {

@@ -217,6 +217,37 @@ learnsite-platform/
 7. 富文本首版至少支持：标题、段落、加粗、列表、引用、代码块、链接、图片。
 8. 学案正文为空时，允许保存；任务说明为空时也允许保存，但页面要给出“暂无补充说明”的占位文案。
 
+### 5.1.2 学案任务类型扩展约定
+
+当前教师学案页与学生任务页已统一支持以下任务类型：
+
+1. `reading`：阅读任务，沿用独立阅读页与已读确认。
+2. `rich_text`：图文任务，学生端继续使用通用作品提交流。
+3. `upload_image`：上传作品任务，学生端继续使用通用作品提交流。
+4. `programming`：编程任务，进入独立代码任务页。
+5. `discussion`：讨论任务，教师配置主题，学生在任务页内直接回复。
+6. `web_page`：网页任务，教师可上传 ZIP / 多文件 / 文件夹，学生端以 iframe 方式嵌入入口页。
+7. `data_submit`：数据提交任务，教师可分别配置提交页与可视化页，学生端同时可访问两页。
+
+任务扩展的实现约定如下：
+
+1. 教师端学案编辑器采用“学案正文 / 任务配置”双 Tab 布局。
+2. 学案正文与任务说明都支持“可视化富文本 / HTML 源码”双模式切换。
+3. 网页任务与数据提交任务的页面资源统一走 `POST /api/v1/lesson-plans/staff/tasks/{task_id}/assets` 上传。
+4. 数据提交任务在教师端切换任务类型后，会优先调用 `POST /api/v1/lesson-plans/staff/task-ids/reserve` 预生成真实 `task.id`，确保后续展示给教师、AI 和预览 iframe 的都是正式接口地址，而不是 `__TASK_ID__` 之类的占位符。
+5. 学生端静态任务页面统一通过 `GET /api/v1/tasks/{task_id}/assets/{slot}/{asset_path}` 加载，并附带 `access_token`。
+6. 数据提交任务统一使用：
+   - `POST /api/v1/tasks/{task_id}/data-submit/{endpoint_token}`
+   - `GET /api/v1/tasks/{task_id}/data-submit/{endpoint_token}/records`
+7. 教师端数据提交任务需要在编辑区直接展示“提交接口 / 读取接口”绝对路径；AI 生成提示词统一要求直接使用这两条地址，不再要求教师理解 `window.__LEARNSITE_TASK_CONTEXT__.dataSubmit.*` 这类运行时变量。
+8. 教师端生成但尚未保存为正式资源的 HTML，必须支持 `iframe srcdoc` 即时预览；其中数据提交任务在未保存前可使用前端预览运行时提供的本地 mock 提交/读取结果，保存后继续切换为真实任务资源预览。
+9. 讨论任务统一使用：
+   - `GET /api/v1/tasks/{task_id}/discussion`
+   - `POST /api/v1/tasks/{task_id}/discussion/posts`
+10. 教师端允许调用 AI 学伴生成学案 HTML 初稿、任务说明和任务页面单文件 HTML 草稿。
+11. 任务 HTML 入口由服务端注入 `window.__LEARNSITE_TASK_CONTEXT__` 与 `window.__LEARNSITE_TASK_HELPERS__`，并在 `/api/v1/tasks/{task_id}/` 路径下写入短作用域访问 cookie，保证 iframe 内多文件资源、数据提交页和可视化页可直接发起同源请求；教师端源码预览也会补一层等价的运行时注入，保证旧模板与新模板都能在后台直接试跑。
+12. 教师端“从模板新增”同时支持内置模板预设与教师个人自定义模板；自定义模板通过 `GET/POST/PUT/DELETE /api/v1/lesson-plans/staff/task-templates*` 与 `POST /api/v1/lesson-plans/staff/task-templates/reorder` 管理，支持新建、覆盖更新、分组、关键字搜索、置顶、最近使用记录，以及基于 `sort_order` 的拖拽排序/手动排序权重持久化。`reorder` 接口额外支持 `group_updates`，前端可在模板库里把模板拖到其他分组标题下，拖回“未分组”回收区，或通过多选执行批量整理 / 批量改分组；模板库同时支持按分组整组选择、批量置顶与批量取消置顶。列表排序规则统一为“置顶优先、手动排序优先、再按最近使用/分组/更新时间兜底”。复用时保留任务 HTML 源码与结构配置，但不会携带已上传资源清单、数据提交运行时接口地址或令牌。
+
 ## 5.2 前端路由清单
 
 ### 公共路由

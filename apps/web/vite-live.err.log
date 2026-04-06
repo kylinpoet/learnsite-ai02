@@ -1,0 +1,152 @@
+[2m09:28:11[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:15:9
+[33m  13 |          <el-button type="primary" @click="openCreateDialog">鏂板缓瀛︽</el-button>
+  14 |          <el-button plain @click="router.push('/staff/curriculum')">鏌ョ湅璇剧▼浣撶郴</el-button>
+  15 |          <el-button plain @click="selectPlan(plans[0]?.id || null)">鍥炲埌鏈€鏂板妗?/el-button>
+     |           ^
+  16 |        </el-space>
+  17 |      </section>[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+[2m09:34:18[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:33:13
+[33m  31 |              <p class="metric-label">瀛︽鎬绘暟</p>
+  32 |              <p class="metric-value">{{ plans.length }}</p>
+  33 |              <p class="metric-note">鍖呭惈鑽夌銆佸凡鍙戝竷鍜屽凡寮€璇惧妗?/p>
+     |               ^
+  34 |            </article>
+  35 |            <article class="metric-tile">[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+[2m09:34:34[22m [31m[1m[vite][22m[39m [31mInternal server error: Attribute name cannot contain U+0022 ("), U+0027 ('), and U+003C (<).[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:57:56
+[33m  55 |            <el-table v-else :data="plans" stripe @row-click="handleRowClick">
+  56 |              <el-table-column label="瀛︽鏍囬" min-width="240" prop="title" />
+  57 |              <el-table-column label="鐘舵€? min-width="110">
+     |                                                          ^
+  58 |                <template #default="{ row }">
+  59 |                  <el-tag round :type="planStatusType(row.status)">{{ planStatusLabel(row.status) }}</el-tag>[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at Object.emitError [as onerr] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Tokenizer.stateInAttrName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:868:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1117:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+      at async handleHMRUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:39242:33)
+[2m09:34:51[22m [31m[1m[vite][22m[39m [31mInternal server error: Attribute name cannot contain U+0022 ("), U+0027 ('), and U+003C (<).[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:178:43
+[33m  176|                :closable="false"
+  177|                description="閫変腑瀛︽鍚庯紝姝ｆ枃涓庝换鍔′細鑷姩鍚屾鍒颁笅鏂圭紪杈戝尯锛屽彲浠ョ洿鎺ヤ慨鏀瑰苟淇濆瓨銆?
+  178|                title="褰撳墠瀛︽宸茶繘鍏ラ〉闈㈠唴缂栬緫妯″紡"
+     |                                             ^
+  179|                type="info"
+  180|              />[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at Object.emitError [as onerr] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Tokenizer.stateInAttrName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:868:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1117:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+      at async handleHMRUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:39242:33)
+[2m09:35:04[22m [31m[1m[vite][22m[39m [31mInternal server error: Attribute name cannot contain U+0022 ("), U+0027 ('), and U+003C (<).[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:227:50
+[33m  225|            <el-col :md="6" :sm="12">
+  226|              <el-form-item label="淇濆瓨鐘舵€?>
+  227|                <el-select v-model="planForm.status" class="full-width">
+     |                                                    ^
+  228|                  <el-option label="鑽夌" value="draft" />
+  229|                  <el-option label="宸插彂甯? value="published" />[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at Object.emitError [as onerr] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Tokenizer.stateInAttrName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:868:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1117:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+      at async handleHMRUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/vite/dist/node/chunks/dep-D4NMHUTW.js:39242:33)
+[2m09:35:23[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:259:17
+[33m  257|                <div>
+  258|                  <h3>瀛︽姝ｆ枃</h3>
+  259|                  <p class="section-note">鏀寔鍙鍖栧瘜鏂囨湰涓?HTML 婧愮爜鍙屾ā寮忕紪杈戙€?/p>
+     |                   ^
+  260|                </div>
+  261|                <el-space wrap>[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+[2m09:36:19[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:290:17
+[33m  288|                <div>
+  289|                  <h3>浠诲姟閰嶇疆</h3>
+  290|                  <p class="section-note">鏀寔缃戦〉浠诲姟銆佽璁轰换鍔°€佸浘鏂囦换鍔°€佹暟鎹彁浜や换鍔＄瓑澶氱被鍨嬬紪鎺掋€傛瘡涓换鍔′細浣滀负鐙珛 Tab 椤甸潰缂栬緫銆?/p>
+     |                   ^
+  291|                </div>
+  292|                <el-space wrap>[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)
+[2m09:36:30[22m [31m[1m[vite][22m[39m [31mInternal server error: Element is missing end tag.[39m
+  Plugin: [35mvite:vue[39m
+  File: [36mD:/code/mycode-ai/learnsite-ai02/apps/web/src/modules/staff-lesson-plan/LessonPlanPage.vue[39m:310:27
+[33m  308|                        <el-dropdown-item v-if="customTaskTemplatesLoading" divided disabled>
+  309|                          <div class="task-template-option">
+  310|                            <strong>鑷畾涔夋ā鏉?/strong>
+     |                             ^
+  311|                            <span>姝ｅ湪鍔犺浇鏁欏笀鑷畾涔夋ā鏉?..</span>
+  312|                          </div>[39m
+      at createCompilerError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1378:17)
+      at emitError (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3014:5)
+      at Object.onclosetag (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:2381:13)
+      at Tokenizer.stateInClosingTagName (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:799:16)
+      at Tokenizer.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:1157:16)
+      at Object.baseParse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-core\dist\compiler-core.cjs.js:3053:13)
+      at Object.parse (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-dom\dist\compiler-dom.cjs.js:910:23)
+      at Object.parse$1 [as parse] (D:\code\mycode-ai\learnsite-ai02\node_modules\@vue\compiler-sfc\dist\compiler-sfc.cjs.js:1824:24)
+      at createDescriptor (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:71:43)
+      at handleHotUpdate (file:///D:/code/mycode-ai/learnsite-ai02/node_modules/@vitejs/plugin-vue/dist/index.mjs:2198:26)

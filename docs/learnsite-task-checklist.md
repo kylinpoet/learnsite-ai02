@@ -45,10 +45,10 @@
 
 | 模块 | 对应旧站 | 新路由 / API | 状态 | 说明 |
 |---|---|---|---|---|
-| 教职工登录 | `teacher/index.aspx` | `/login/staff` + `/api/v1/auth/staff/login` | 已完成 | 教师与管理员共用入口 |
+代码| 教职工登录 | `teacher/index.aspx` | `/login/staff` + `/api/v1/auth/staff/login` | 已完成 | 教师与管理员共用入口 |
 | 后台首页概览 | 旧站教师首页聚合能力 | `/staff/dashboard` + `/api/v1/staff/dashboard` | 已完成 | 已接真实统计 |
 | 课程体系管理 | 新增核心能力 | `/staff/curriculum` + `/api/v1/curriculum/tree` | 已完成 | 已能展示教材、单元、课次与学案关联 |
-| 学案列表 / 基础编辑 | `teacher/course.aspx` | `/staff/lesson-plans` + `/api/v1/lesson-plans/staff/*` | 已完成 | 已支持创建、编辑、发布学案和任务配置 |
+| 学案列表 / 基础编辑 | `teacher/course.aspx` | `/staff/lesson-plans` + `/api/v1/lesson-plans/staff/*` | 已完成 | 已支持创建、编辑、发布学案，含 Tab 编辑、HTML 源码、AI 初稿、网页/讨论/数据提交任务配置、内置模板预设，以及教师自定义模板的另存为、编辑后覆盖、分组、搜索、置顶、最近使用、复用、删除、拖拽排序/手动排序权重、跨分组拖拽、拖回未分组、批量改分组、按分组整组选择、批量置顶与批量取消置顶；数据提交任务会预生成真实任务编号、直接展示正式接口地址，并支持未保存源码的后台即时预览；任务 iframe 已补统一运行时上下文与 cookie 鉴权 |
 | 作品总览 | `teacher/works.aspx` | `/staff/submissions` + `/api/v1/submissions/teacher` | 已完成 | 已有真实任务维度汇总 |
 | 单任务评分页 | `teacher/workcheck.aspx` | `/staff/submissions/:taskId` + `/api/v1/submissions/teacher/task/{task_id}` | 已完成 | 已支持大窗评分、预览、保存后继续下一份 |
 | G/A/B/C/D/E/F 评分映射 | `teacher/workcheck.aspx` | `/api/v1/submissions/{submission_id}/score` | 已完成 | `G/A/B/C/D/E/F => 120/100/80/60/40/20/0` |

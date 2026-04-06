@@ -44,9 +44,9 @@
 | 旧页面 | 状态 | 新模块 | 新路由 | API 领域 | 主表 | 阶段 | 备注 |
 |---|---|---|---|---|---|---|---|
 | `student/myinfo.aspx` | 已实测 | 学习中心首页 | `/student/home` | `lesson_plans`, `attendance`, `profiles` | `lesson_plans`, `tasks`, `attendance_records`, `student_profiles` | Phase 1 | 聚合未学/已学学案、签到同学、学生信息、组队入口 |
-| `student/showcourse.aspx` | 已实测 | 学案详情 | `/student/courses/:courseId` | `lesson_plans`, `tasks`, `resources` | `lesson_plans`, `tasks`, `task_resources`, `resources` | Phase 1 | 包含任务列表、返回、学习目标、课件下载 |
+| `student/showcourse.aspx` | 已实测 | 学案详情 | `/student/courses/:courseId` | `lesson_plans`, `tasks`, `resources` | `lesson_plans`, `tasks`, `task_resources`, `resources` | Phase 1 | 已支持任务列表直达阅读、图文、讨论、网页、数据提交任务 |
 | `student/description.aspx` | 已实测 | 阅读材料 / 说明页 | `/student/courses/:courseId/readings/:taskId` | `tasks`, `profiles` | `tasks`, `task_read_records`, `lesson_plans` | Phase 1 | 已接通富文本内容、学案导读、上下任务跳转与已读确认；附件展示待 `task_resources` 接入 |
-| `student/showmission.aspx` | 已实测 | 通用任务页 | `/student/courses/:courseId/tasks/:taskId` | `tasks`, `submissions`, `peer_reviews`, `files` | `tasks`, `task_settings`, `submissions`, `submission_files` | Phase 1 | 首版学生任务主容器 |
+| `student/showmission.aspx` | 已实测 | 通用任务页 | `/student/courses/:courseId/tasks/:taskId` | `tasks`, `submissions`, `peer_reviews`, `files` | `tasks`, `task_settings`, `submissions`, `submission_files` | Phase 1 | 首版学生任务主容器；网页/数据任务 iframe 已支持运行时上下文注入与任务域 cookie |
 | `student/program.aspx` | 已实测 | 代码任务页 | `/student/courses/:courseId/programs/:taskId` | `tasks`, `submissions`, `files` | `tasks`, `task_settings`, `submissions`, `submission_files` | Phase 1 | 已确认有真实 Python 任务 |
 | `student/mywork.aspx` | 已实测 | 我的作品 | `/student/work` | `submissions` | `submissions`, `submission_files`, `tasks`, `lesson_plans` | Phase 1 | 历史作品中心，支持分页 |
 | `student/downwork.aspx` | 已实测 | 作品下载 | `/student/work/:submissionId` | `submissions`, `files` | `submissions`, `submission_files`, `files` | Phase 1 | 可合并进作品详情页 |
@@ -107,7 +107,7 @@
 |---|---|---|---|---|---|---|---|
 | `teacher/start.aspx` | 已实测 | 上课中控 | `/staff/classroom` / `/staff/classroom/:sessionId` | `classroom`, `attendance`, `lesson_plans` | `classroom_sessions`, `classroom_switches`, `attendance_sessions` | Phase 2 | 教师最高频页面；已覆盖课堂开关扩展、随机点名历史与去重、任务聚焦进度条 |
 | `teacher/course.aspx` | 已实测 | 学案列表 | `/staff/lesson-plans` | `lesson_plans`, `curriculum` | `lesson_plans`, `curriculum_lessons` | Phase 2 | 学案管理入口 |
-| `teacher/courseshow.aspx` | 已确认存在 | 学案编辑 | `/staff/lesson-plans/:planId` | `lesson_plans`, `tasks`, `resources` | `lesson_plans`, `tasks`, `task_resources` | Phase 2 | 任务排序、显隐、编辑 |
+| `teacher/courseshow.aspx` | 已确认存在 | 学案编辑 | `/staff/lesson-plans/:planId` | `lesson_plans`, `tasks`, `resources` | `lesson_plans`, `tasks`, `task_resources`, `task_templates` | Phase 2 | 已支持 Tab 编辑、HTML 源码、AI 初稿、网页/讨论/数据提交任务、内置模板预设，以及教师自定义模板的另存为、编辑后覆盖、分组、搜索、置顶、最近使用、复用、删除、拖拽排序/手动排序权重、跨分组拖拽、批量改分组、按分组整组选择、批量置顶与批量取消置顶；数据提交任务切换类型后会预生成真实任务编号并立即展示正式提交/读取接口，AI 生成页可直接使用真实绝对地址，未保存源码也可在后台即时预览 |
 | `teacher/gauge.aspx` | 已实测 | 量规管理 | `/staff/rubrics` | `submissions`, `rubrics` | `rubrics`, `rubric_items` | Phase 2 | 和评分联动 |
 | `teacher/works.aspx` | 已实测 | 作品总览 | `/staff/submissions` | `submissions` | `submissions`, `submission_files`, `student_profiles` | Phase 2 | 查看某学案作品汇总 |
 | `teacher/workcheck.aspx` | 已确认存在 | 作品评分页 | `/staff/submissions/:taskId` | `submissions`, `rubrics` | `submissions`, `submission_rubric_scores` | Phase 2 | 单个任务评分、批量评分；已支持课堂任务卡 `focus=pending_submit|pending_review` 快捷跳转 |

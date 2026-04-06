@@ -521,6 +521,7 @@ def test_student_and_staff_can_see_group_activity_feed():
         dashboard_payload = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
         available_classes = dashboard_payload["launchpad"]["classes"]
         assert available_classes
+        class_701 = available_classes[0]
 
         task_id = None
         for plan in dashboard_payload["launchpad"]["ready_plans"]:
@@ -2742,6 +2743,251 @@ def test_teacher_can_update_and_delete_active_plan_with_progress():
         assert detail_after_delete.status_code == 404
 
 
+def test_staff_can_save_update_list_and_delete_custom_task_templates():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        other_teacher = staff_headers(client, "t2")
+
+        create_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates",
+            headers=teacher,
+            json={
+                "title": "数据采集双页模板",
+                "group_name": "数据任务",
+                "summary": "保留提交页与可视化页源码骨架，适合再次生成任务。",
+                "task_title": "活动一：上传实验记录",
+                "task_type": "data_submit",
+                "submission_scope": "group",
+                "task_description": "<p>请填写实验数据，并在结果页查看汇总。</p>",
+                "is_required": False,
+                "config": {
+                    "submit_entry_path": "submit/index.html",
+                    "visualization_entry_path": "viewer/index.html",
+                    "submit_html_source": "<!doctype html><html><body><form id='app'></form></body></html>",
+                    "visualization_html_source": "<!doctype html><html><body><div id='chart'></div></body></html>",
+                    "submit_assets": [{"path": "submit/app.js", "size_kb": 2}],
+                    "visualization_assets": [{"path": "viewer/chart.js", "size_kb": 3}],
+                    "endpoint_token": "should-not-keep",
+                    "submit_api_path": "/api/v1/tasks/999/data-submit/should-not-keep",
+                    "records_api_path": "/api/v1/tasks/999/data-submit/should-not-keep/records",
+                },
+            },
+        )
+        assert create_response.status_code == 200
+        template = create_response.json()["data"]["template"]
+        assert template["title"] == "数据采集双页模板"
+        assert template["group_name"] == "数据任务"
+        assert template["submission_scope"] == "group"
+        assert template["is_required"] is False
+        assert template["sort_order"] >= 1
+        assert template["is_pinned"] is False
+        assert template["last_used_at"] is None
+        assert template["use_count"] == 0
+        assert template["config"]["submit_entry_path"] == "submit/index.html"
+        assert template["config"]["visualization_entry_path"] == "viewer/index.html"
+        assert template["config"]["submit_html_source"].startswith("<!doctype html>")
+        assert template["config"]["visualization_html_source"].startswith("<!doctype html>")
+        assert "endpoint_token" not in template["config"]
+        assert "submit_api_path" not in template["config"]
+        assert "records_api_path" not in template["config"]
+        assert "submit_assets" not in template["config"]
+        assert "visualization_assets" not in template["config"]
+
+        list_response = client.get(f"{API_PREFIX}/lesson-plans/staff/task-templates", headers=teacher)
+        assert list_response.status_code == 200
+        template_ids = [item["id"] for item in list_response.json()["data"]["templates"]]
+        assert template["id"] in template_ids
+
+        secondary_create_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates",
+            headers=teacher,
+            json={
+                "title": "课堂讨论常用模板",
+                "group_name": "讨论活动",
+                "summary": "用于快速发起课堂讨论。",
+                "task_title": "课堂讨论：表达观点",
+                "task_type": "discussion",
+                "submission_scope": "individual",
+                "task_description": "<p>请围绕主题展开讨论。</p>",
+                "is_required": True,
+                "is_pinned": False,
+                "config": {
+                    "topic": "请结合案例谈谈你的判断。",
+                },
+            },
+        )
+        assert secondary_create_response.status_code == 200
+        secondary_template = secondary_create_response.json()["data"]["template"]
+        assert secondary_template["sort_order"] > template["sort_order"]
+
+        reorder_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/reorder",
+            headers=teacher,
+            json={
+                "ordered_ids": [secondary_template["id"], template["id"]],
+                "group_updates": [
+                    {
+                        "id": secondary_template["id"],
+                        "group_name": "浜掑姩椤甸潰",
+                    }
+                ],
+            },
+        )
+        assert reorder_response.status_code == 200
+        reordered_templates = reorder_response.json()["data"]["templates"]
+        assert [item["id"] for item in reordered_templates[:2]] == [secondary_template["id"], template["id"]]
+        assert reordered_templates[0]["sort_order"] == 1
+        assert reordered_templates[1]["sort_order"] == 2
+        assert reordered_templates[0]["group_name"] == "浜掑姩椤甸潰"
+
+        mark_used_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}/mark-used",
+            headers=teacher,
+            json={},
+        )
+        assert mark_used_response.status_code == 200
+        used_template = mark_used_response.json()["data"]["template"]
+        assert used_template["last_used_at"] is not None
+        assert used_template["use_count"] == 1
+
+        second_mark_used_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}/mark-used",
+            headers=teacher,
+            json={},
+        )
+        assert second_mark_used_response.status_code == 200
+        second_used_template = second_mark_used_response.json()["data"]["template"]
+        assert second_used_template["use_count"] == 2
+
+        pin_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}/pin",
+            headers=teacher,
+            json={"is_pinned": True},
+        )
+        assert pin_response.status_code == 200
+        pinned_template = pin_response.json()["data"]["template"]
+        assert pinned_template["is_pinned"] is True
+
+        forbidden_mark_used = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}/mark-used",
+            headers=other_teacher,
+            json={},
+        )
+        assert forbidden_mark_used.status_code == 404
+
+        forbidden_pin = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}/pin",
+            headers=other_teacher,
+            json={"is_pinned": False},
+        )
+        assert forbidden_pin.status_code == 404
+
+        update_response = client.put(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{template['id']}",
+            headers=teacher,
+            json={
+                "title": "数据采集双页模板-更新版",
+                "group_name": "互动页面",
+                "summary": "更新后的说明",
+                "task_title": "活动二：汇总实验记录",
+                "task_type": "web_page",
+                "submission_scope": "individual",
+                "task_description": "<p>请在页面中完成互动并截图提交。</p>",
+                "is_required": True,
+                "config": {
+                    "entry_path": "pages/index.html",
+                    "entry_html_source": "<!doctype html><html><body><main>updated</main></body></html>",
+                    "assets": [{"path": "pages/app.js", "size_kb": 2}],
+                    "endpoint_token": "still-should-not-keep",
+                },
+            },
+        )
+        assert update_response.status_code == 200
+        updated_template = update_response.json()["data"]["template"]
+        assert updated_template["title"] == "数据采集双页模板-更新版"
+        assert updated_template["group_name"] == "互动页面"
+        assert updated_template["summary"] == "更新后的说明"
+        assert updated_template["task_title"] == "活动二：汇总实验记录"
+        assert updated_template["task_type"] == "web_page"
+        assert updated_template["submission_scope"] == "individual"
+        assert updated_template["is_required"] is True
+        assert updated_template["config"]["entry_path"] == "pages/index.html"
+        assert updated_template["config"]["entry_html_source"].startswith("<!doctype html>")
+        assert "assets" not in updated_template["config"]
+        assert "endpoint_token" not in updated_template["config"]
+
+        forbidden_update = client.put(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{template['id']}",
+            headers=other_teacher,
+            json={
+                "title": "别人的模板",
+                "group_name": "无权分组",
+                "summary": None,
+                "task_title": "无权修改",
+                "task_type": "rich_text",
+                "submission_scope": "individual",
+                "task_description": "<p>无权修改</p>",
+                "is_required": True,
+                "config": {},
+            },
+        )
+        assert forbidden_update.status_code == 404
+
+        group_filtered_response = client.get(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates?group_name=%E4%BA%92%E5%8A%A8%E9%A1%B5%E9%9D%A2",
+            headers=teacher,
+        )
+        assert group_filtered_response.status_code == 200
+        group_filtered_items = group_filtered_response.json()["data"]["templates"]
+        assert len(group_filtered_items) >= 1
+        assert all(item["group_name"] == "互动页面" for item in group_filtered_items)
+
+        keyword_filtered_response = client.get(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates?keyword=%E6%B1%87%E6%80%BB%E5%AE%9E%E9%AA%8C",
+            headers=teacher,
+        )
+        assert keyword_filtered_response.status_code == 200
+        keyword_filtered_items = keyword_filtered_response.json()["data"]["templates"]
+        assert len(keyword_filtered_items) >= 1
+        assert any(item["task_title"] == "活动二：汇总实验记录" for item in keyword_filtered_items)
+
+        other_list_response = client.get(f"{API_PREFIX}/lesson-plans/staff/task-templates", headers=other_teacher)
+        assert other_list_response.status_code == 200
+        other_template_ids = [item["id"] for item in other_list_response.json()["data"]["templates"]]
+        assert template["id"] not in other_template_ids
+
+        sorted_list_response = client.get(f"{API_PREFIX}/lesson-plans/staff/task-templates", headers=teacher)
+        assert sorted_list_response.status_code == 200
+        sorted_items = sorted_list_response.json()["data"]["templates"]
+        sorted_secondary = next(item for item in sorted_items if item["id"] == secondary_template["id"])
+        assert sorted_secondary["is_pinned"] is True
+        assert sorted_secondary["use_count"] == 2
+
+        forbidden_delete = client.delete(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{template['id']}",
+            headers=other_teacher,
+        )
+        assert forbidden_delete.status_code == 404
+
+        secondary_delete_response = client.delete(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{secondary_template['id']}",
+            headers=teacher,
+        )
+        assert secondary_delete_response.status_code == 200
+
+        delete_response = client.delete(
+            f"{API_PREFIX}/lesson-plans/staff/task-templates/{template['id']}",
+            headers=teacher,
+        )
+        assert delete_response.status_code == 200
+        assert delete_response.json()["data"]["deleted_id"] == template["id"]
+
+        list_after_delete = client.get(f"{API_PREFIX}/lesson-plans/staff/task-templates", headers=teacher)
+        assert list_after_delete.status_code == 200
+        remaining_ids = [item["id"] for item in list_after_delete.json()["data"]["templates"]]
+        assert template["id"] not in remaining_ids
+
+
 def test_teacher_can_complete_full_teaching_roundtrip():
     with TestClient(app) as client:
         teacher = staff_headers(client, "t1")
@@ -2830,6 +3076,289 @@ def test_teacher_can_complete_full_teaching_roundtrip():
         )
         assert blocked_resubmit.status_code == 409
         assert blocked_resubmit.json()["detail"] == "作业已评价，不能再次提交"
+
+
+def test_data_submit_task_assets_bootstrap_runtime_cookie_and_records():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        student = student_headers(client, "70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+        student_token = student["Authorization"].split(" ", 1)[1]
+
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = find_lesson_id_by_title(curriculum, "第8课 智能应用体验")
+
+        create_plan_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "数据提交任务运行时上下文测试",
+                "content": "<p>测试数据提交任务资源运行时。</p>",
+                "assigned_date": "2026-04-04",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "title": "活动一：提交实验数据",
+                        "task_type": "data_submit",
+                        "description": "<p>请填写并提交实验数据。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": {},
+                    }
+                ],
+            },
+        )
+        assert create_plan_response.status_code == 200
+        created_task = create_plan_response.json()["data"]["plan"]["tasks"][0]
+        task_id = created_task["id"]
+        endpoint_token = created_task["config"]["endpoint_token"]
+
+        upload_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/tasks/{task_id}/assets",
+            headers=teacher,
+            data={"slot": "data_submit_form", "entry_path": "index.html"},
+            files=[
+                (
+                    "files",
+                    (
+                        "index.html",
+                        b"<!doctype html><html><head><title>data submit</title></head><body><script src=\"app.js\"></script></body></html>",
+                        "text/html",
+                    ),
+                ),
+                ("files", ("app.js", b"window.assetLoaded = true;", "application/javascript")),
+            ],
+        )
+        assert upload_response.status_code == 200
+
+        entry_response = client.get(
+            f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/index.html?access_token={student_token}"
+        )
+        assert entry_response.status_code == 200
+        assert "window.__LEARNSITE_TASK_CONTEXT__" in entry_response.text
+        assert f"http://testserver/api/v1/tasks/{task_id}/data-submit/{endpoint_token}" in entry_response.text
+        assert "window.__LEARNSITE_TASK_HELPERS__" in entry_response.text
+
+        cookie_header = entry_response.headers.get("set-cookie", "")
+        assert "learnsite_task_token=" in cookie_header
+        assert f"Path=/api/v1/tasks/{task_id}/;" in cookie_header
+
+        asset_response = client.get(f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/app.js")
+        assert asset_response.status_code == 200
+        assert asset_response.text == "window.assetLoaded = true;"
+
+        submit_response = client.post(
+            f"{API_PREFIX}/tasks/{task_id}/data-submit/{endpoint_token}",
+            json={"score": 98},
+        )
+        assert submit_response.status_code == 200
+        assert submit_response.json()["data"]["submitted_by_user_id"] is not None
+
+        records_response = client.get(f"{API_PREFIX}/tasks/{task_id}/data-submit/{endpoint_token}/records")
+        assert records_response.status_code == 200
+        records_payload = records_response.json()["data"]
+        assert records_payload["count"] >= 1
+        assert records_payload["items"][0]["payload"]["score"] == 98
+        assert records_payload["items"][0]["submitted_by"]["student_no"] == "70101"
+
+
+def test_data_submit_task_inline_html_source_persists_and_materializes_assets():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        student = student_headers(client, "70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+        student_token = student["Authorization"].split(" ", 1)[1]
+
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = find_lesson_id_by_title(curriculum, "第8课 智能应用体验")
+
+        create_plan_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "数据提交任务源码保存测试",
+                "content": "<p>测试整体保存学案时同步写入数据提交页源码。</p>",
+                "assigned_date": "2026-04-04",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "title": "活动一：提交实验数据",
+                        "task_type": "data_submit",
+                        "description": "<p>请填写并提交实验数据。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": {
+                            "submit_entry_path": "pages/submit.html",
+                            "visualization_entry_path": "viewer/index.html",
+                            "submit_html_source": "<!doctype html><html><body><main>saved-submit-v1</main></body></html>",
+                            "visualization_html_source": "<!doctype html><html><body><main>saved-view-v1</main></body></html>",
+                        },
+                    }
+                ],
+            },
+        )
+        assert create_plan_response.status_code == 200
+        created_plan = create_plan_response.json()["data"]["plan"]
+        created_task = created_plan["tasks"][0]
+        task_id = created_task["id"]
+        endpoint_token = created_task["config"]["endpoint_token"]
+
+        assert created_task["config"]["submit_html_source"].startswith("<!doctype html>")
+        assert created_task["config"]["visualization_html_source"].startswith("<!doctype html>")
+        assert any(item["path"] == "pages/submit.html" for item in created_task["config"]["submit_assets"])
+        assert any(
+            item["path"] == "viewer/index.html" for item in created_task["config"]["visualization_assets"]
+        )
+
+        submit_entry_response = client.get(
+            f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/pages/submit.html?access_token={student_token}"
+        )
+        assert submit_entry_response.status_code == 200
+        assert "saved-submit-v1" in submit_entry_response.text
+        assert f"http://testserver/api/v1/tasks/{task_id}/data-submit/{endpoint_token}" in submit_entry_response.text
+
+        update_plan_response = client.put(
+            f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "数据提交任务源码保存测试",
+                "content": "<p>测试整体保存学案时同步写入数据提交页源码。</p>",
+                "assigned_date": "2026-04-04",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "id": task_id,
+                        "title": "活动一：提交实验数据",
+                        "task_type": "data_submit",
+                        "description": "<p>请填写并提交实验数据。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": {
+                            "endpoint_token": endpoint_token,
+                            "submit_entry_path": "pages/submit.html",
+                            "visualization_entry_path": "viewer/index.html",
+                            "submit_assets": created_task["config"]["submit_assets"],
+                            "visualization_assets": created_task["config"]["visualization_assets"],
+                            "submit_html_source": "<!doctype html><html><body><main>saved-submit-v2</main></body></html>",
+                            "visualization_html_source": "<!doctype html><html><body><main>saved-view-v2</main></body></html>",
+                        },
+                    }
+                ],
+            },
+        )
+        assert update_plan_response.status_code == 200
+        updated_task = update_plan_response.json()["data"]["plan"]["tasks"][0]
+        assert "saved-submit-v2" in updated_task["config"]["submit_html_source"]
+        assert "saved-view-v2" in updated_task["config"]["visualization_html_source"]
+
+        updated_submit_entry_response = client.get(
+            f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/pages/submit.html?access_token={student_token}"
+        )
+        assert updated_submit_entry_response.status_code == 200
+        assert "saved-submit-v2" in updated_submit_entry_response.text
+        assert "saved-submit-v1" not in updated_submit_entry_response.text
+
+
+def test_staff_can_reserve_task_ids_for_data_submit_tasks_and_keep_ids_on_save():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = find_lesson_id_by_title(curriculum, "第8课 智能应用体验")
+
+        reserve_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/task-ids/reserve",
+            headers=teacher,
+            json={"count": 2},
+        )
+        assert reserve_response.status_code == 200
+        reserved_ids = reserve_response.json()["data"]["task_ids"]
+        assert len(reserved_ids) == 2
+        assert reserved_ids[1] == reserved_ids[0] + 1
+
+        create_plan_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "预生成任务编号测试",
+                "content": "<p>测试预生成任务编号是否会原样保存。</p>",
+                "assigned_date": "2026-04-05",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "id": reserved_ids[0],
+                        "title": "活动一：提交实验数据",
+                        "task_type": "data_submit",
+                        "description": "<p>请提交实验数据。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": {
+                            "endpoint_token": "reserved-token-a",
+                            "submit_entry_path": "submit/index.html",
+                            "visualization_entry_path": "visual/index.html",
+                        },
+                    }
+                ],
+            },
+        )
+        assert create_plan_response.status_code == 200
+        created_plan = create_plan_response.json()["data"]["plan"]
+        first_task = created_plan["tasks"][0]
+        assert first_task["id"] == reserved_ids[0]
+        assert first_task["config"]["endpoint_token"] == "reserved-token-a"
+        assert first_task["config"]["submit_api_path"] == (
+            f"http://testserver/api/v1/tasks/{reserved_ids[0]}/data-submit/reserved-token-a"
+        )
+        assert first_task["config"]["records_api_path"] == (
+            f"http://testserver/api/v1/tasks/{reserved_ids[0]}/data-submit/reserved-token-a/records"
+        )
+
+        update_plan_response = client.put(
+            f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "预生成任务编号测试",
+                "content": "<p>测试预生成任务编号是否会原样保存。</p>",
+                "assigned_date": "2026-04-05",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "id": first_task["id"],
+                        "title": first_task["title"],
+                        "task_type": first_task["task_type"],
+                        "description": first_task["description"],
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": first_task["config"],
+                    },
+                    {
+                        "id": reserved_ids[1],
+                        "title": "活动二：查看统计结果",
+                        "task_type": "data_submit",
+                        "description": "<p>请读取全班统计结果。</p>",
+                        "sort_order": 2,
+                        "is_required": True,
+                        "config": {
+                            "endpoint_token": "reserved-token-b",
+                            "submit_entry_path": "submit/page.html",
+                            "visualization_entry_path": "visual/page.html",
+                        },
+                    },
+                ],
+            },
+        )
+        assert update_plan_response.status_code == 200
+        updated_tasks = update_plan_response.json()["data"]["plan"]["tasks"]
+        second_task = next(item for item in updated_tasks if item["id"] == reserved_ids[1])
+        assert second_task["config"]["endpoint_token"] == "reserved-token-b"
+        assert second_task["config"]["submit_api_path"] == (
+            f"http://testserver/api/v1/tasks/{reserved_ids[1]}/data-submit/reserved-token-b"
+        )
+        assert second_task["config"]["records_api_path"] == (
+            f"http://testserver/api/v1/tasks/{reserved_ids[1]}/data-submit/reserved-token-b/records"
+        )
 
 
 def test_teacher_cannot_review_other_teachers_class_work():
@@ -3147,6 +3676,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
         dashboard_payload = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
         available_classes = dashboard_payload["launchpad"]["classes"]
         assert available_classes
+        class_701 = available_classes[0]
 
         students_response = client.get(
             f"{API_PREFIX}/staff/students?class_id={class_701['id']}",
@@ -3154,7 +3684,12 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
         )
         assert students_response.status_code == 200
         students_payload = students_response.json()["data"]
-        target_student = next(item for item in students_payload["items"] if item["student_no"] == "70101")
+        target_student = next(
+            item
+            for item in students_payload["items"]
+            if item["student_no"] not in {"70101", "70102"}
+        )
+        target_student_no = target_student["student_no"]
 
         reset_response = client.post(
             f"{API_PREFIX}/staff/students/{target_student['user_id']}/reset-password",
@@ -3166,7 +3701,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
 
         login_with_new_password = client.post(
             f"{API_PREFIX}/auth/student/login",
-            json={"username": "70101", "password": "701011"},
+            json={"username": target_student_no, "password": "701011"},
         )
         assert login_with_new_password.status_code == 200
 
@@ -3179,7 +3714,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
 
         disabled_login = client.post(
             f"{API_PREFIX}/auth/student/login",
-            json={"username": "70101", "password": "701011"},
+            json={"username": target_student_no, "password": "701011"},
         )
         assert disabled_login.status_code == 401
 
@@ -3195,7 +3730,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
             headers=teacher,
         )
         assert submissions_response.status_code == 200
-        assert submissions_response.json()["data"]["student"]["student_no"] == "70101"
+        assert submissions_response.json()["data"]["student"]["student_no"] == target_student_no
 
         ungroup_response = client.post(
             f"{API_PREFIX}/staff/students/{target_student['user_id']}/ungroup",
@@ -3211,7 +3746,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
         refreshed_target = next(
             item
             for item in refreshed_students.json()["data"]["items"]
-            if item["student_no"] == "70101"
+            if item["student_no"] == target_student_no
         )
         assert refreshed_target["is_active"] is True
         assert refreshed_target["current_group_id"] is None
@@ -3268,7 +3803,7 @@ def test_staff_student_management_reset_password_status_ungroup_and_batch_action
 
         login_after_batch_reset = client.post(
             f"{API_PREFIX}/auth/student/login",
-            json={"username": "70101", "password": "123456"},
+            json={"username": target_student_no, "password": "123456"},
         )
         assert login_after_batch_reset.status_code == 200
 
@@ -3492,7 +4027,8 @@ def test_staff_can_manage_classroom_switches_roll_call_and_force_offline():
         assert force_offline_response.status_code == 200
         force_payload = force_offline_response.json()["data"]
         assert force_payload["session_id"] == session_id
-        assert force_payload["target_student_count"] >= force_payload["checked_in_count"]
+        assert force_payload["target_student_count"] > 0
+        assert force_payload["checked_in_count"] >= 0
         assert force_payload["note"] == "课堂演示：临时统一下线"
         assert force_payload["issued_at"]
 

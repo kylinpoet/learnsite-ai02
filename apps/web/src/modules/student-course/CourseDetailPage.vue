@@ -5,7 +5,7 @@
         <p class="eyebrow">学案详情</p>
         <h2>{{ planDetail?.title || `课程 ${route.params.courseId}` }}</h2>
         <p class="hero-copy">
-          这一页展示本课次的任务清单。上传类任务已经接入真实提交流程，点击后可以直接进入任务页完成提交。
+          这一页展示本课次的任务清单。图文任务、讨论任务、网页任务和数据提交任务都可以直接从这里进入。
         </p>
       </div>
       <el-tag round>课程体系已接入</el-tag>
@@ -91,7 +91,22 @@ const planDetail = ref<PlanDetail | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
 
-function taskTypeLabel(taskType: string) {
+  function taskTypeLabel(taskType: string) {
+  if (taskType === 'rich_text') {
+    return '图文任务';
+  }
+  if (taskType === 'web_page') {
+    return '网页任务';
+  }
+  if (taskType === 'discussion') {
+    return '讨论任务';
+  }
+  if (taskType === 'data_submit') {
+    return '数据提交任务';
+  }
+  if (taskType === 'programming') {
+    return '编程任务';
+  }
   if (taskType === 'upload_image') {
     return '上传作品';
   }
