@@ -932,13 +932,21 @@ function activateBlankPlanEditor(options?: { skipDraftRestore?: boolean }) {
   handleTaskTabDragEnd();
 }
 
+function normalizeEditorDataSubmitTaskSources() {
+  planForm.value.tasks.forEach((task) => {
+    syncDataSubmitTaskHtmlSources(task);
+  });
+}
+
 function activatePlanEditor(plan: PlanDetail, options?: { skipDraftRestore?: boolean }) {
   activatePlanEditorState(plan, options);
+  normalizeEditorDataSubmitTaskSources();
   handleTaskTabDragEnd();
 }
 
 function cancelPlanEditing() {
   cancelPlanEditingState(selectedPlanDetail.value);
+  normalizeEditorDataSubmitTaskSources();
   handleTaskTabDragEnd();
 }
 
