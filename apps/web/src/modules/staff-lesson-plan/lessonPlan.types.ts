@@ -153,6 +153,16 @@ export type TaskHtmlPromptDialogState = {
   custom_prompt: string;
 };
 
+export type TaskHtmlPromptGenerationStatus = {
+  state: 'idle' | 'loading' | 'error';
+  provider_name: string;
+  provider_mode: string;
+  warning: string;
+  error_message: string;
+  attempt: number;
+  total_attempts: number;
+};
+
 export type TaskTemplateFormState = {
   mode: 'create' | 'overwrite';
   templateId: number | null;

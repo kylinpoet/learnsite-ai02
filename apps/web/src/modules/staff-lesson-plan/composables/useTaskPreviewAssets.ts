@@ -692,12 +692,14 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
   async function generateTaskHtmlAndUpload(
     task: PlanFormTask,
     slot: TaskAssetSlot,
-    optionsOverride?: TaskHtmlPromptBuildOptions
+    optionsOverride?: TaskHtmlPromptBuildOptions,
+    requestHtmlDraftOverride?: (prompt: string) => Promise<string>
   ) {
     const loadingKey = options.taskAssetGenerationKey(task, slot);
     options.generatingTaskHtmlKey.value = loadingKey;
     try {
-      const html = await options.requestHtmlDraft(options.buildTaskHtmlPrompt(task, slot, optionsOverride));
+      const requestHtmlDraft = requestHtmlDraftOverride || options.requestHtmlDraft;
+      const html = await requestHtmlDraft(options.buildTaskHtmlPrompt(task, slot, optionsOverride));
       options.setTaskHtmlSource(task, slot, html);
       options.revealTaskPreview(task, slot);
       if (options.canUploadTaskAssets(task)) {

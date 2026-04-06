@@ -284,307 +284,66 @@
           </el-tab-pane>
 
           <el-tab-pane label="任务配置" name="tasks">
-            <div class="dialog-task-head">
-              <div>
-                <h3>任务配置</h3>
-                <p class="section-note">支持网页任务、讨论任务、图文任务、数据提交任务等多类型编排。每个任务会作为独立 Tab 页面编辑。</p>
-              </div>
-              <el-space wrap>
-                <el-button plain @click="addTaskRow">新增空白任务</el-button>
-                <el-dropdown trigger="click" @command="handleTaskTemplateCommand">
-                  <el-button type="primary">从模板新增</el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="preset in taskTemplatePresetOptions"
-                        :key="preset.id"
-                        :command="{ kind: 'preset', id: preset.id }"
-                      >
-                        <div class="task-template-option">
-                          <strong>{{ preset.label }}</strong>
-                          <span>{{ preset.description }}</span>
-                        </div>
-                      </el-dropdown-item>
-                      <el-dropdown-item v-if="customTaskTemplatesLoading" divided disabled>
-                        <div class="task-template-option">
-                          <strong>自定义模板</strong>
-                          <span>正在加载教师自定义模板...</span>
-                        </div>
-                      </el-dropdown-item>
-                      <template v-else-if="customTaskTemplates.length">
-                        <el-dropdown-item disabled divided>
-                          <div class="task-template-option">
-                            <strong>自定义模板</strong>
-                            <span>保存过的任务模板会出现在这里，可直接复用。</span>
-                          </div>
-                        </el-dropdown-item>
-                        <template v-if="dropdownPinnedCustomTaskTemplates.length">
-                          <el-dropdown-item disabled>
-                            <div class="task-template-option task-template-option--group">
-                              <strong>已置顶</strong>
-                              <span>{{ dropdownPinnedCustomTaskTemplates.length }} 个模板</span>
-                            </div>
-                          </el-dropdown-item>
-                          <el-dropdown-item
-                            v-for="templateItem in dropdownPinnedCustomTaskTemplates"
-                            :key="`pinned-${templateItem.id}`"
-                            :command="{ kind: 'custom', id: templateItem.id }"
-                          >
-                            <div class="task-template-option">
-                              <strong>{{ templateItem.title }}</strong>
-                              <span>
-                                置顶 · {{ taskTypeLabel(templateItem.task_type) }} · {{ templateItem.task_title }}
-                              </span>
-                            </div>
-                          </el-dropdown-item>
-                        </template>
-                        <template v-if="dropdownRecentCustomTaskTemplates.length">
-                          <el-dropdown-item disabled>
-                            <div class="task-template-option task-template-option--group">
-                              <strong>最近使用</strong>
-                              <span>优先显示最近 6 个常用模板</span>
-                            </div>
-                          </el-dropdown-item>
-                          <el-dropdown-item
-                            v-for="templateItem in dropdownRecentCustomTaskTemplates"
-                            :key="`recent-${templateItem.id}`"
-                            :command="{ kind: 'custom', id: templateItem.id }"
-                          >
-                            <div class="task-template-option">
-                              <strong>{{ templateItem.title }}</strong>
-                              <span>
-                                最近使用 · {{ taskTypeLabel(templateItem.task_type) }} · {{ templateItem.task_title }}
-                              </span>
-                            </div>
-                          </el-dropdown-item>
-                        </template>
-                        <template v-for="group in customTaskTemplateDropdownGroups" :key="group.key || 'ungrouped'">
-                          <el-dropdown-item disabled>
-                            <div class="task-template-option task-template-option--group">
-                              <strong>{{ group.label }}</strong>
-                              <span>{{ group.items.length }} 个模板</span>
-                            </div>
-                          </el-dropdown-item>
-                          <el-dropdown-item
-                            v-for="templateItem in group.items"
-                            :key="templateItem.id"
-                            :command="{ kind: 'custom', id: templateItem.id }"
-                          >
-                            <div class="task-template-option">
-                              <strong>{{ templateItem.title }}</strong>
-                              <span>
-                                {{ taskTypeLabel(templateItem.task_type) }} · 预设任务名：{{ templateItem.task_title }}
-                              </span>
-                            </div>
-                          </el-dropdown-item>
-                        </template>
-                      </template>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                <el-button plain @click="openTaskTemplateLibrary">模板库</el-button>
-              </el-space>
-            </div>
-
-            <el-tabs v-model="activeTaskEditorKey" class="task-editor-tabs" type="card">
-              <el-tab-pane
-                v-for="(task, index) in planForm.tasks"
-                :key="task.key"
-                :name="task.key"
-                lazy
-              >
-                <template #label>
-                  <div
-                    class="task-tab-label"
-                    :class="{
-                      'task-tab-label-dragging': draggingTaskKey === task.key,
-                      'task-tab-label-target': dragOverTaskKey === task.key && draggingTaskKey !== task.key,
-                    }"
-                    draggable="true"
-                    @dragstart="handleTaskTabDragStart(task.key, $event)"
-                    @dragover="handleTaskTabDragOver(task.key, $event)"
-                    @drop="handleTaskTabDrop(task.key, $event)"
-                    @dragend="handleTaskTabDragEnd"
-                  >
-                    <div class="task-tab-label__meta">
-                      <strong>{{ taskEditorTabTitle(task, index) }}</strong>
-                      <span>{{ taskTypeLabel(task.task_type) }}</span>
-                    </div>
-                    <span
-                      v-if="planForm.tasks.length > 1"
-                      class="task-tab-close"
-                      draggable="false"
-                      role="button"
-                      tabindex="0"
-                      aria-label="关闭任务标签"
-                      @click.stop="removeTaskRow(task.key)"
-                      @keydown.enter.prevent.stop="removeTaskRow(task.key)"
-                      @keydown.space.prevent.stop="removeTaskRow(task.key)"
-                    >
-                      ×
-                    </span>
-                  </div>
-                </template>
-
-                <article class="task-editor-card">
-                  <div class="task-card-toolbar">
-                    <el-space wrap>
-                      <strong>任务 {{ index + 1 }}</strong>
-                      <el-tag round type="info">{{ taskTypeLabel(task.task_type) }}</el-tag>
-                      <el-tag round type="success">顺序 {{ index + 1 }} / {{ planForm.tasks.length }}</el-tag>
-                    </el-space>
-                    <el-space wrap>
-                      <el-button plain size="small" :disabled="index === 0" @click="moveTaskRow(task.key, -1)">
-                        前移
-                      </el-button>
-                      <el-button
-                        plain
-                        size="small"
-                        :disabled="index === planForm.tasks.length - 1"
-                        @click="moveTaskRow(task.key, 1)"
-                      >
-                        后移
-                      </el-button>
-                      <el-button plain size="small" @click="copyTaskRow(task.key)">
-                        复制
-                      </el-button>
-                      <el-button plain size="small" @click="openSaveTaskTemplateDialog(task)">
-                        {{ taskTemplateButtonLabel(task) }}
-                      </el-button>
-                      <el-button
-                        :disabled="planForm.tasks.length === 1"
-                        link
-                        type="danger"
-                        @click="removeTaskRow(task.key)"
-                      >
-                        删除
-                      </el-button>
-                    </el-space>
-                  </div>
-
-                  <el-row :gutter="16">
-                    <el-col :md="10" :sm="24">
-                      <el-form-item label="任务标题">
-                        <el-input v-model="task.title" maxlength="120" placeholder="例如：活动一、信息检索与表达" />
-                      </el-form-item>
-                    </el-col>
-                    <el-col :md="8" :sm="12">
-                      <el-form-item label="任务类型">
-                        <el-select v-model="task.task_type" class="full-width" @change="handleTaskTypeChange(task)">
-                          <el-option label="阅读任务" value="reading" />
-                          <el-option label="图文任务" value="rich_text" />
-                          <el-option label="上传作品" value="upload_image" />
-                          <el-option label="编程任务" value="programming" />
-                          <el-option label="网页任务" value="web_page" />
-                          <el-option label="讨论任务" value="discussion" />
-                          <el-option label="数据提交任务" value="data_submit" />
-                        </el-select>
-                      </el-form-item>
-                    </el-col>
-                    <el-col :md="6" :sm="12">
-                      <el-form-item label="任务要求">
-                        <el-switch v-model="task.is_required" active-text="必做" inactive-text="选做" />
-                      </el-form-item>
-                    </el-col>
-                  </el-row>
-
-                  <el-form-item label="提交方式">
-                    <el-radio-group v-model="task.submission_scope" :disabled="isTaskScopeFixed(task.task_type)">
-                      <el-radio-button label="individual">个人提交</el-radio-button>
-                      <el-radio-button label="group">小组共同提交</el-radio-button>
-                    </el-radio-group>
-                    <p class="section-note">
-                      {{ isTaskScopeFixed(task.task_type) ? '当前任务类型固定为个人提交，用于保证课堂流程和数据结构稳定。' : '可按需要切换为个人提交或小组共同提交。' }}
-                    </p>
-                  </el-form-item>
-
-                  <section v-if="task.task_type === 'discussion'" class="task-type-panel">
-                    <el-form-item label="讨论主题">
-                      <el-input
-                        v-model="task.config.topic"
-                        maxlength="200"
-                        placeholder="例如：你认为 AI 在课堂学习中的最大帮助是什么？"
-                      />
-                    </el-form-item>
-                  </section>
-
-                  <section v-if="task.task_type === 'web_page'" class="task-type-panel">
-                    <TaskWebPageEditor
-                      :task="task"
-                      :can-upload="canUploadTaskAssets(task)"
-                      :generation-loading="generatingTaskHtmlKey === taskAssetGenerationKey(task, 'web')"
-                      :get-task-asset-entry-path="getTaskAssetEntryPath"
-                      :set-task-asset-entry-path="setTaskAssetEntryPath"
-                      :get-task-html-source="getTaskHtmlSource"
-                      :set-task-html-source="setTaskHtmlSource"
-                      :task-asset-input-id="taskAssetInputId"
-                      :open-task-asset-picker="openTaskAssetPicker"
-                      :handle-task-asset-change="handleTaskAssetChange"
-                      :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-                      :upload-task-html-source="uploadTaskHtmlSource"
-                      :task-preview-feedback="taskPreviewFeedback"
-                      :task-preview-display-detail="taskPreviewDisplayDetail"
-                      :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-                      :has-task-inline-preview="hasTaskInlinePreview"
-                      :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-                      :task-asset-preview-url="taskAssetPreviewUrl"
-                      :task-preview-frame-key="taskPreviewFrameKey"
-                      :toggle-task-preview-detail="toggleTaskPreviewDetail"
-                      :copy-task-preview-detail="copyTaskPreviewDetail"
-                      :retry-task-preview="retryTaskPreview"
-                      :handle-task-preview-load="handleTaskPreviewLoad"
-                      :handle-task-preview-error="handleTaskPreviewError"
-                    />
-                  </section>
-
-                  <section v-if="task.task_type === 'data_submit'" class="task-type-panel">
-                    <TaskDataSubmitEditor
-                      :task="task"
-                      :can-upload="canUploadTaskAssets(task)"
-                      :description-generating="generatingTaskHtmlKey === taskDescriptionGenerationKey(task)"
-                      :submit-generation-loading="generatingTaskHtmlKey === taskAssetGenerationKey(task, 'data_submit_form')"
-                      :visualization-generation-loading="generatingTaskHtmlKey === taskAssetGenerationKey(task, 'data_submit_visualization')"
-                      :copy-task-data-submit-endpoint="copyTaskDataSubmitEndpoint"
-                      :task-data-submit-prompt-api-path="taskDataSubmitPromptApiPath"
-                      :task-data-submit-prompt-records-path="taskDataSubmitPromptRecordsPath"
-                      :task-data-submit-endpoint-tag-type="taskDataSubmitEndpointTagType"
-                      :task-data-submit-endpoint-status-label="taskDataSubmitEndpointStatusLabel"
-                      :task-data-submit-alert-title="taskDataSubmitAlertTitle"
-                      :task-data-submit-alert-description="taskDataSubmitAlertDescription"
-                      :generate-task-description-draft="generateTaskDescriptionDraft"
-                      :get-task-asset-entry-path="getTaskAssetEntryPath"
-                      :set-task-asset-entry-path="setTaskAssetEntryPath"
-                      :get-task-html-source="getTaskHtmlSource"
-                      :set-task-html-source="setTaskHtmlSource"
-                      :task-asset-input-id="taskAssetInputId"
-                      :open-task-asset-picker="openTaskAssetPicker"
-                      :handle-task-asset-change="handleTaskAssetChange"
-                      :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-                      :upload-task-html-source="uploadTaskHtmlSource"
-                      :task-preview-feedback="taskPreviewFeedback"
-                      :task-preview-display-detail="taskPreviewDisplayDetail"
-                      :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-                      :has-task-inline-preview="hasTaskInlinePreview"
-                      :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-                      :task-asset-preview-url="taskAssetPreviewUrl"
-                      :task-preview-frame-key="taskPreviewFrameKey"
-                      :toggle-task-preview-detail="toggleTaskPreviewDetail"
-                      :copy-task-preview-detail="copyTaskPreviewDetail"
-                      :retry-task-preview="retryTaskPreview"
-                      :handle-task-preview-load="handleTaskPreviewLoad"
-                      :handle-task-preview-error="handleTaskPreviewError"
-                    />
-                  </section>
-
-                  <TaskDescriptionEditor
-                    v-if="task.task_type !== 'data_submit'"
-                    :task="task"
-                    :generating="generatingTaskHtmlKey === taskDescriptionGenerationKey(task)"
-                    :generate-task-description-draft="generateTaskDescriptionDraft"
-                  />
-                </article>
-              </el-tab-pane>
-            </el-tabs>
+            <LessonPlanTaskConfigPanel
+              v-model:active-task-editor-key="activeTaskEditorKey"
+              :tasks="planForm.tasks"
+              :custom-task-templates-loading="customTaskTemplatesLoading"
+              :custom-task-templates="customTaskTemplates"
+              :dropdown-pinned-custom-task-templates="dropdownPinnedCustomTaskTemplates"
+              :dropdown-recent-custom-task-templates="dropdownRecentCustomTaskTemplates"
+              :custom-task-template-dropdown-groups="customTaskTemplateDropdownGroups"
+              :dragging-task-key="draggingTaskKey"
+              :drag-over-task-key="dragOverTaskKey"
+              :generating-task-html-key="generatingTaskHtmlKey"
+              :task-type-label="taskTypeLabel"
+              :task-editor-tab-title="taskEditorTabTitle"
+              :task-template-button-label="taskTemplateButtonLabel"
+              :is-task-scope-fixed="isTaskScopeFixed"
+              :can-upload-task-assets="canUploadTaskAssets"
+              :task-asset-generation-key="taskAssetGenerationKey"
+              :task-description-generation-key="taskDescriptionGenerationKey"
+              :add-task-row="addTaskRow"
+              :handle-task-template-command="handleTaskTemplateCommand"
+              :open-task-template-library="openTaskTemplateLibrary"
+              :handle-task-tab-drag-start="handleTaskTabDragStart"
+              :handle-task-tab-drag-over="handleTaskTabDragOver"
+              :handle-task-tab-drop="handleTaskTabDrop"
+              :handle-task-tab-drag-end="handleTaskTabDragEnd"
+              :move-task-row="moveTaskRow"
+              :copy-task-row="copyTaskRow"
+              :remove-task-row="removeTaskRow"
+              :open-save-task-template-dialog="openSaveTaskTemplateDialog"
+              :handle-task-type-change="handleTaskTypeChange"
+              :copy-task-data-submit-endpoint="copyTaskDataSubmitEndpoint"
+              :task-data-submit-prompt-api-path="taskDataSubmitPromptApiPath"
+              :task-data-submit-prompt-records-path="taskDataSubmitPromptRecordsPath"
+              :task-data-submit-endpoint-tag-type="taskDataSubmitEndpointTagType"
+              :task-data-submit-endpoint-status-label="taskDataSubmitEndpointStatusLabel"
+              :task-data-submit-alert-title="taskDataSubmitAlertTitle"
+              :task-data-submit-alert-description="taskDataSubmitAlertDescription"
+              :generate-task-description-draft="generateTaskDescriptionDraft"
+              :get-task-asset-entry-path="getTaskAssetEntryPath"
+              :set-task-asset-entry-path="setTaskAssetEntryPath"
+              :get-task-html-source="getTaskHtmlSource"
+              :set-task-html-source="setTaskHtmlSource"
+              :task-asset-input-id="taskAssetInputId"
+              :open-task-asset-picker="openTaskAssetPicker"
+              :handle-task-asset-change="handleTaskAssetChange"
+              :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
+              :upload-task-html-source="uploadTaskHtmlSource"
+              :task-preview-feedback="taskPreviewFeedback"
+              :task-preview-display-detail="taskPreviewDisplayDetail"
+              :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
+              :has-task-inline-preview="hasTaskInlinePreview"
+              :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
+              :task-asset-preview-url="taskAssetPreviewUrl"
+              :task-preview-frame-key="taskPreviewFrameKey"
+              :toggle-task-preview-detail="toggleTaskPreviewDetail"
+              :copy-task-preview-detail="copyTaskPreviewDetail"
+              :retry-task-preview="retryTaskPreview"
+              :handle-task-preview-load="handleTaskPreviewLoad"
+              :handle-task-preview-error="handleTaskPreviewError"
+            />
           </el-tab-pane>
         </el-tabs>
 
@@ -611,6 +370,7 @@
       :selected-template-description="selectedTaskHtmlPromptTemplateDescription"
       :preview-text="taskHtmlPromptPreview"
       :is-generating="generatingTaskHtmlKey === currentTaskHtmlPromptGenerationKey"
+      :generation-status="taskHtmlPromptGenerationStatus"
       :submit-api-path="taskHtmlPromptDialogSubmitApiPath"
       :records-api-path="taskHtmlPromptDialogRecordsApiPath"
       @submit="submitTaskHtmlPromptDialog"
@@ -693,13 +453,11 @@ import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import { useAuthStore } from '@/stores/auth';
 import { richTextToExcerpt } from '@/utils/richText';
-import TaskDataSubmitEditor from './components/TaskDataSubmitEditor.vue';
-import TaskDescriptionEditor from './components/TaskDescriptionEditor.vue';
 import TaskHtmlPromptDialog from './components/TaskHtmlPromptDialog.vue';
+import LessonPlanTaskConfigPanel from './components/LessonPlanTaskConfigPanel.vue';
 import TaskTemplateLibraryDialog from './components/TaskTemplateLibraryDialog.vue';
 import TaskTemplateSaveDialog from './components/TaskTemplateSaveDialog.vue';
-import TaskWebPageEditor from './components/TaskWebPageEditor.vue';
-import { taskHtmlPromptTemplateOptions, taskTemplatePresetOptions } from './lessonPlan.constants';
+import { taskHtmlPromptTemplateOptions } from './lessonPlan.constants';
 import { useLessonPlanEditorState } from './composables/useLessonPlanEditorState';
 import { useLessonPlanTaskRows } from './composables/useLessonPlanTaskRows';
 import { useTaskPreviewAssets } from './composables/useTaskPreviewAssets';
@@ -735,6 +493,7 @@ import type {
   TaskAssetSlot,
   TaskHtmlPromptBuildOptions,
   TaskHtmlPromptDialogState,
+  TaskHtmlPromptGenerationStatus,
   TaskSlotEditorTab,
   TaskTemplatePresetId,
 } from './lessonPlan.types';
@@ -792,6 +551,7 @@ const taskHtmlPromptDialogState = ref<TaskHtmlPromptDialogState>({
   template_id: 'web_interactive_guide',
   custom_prompt: '',
 });
+const taskHtmlDraftRetryCount = 1;
 const reservingTaskIdKeys = ref<string[]>([]);
 const reservingTaskIdPromises = new Map<string, Promise<number | null>>();
 
@@ -802,8 +562,41 @@ type TaskIdReservationResponse = {
 type AssistantHtmlDraftResponse = {
   reply?: {
     content?: string;
+    provider_name?: string | null;
+    provider_mode?: string | null;
+    warning?: string | null;
   };
+  active_provider?: {
+    name?: string | null;
+    model_name?: string | null;
+  } | null;
 };
+
+type HtmlDraftRequestOptions = {
+  remainingRetries?: number;
+  attempt?: number;
+  totalAttempts?: number;
+  onStatusChange?: (status: TaskHtmlPromptGenerationStatus) => void;
+};
+
+function createTaskHtmlPromptGenerationStatus(
+  overrides: Partial<TaskHtmlPromptGenerationStatus> = {}
+): TaskHtmlPromptGenerationStatus {
+  return {
+    state: 'idle',
+    provider_name: '',
+    provider_mode: '',
+    warning: '',
+    error_message: '',
+    attempt: 0,
+    total_attempts: taskHtmlDraftRetryCount + 1,
+    ...overrides,
+  };
+}
+
+const taskHtmlPromptGenerationStatus = ref<TaskHtmlPromptGenerationStatus>(
+  createTaskHtmlPromptGenerationStatus()
+);
 
 const {
   editorVisible,
@@ -1067,6 +860,17 @@ const taskHtmlPromptPreview = computed(() => {
     custom_prompt: taskHtmlPromptDialogState.value.custom_prompt,
   });
 });
+
+function resetTaskHtmlPromptGenerationStatus() {
+  taskHtmlPromptGenerationStatus.value = createTaskHtmlPromptGenerationStatus();
+}
+
+function setTaskHtmlPromptGenerationStatus(status: Partial<TaskHtmlPromptGenerationStatus>) {
+  taskHtmlPromptGenerationStatus.value = createTaskHtmlPromptGenerationStatus({
+    ...taskHtmlPromptGenerationStatus.value,
+    ...status,
+  });
+}
 
 function nextTemplateSequence(taskType?: string) {
   if (!taskType) {
@@ -1385,8 +1189,40 @@ function currentLessonLabel() {
 
 function extractHtmlDraft(rawContent: string) {
   const trimmed = rawContent.trim();
-  const fenced = trimmed.match(/^```(?:html)?\s*([\s\S]*?)\s*```$/i);
+  const fenced = rawContent.match(/```(?:html)?\s*([\s\S]*?)\s*```/i);
   return (fenced ? fenced[1] : trimmed).trim();
+}
+
+function isRenderableHtmlDraft(value: string) {
+  const normalized = value.trim();
+  if (!normalized) {
+    return false;
+  }
+  return /<(?:!doctype\s+html|html|head|body|main|section|article|div|p|h[1-6]|form|table|svg|canvas|button|input|style|script)\b/i.test(
+    normalized
+  );
+}
+
+function buildHtmlDraftErrorMessage(providerMode: string | null | undefined, warning: string | null | undefined) {
+  const parts = [
+    providerMode === 'preview'
+      ? 'AI 服务暂时返回了说明文本，而不是可渲染的 HTML 源码。'
+      : 'AI 未返回可用的 HTML 内容。',
+  ];
+  const normalizedWarning = String(warning || '').trim();
+  if (normalizedWarning) {
+    parts.push(`上游提示：${normalizedWarning}`);
+  }
+  parts.push('请稍后重试，或缩短提示词后重新生成。');
+  return parts.join(' ');
+}
+
+function resolveAssistantProviderName(response: AssistantHtmlDraftResponse) {
+  const replyName = String(response.reply?.provider_name || '').trim();
+  if (replyName) {
+    return replyName;
+  }
+  return String(response.active_provider?.name || '').trim();
 }
 
 function copyTextWithFallback(value: string) {
@@ -1448,6 +1284,7 @@ async function openTaskHtmlPromptDialog(task: PlanFormTask, slot: TaskAssetSlot)
     template_id: templateId,
     custom_prompt: taskHtmlPromptCustomizations.value[slot] || '',
   };
+  resetTaskHtmlPromptGenerationStatus();
   taskHtmlPromptDialogVisible.value = true;
 }
 
@@ -1583,27 +1420,94 @@ function mergeTaskConfigFromServer(task: PlanFormTask, serverConfig: Record<stri
   ensureDataSubmitTaskConfig(task);
 }
 
-async function requestHtmlDraft(prompt: string) {
+async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions = {}): Promise<string> {
   if (!authStore.token) {
     throw new Error('请先登录后再使用 AI 生成功能');
   }
 
-  const response = await apiPost<AssistantHtmlDraftResponse>(
-    '/assistants/companion/respond',
-    {
-      scope: 'general',
-      message: `${prompt}\n\n请直接返回 HTML 内容，不要附带解释、Markdown 代码块或额外说明。如需外部资源，请使用稳定 CDN。`,
-      provider_id: null,
-      conversation: [],
-    },
-    authStore.token
+  const remainingRetries = options.remainingRetries ?? taskHtmlDraftRetryCount;
+  const attempt = options.attempt ?? 1;
+  const totalAttempts = options.totalAttempts ?? remainingRetries + attempt;
+
+  options.onStatusChange?.(
+    createTaskHtmlPromptGenerationStatus({
+      state: 'loading',
+      provider_mode: 'pending',
+      attempt,
+      total_attempts: totalAttempts,
+      error_message: attempt > 1 ? '上一次返回的不是可渲染 HTML，正在自动重试。' : '',
+    })
   );
 
-  const html = extractHtmlDraft(response.reply?.content || '');
-  if (!html) {
-    throw new Error('AI 未返回可用的 HTML 内容');
+  let response: AssistantHtmlDraftResponse;
+  try {
+    response = await apiPost<AssistantHtmlDraftResponse>(
+      '/assistants/companion/respond',
+      {
+        scope: 'general',
+        message: `${prompt}\n\n请直接返回 HTML 内容，不要附带解释、Markdown 代码块或额外说明。如需外部资源，请使用稳定 CDN。`,
+        provider_id: null,
+        conversation: [],
+      },
+      authStore.token
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '请求 AI 生成失败';
+    options.onStatusChange?.(
+      createTaskHtmlPromptGenerationStatus({
+        state: 'error',
+        error_message: message,
+        attempt,
+        total_attempts: totalAttempts,
+      })
+    );
+    throw new Error(message);
   }
-  return html;
+
+  const providerName = resolveAssistantProviderName(response);
+  const providerMode = String(response.reply?.provider_mode || '').trim();
+  const warning = String(response.reply?.warning || '').trim();
+  const html = extractHtmlDraft(response.reply?.content || '');
+  if (isRenderableHtmlDraft(html)) {
+    options.onStatusChange?.(
+      createTaskHtmlPromptGenerationStatus({
+        state: 'idle',
+        provider_name: providerName,
+        provider_mode: providerMode,
+        warning,
+        attempt,
+        total_attempts: totalAttempts,
+      })
+    );
+    return html;
+  }
+
+  if (remainingRetries > 0) {
+    const retryPrompt = [
+      prompt,
+      '上一次返回的不是可渲染 HTML，请只输出 HTML 源码本身，不要输出解释、说明文本或额外对话。',
+    ].join('\n\n');
+    return requestHtmlDraft(retryPrompt, {
+      remainingRetries: remainingRetries - 1,
+      attempt: attempt + 1,
+      totalAttempts,
+      onStatusChange: options.onStatusChange,
+    });
+  }
+
+  const message = buildHtmlDraftErrorMessage(providerMode, warning);
+  options.onStatusChange?.(
+    createTaskHtmlPromptGenerationStatus({
+      state: 'error',
+      provider_name: providerName,
+      provider_mode: providerMode,
+      warning,
+      error_message: message,
+      attempt,
+      total_attempts: totalAttempts,
+    })
+  );
+  throw new Error(message);
 }
 
 function buildPlanHtmlPrompt() {
@@ -1735,12 +1639,28 @@ async function submitTaskHtmlPromptDialog() {
   const { slot, template_id, custom_prompt } = taskHtmlPromptDialogState.value;
   taskHtmlPromptSelections.value[slot] = template_id;
   taskHtmlPromptCustomizations.value[slot] = custom_prompt;
+  resetTaskHtmlPromptGenerationStatus();
+  const requestHtmlDraftWithDialogStatus = (prompt: string) =>
+    requestHtmlDraft(prompt, {
+      remainingRetries: taskHtmlDraftRetryCount,
+      onStatusChange: (status) => {
+        taskHtmlPromptGenerationStatus.value = status;
+      },
+    });
   const succeeded = await generateTaskHtmlAndUpload(task, slot, {
     template_prompt: template?.prompt,
     custom_prompt,
-  });
+  }, requestHtmlDraftWithDialogStatus);
   if (succeeded) {
+    resetTaskHtmlPromptGenerationStatus();
     taskHtmlPromptDialogVisible.value = false;
+    return;
+  }
+  if (taskHtmlPromptGenerationStatus.value.state !== 'error') {
+    setTaskHtmlPromptGenerationStatus({
+      state: 'error',
+      error_message: errorMessage.value || '任务网页生成失败，请稍后重试。',
+    });
   }
 }
 
@@ -2040,6 +1960,16 @@ watch(
   }
 );
 
+watch(taskHtmlPromptDialogVisible, (visible) => {
+  if (visible) {
+    return;
+  }
+  if (generatingTaskHtmlKey.value === currentTaskHtmlPromptGenerationKey.value) {
+    return;
+  }
+  resetTaskHtmlPromptGenerationStatus();
+});
+
 watch(currentEditorSnapshot, () => {
   if (!editorVisible.value) {
     clearDraftAutoSaveTimer();
@@ -2085,28 +2015,6 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
-.task-editor-list {
-  display: grid;
-  gap: 14px;
-}
-
-.task-preview-card,
-.task-editor-card {
-  padding: 16px;
-  border: 1px solid var(--ls-border);
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.task-card-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .content-panel {
   display: grid;
   gap: 12px;
@@ -2120,83 +2028,7 @@ onBeforeUnmount(() => {
   margin-top: 8px;
 }
 
-.task-editor-tabs {
-  margin-top: 8px;
-}
-
-.task-editor-tabs :deep(.el-tabs__header) {
-  margin-bottom: 18px;
-}
-
-.task-editor-tabs :deep(.el-tabs__item) {
-  height: auto;
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-
-.task-tab-label {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  line-height: 1.25;
-  user-select: none;
-  cursor: grab;
-  border-radius: 10px;
-  padding: 2px 0;
-  transition: background-color 0.18s ease, opacity 0.18s ease, transform 0.18s ease;
-}
-
-.task-tab-label:active {
-  cursor: grabbing;
-}
-
-.task-tab-label__meta {
-  display: grid;
-  gap: 2px;
-}
-
-.task-tab-label strong {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.task-tab-label__meta span {
-  font-size: 12px;
-  color: var(--ls-muted);
-}
-
-.task-tab-close {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  color: var(--ls-muted);
-  cursor: pointer;
-  transition: background-color 0.18s ease, color 0.18s ease;
-}
-
-.task-tab-close:hover,
-.task-tab-close:focus-visible {
-  background: rgba(215, 74, 74, 0.12);
-  color: #c0392b;
-  outline: none;
-}
-
-.task-tab-label-dragging {
-  opacity: 0.55;
-}
-
-.task-tab-label-target {
-  background: rgba(66, 97, 162, 0.12);
-  transform: translateY(-1px);
-}
-
-.content-mode-panel,
-.task-type-panel {
+.content-mode-panel {
   display: grid;
   gap: 12px;
   padding: 18px;
@@ -2221,28 +2053,6 @@ onBeforeUnmount(() => {
 .section-note {
   color: var(--ls-muted);
   line-height: 1.7;
-}
-
-.task-template-option {
-  display: grid;
-  gap: 2px;
-  min-width: 260px;
-}
-
-.task-template-option strong {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--ls-text);
-}
-
-.task-template-option span {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--ls-muted);
-}
-
-.task-template-option--group {
-  opacity: 0.82;
 }
 
 .plan-editor-card {
@@ -2273,14 +2083,9 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .dialog-task-head,
-  .info-row,
-  .task-card-toolbar {
+  .info-row {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .task-editor-tabs :deep(.el-tabs__nav) {
-    flex-wrap: wrap;
   }
 }
 </style>

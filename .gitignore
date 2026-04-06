@@ -15,3 +15,4 @@ apps/api/.env
 apps/api/learnsite.db
 apps/api/*.db
 coverage/
+*.vue.js
