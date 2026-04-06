@@ -2,8 +2,8 @@
   <el-form-item :label="label">
     <div class="mode-toolbar">
       <el-radio-group v-model="task.description_mode" size="small">
-        <el-radio-button label="visual">可视化</el-radio-button>
-        <el-radio-button label="source">HTML源码</el-radio-button>
+        <el-radio-button value="visual">可视化</el-radio-button>
+        <el-radio-button value="source">HTML源码</el-radio-button>
       </el-radio-group>
       <el-button :loading="generating" plain @click="generateTaskDescriptionDraft(task)">
         AI 生成说明

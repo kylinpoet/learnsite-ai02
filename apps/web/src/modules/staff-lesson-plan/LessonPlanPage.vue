@@ -260,8 +260,8 @@
               </div>
               <el-space wrap>
                 <el-radio-group v-model="planForm.content_mode" size="small">
-                  <el-radio-button label="visual">可视化</el-radio-button>
-                  <el-radio-button label="source">HTML 源码</el-radio-button>
+                  <el-radio-button value="visual">可视化</el-radio-button>
+                  <el-radio-button value="source">HTML 源码</el-radio-button>
                 </el-radio-group>
                 <el-button :loading="generatingPlanHtml" plain @click="generatePlanHtmlDraft">AI 生成初稿</el-button>
               </el-space>

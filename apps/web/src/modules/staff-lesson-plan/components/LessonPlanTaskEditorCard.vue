@@ -49,8 +49,8 @@
 
     <el-form-item label="提交方式">
       <el-radio-group v-model="task.submission_scope" :disabled="isTaskScopeFixed(task.task_type)">
-        <el-radio-button label="individual">个人提交</el-radio-button>
-        <el-radio-button label="group">小组共同提交</el-radio-button>
+        <el-radio-button value="individual">个人提交</el-radio-button>
+        <el-radio-button value="group">小组共同提交</el-radio-button>
       </el-radio-group>
       <p class="section-note">
         {{

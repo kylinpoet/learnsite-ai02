@@ -24,8 +24,8 @@
         </el-form-item>
         <el-form-item label="保存方式">
           <el-radio-group v-model="modeValue">
-            <el-radio-button label="create">另存为新模板</el-radio-button>
-            <el-radio-button :disabled="!customTemplates.length" label="overwrite">覆盖已有模板</el-radio-button>
+            <el-radio-button value="create">另存为新模板</el-radio-button>
+            <el-radio-button :disabled="!customTemplates.length" value="overwrite">覆盖已有模板</el-radio-button>
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="form.mode === 'overwrite'" label="目标模板">

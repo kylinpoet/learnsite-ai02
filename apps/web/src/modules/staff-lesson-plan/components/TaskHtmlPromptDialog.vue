@@ -4,7 +4,7 @@
       <el-form label-position="top">
         <el-form-item label="提示词模板">
           <el-radio-group v-model="templateIdValue" class="task-html-prompt-template-group">
-            <el-radio-button v-for="option in currentTemplates" :key="option.id" :label="option.id">
+            <el-radio-button v-for="option in currentTemplates" :key="option.id" :value="option.id">
               {{ option.label }}
             </el-radio-button>
           </el-radio-group>
