@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth';
 type LoginResponse = {
   access_token: string;
   token_type: string;
+  expires_at: string;
   user: {
     id: string;
     username: string;
@@ -70,7 +71,7 @@ async function handleLogin() {
   isSubmitting.value = true;
   try {
     const payload = await apiPost<LoginResponse>('/auth/student/login', form);
-    authStore.setSession(payload.access_token, payload.user);
+    authStore.setSession(payload.access_token, payload.user, payload.expires_at);
     await router.push('/student/home');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';

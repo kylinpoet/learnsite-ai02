@@ -8,6 +8,7 @@
   "scripts": {
     "dev:up": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-up.ps1",
     "dev:down": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-down.ps1",
+    "dev:seed-demo": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-seed-demo.ps1",
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "typecheck:web": "npm --workspace apps/web run typecheck",

@@ -17,4 +17,5 @@ class UserSummary(BaseModel):
 class LoginPayload(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    expires_at: str
     user: UserSummary

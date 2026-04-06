@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     )
     cors_origin_regex: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
     secret_key: str = "learnsite-dev-secret"
+    session_ttl_minutes: int = 120
+    task_runtime_ttl_seconds: int = 300
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -38,6 +40,10 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [item.strip() for item in value.split(",") if item.strip()]
         return []
+
+    @property
+    def session_ttl_seconds(self) -> int:
+        return max(self.session_ttl_minutes, 1) * 60
 
 
 @lru_cache

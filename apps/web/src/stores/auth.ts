@@ -2,6 +2,12 @@ import { defineStore } from 'pinia';
 
 import { apiGet } from '@/api/http';
 import { useAppStore } from '@/stores/app';
+import {
+  clearPersistedSession,
+  isSessionExpired,
+  persistSession,
+  readPersistedSession,
+} from '@/stores/authSession';
 
 type SessionUser = {
   id: string;
@@ -18,10 +24,8 @@ type AuthMeResponse = {
   display_name: string;
   roles: string[];
   theme?: string | null;
+  expires_at?: string | null;
 };
-
-const tokenStorageKey = 'learnsite-token';
-const userStorageKey = 'learnsite-user';
 const sessionSyncTtlMs = 30_000;
 
 let syncPromise: Promise<SessionUser | null> | null = null;
@@ -45,31 +49,40 @@ export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: '' as string,
     user: null as SessionUser | null,
+    sessionExpiresAt: null as string | null,
     lastSyncedAt: 0,
   }),
   getters: {
-    isAuthenticated: (state) => Boolean(state.token),
+    isAuthenticated: (state) => Boolean(state.token) && !isSessionExpired(state.sessionExpiresAt),
     isStudent: (state) => state.user?.role === 'student',
     isStaff: (state) => state.user?.role === 'staff',
     isAdmin: (state) => Boolean(state.user?.roles.includes('admin')),
   },
   actions: {
     initialize() {
-      const token = localStorage.getItem(tokenStorageKey);
-      const user = localStorage.getItem(userStorageKey);
-      this.token = token || '';
-      this.user = user ? normalizeSessionUser(JSON.parse(user) as SessionUser) : null;
+      const persisted = readPersistedSession<SessionUser>();
+      if (persisted.token && isSessionExpired(persisted.expiresAt)) {
+        this.clearSession();
+        return;
+      }
+      this.token = persisted.token || '';
+      this.user = persisted.user ? normalizeSessionUser(persisted.user) : null;
+      this.sessionExpiresAt = persisted.expiresAt;
       this.lastSyncedAt = 0;
     },
-    setSession(token: string, user: SessionUser) {
+    setSession(token: string, user: SessionUser, expiresAt: string | null) {
       this.token = token;
       this.user = normalizeSessionUser(user);
+      this.sessionExpiresAt = expiresAt;
       this.lastSyncedAt = Date.now();
-      localStorage.setItem(tokenStorageKey, token);
-      localStorage.setItem(userStorageKey, JSON.stringify(this.user));
+      persistSession(token, this.user, expiresAt);
     },
     async syncSessionUser(force = false) {
       if (!this.token) {
+        return null;
+      }
+      if (isSessionExpired(this.sessionExpiresAt)) {
+        this.clearSession();
         return null;
       }
 
@@ -85,8 +98,9 @@ export const useAuthStore = defineStore('auth', {
         .then((payload) => {
           const nextUser = normalizeSessionUser(payload);
           this.user = nextUser;
+          this.sessionExpiresAt = payload.expires_at ?? this.sessionExpiresAt;
           this.lastSyncedAt = Date.now();
-          localStorage.setItem(userStorageKey, JSON.stringify(nextUser));
+          persistSession(this.token, nextUser, this.sessionExpiresAt);
           useAppStore().applySystemTheme(nextUser.theme);
           return nextUser;
         })
@@ -99,9 +113,9 @@ export const useAuthStore = defineStore('auth', {
     clearSession() {
       this.token = '';
       this.user = null;
+      this.sessionExpiresAt = null;
       this.lastSyncedAt = 0;
-      localStorage.removeItem(tokenStorageKey);
-      localStorage.removeItem(userStorageKey);
+      clearPersistedSession();
       useAppStore().unlockTheme();
     },
   },

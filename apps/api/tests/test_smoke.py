@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 import os
 import shutil
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 TEST_RUNTIME_ROOT = PROJECT_ROOT / ".pytest-runtime"
@@ -16,6 +18,12 @@ os.environ["LEARNSITE_DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
 os.environ["LEARNSITE_STORAGE_ROOT"] = str(TEST_STORAGE_ROOT)
 
 from app.main import app
+from app.core.config import settings
+from app.core.security import create_access_token
+from app.db.demo_seed import seed_demo_data
+from app.db.init_db import init_db
+from app.db.session import SessionLocal
+from app.models import User
 
 API_PREFIX = "/api/v1"
 DB_PATH = TEST_DB_PATH
@@ -27,8 +35,12 @@ def reset_demo_data():
     TEST_RUNTIME_ROOT.mkdir(parents=True, exist_ok=True)
     if DB_PATH.exists():
         DB_PATH.unlink()
-    if SUBMISSION_STORAGE.exists():
-        shutil.rmtree(SUBMISSION_STORAGE)
+    if TEST_STORAGE_ROOT.exists():
+        shutil.rmtree(TEST_STORAGE_ROOT)
+    init_db()
+    with SessionLocal() as session:
+        assert session.scalar(select(User.id).limit(1)) is None
+    assert seed_demo_data() is True
     yield
 
 
@@ -79,6 +91,63 @@ def find_lesson_id_by_title(books: list[dict], lesson_title: str) -> int:
     raise AssertionError(f"lesson not found: {lesson_title}")
 
 
+def create_published_plan_with_active_session(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    *,
+    lesson_id: int,
+    title: str,
+    content: str,
+    assigned_date: str,
+    tasks: list[dict],
+    class_id: int = 1,
+) -> dict:
+    create_response = client.post(
+        f"{API_PREFIX}/lesson-plans/staff",
+        headers=teacher_headers,
+        json={
+            "lesson_id": lesson_id,
+            "title": title,
+            "content": content,
+            "assigned_date": assigned_date,
+            "status": "draft",
+            "tasks": tasks,
+        },
+    )
+    assert create_response.status_code == 200
+    created_plan = create_response.json()["data"]["plan"]
+
+    publish_response = client.post(
+        f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}/publish",
+        headers=teacher_headers,
+    )
+    assert publish_response.status_code == 200
+
+    start_response = client.post(
+        f"{API_PREFIX}/classroom/sessions",
+        headers=teacher_headers,
+        json={"class_id": class_id, "plan_id": created_plan["id"]},
+    )
+    assert start_response.status_code == 200
+    return created_plan
+
+
+def start_classroom_session_for_plan(
+    client: TestClient,
+    teacher_headers: dict[str, str],
+    *,
+    class_id: int,
+    plan_id: int,
+) -> int:
+    start_response = client.post(
+        f"{API_PREFIX}/classroom/sessions",
+        headers=teacher_headers,
+        json={"class_id": class_id, "plan_id": plan_id},
+    )
+    assert start_response.status_code == 200
+    return start_response.json()["data"]["session"]["session_id"]
+
+
 def test_application_title_and_health():
     assert app.title == "LearnSite API"
     with TestClient(app) as client:
@@ -106,7 +175,15 @@ def test_cors_preflight_allows_local_dev_origins():
 
 def test_student_login_auto_signs_from_bound_loopback_ip():
     with TestClient(app) as client:
-        headers = student_headers(client, username="70105", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+        login_response = client.post(
+            f"{API_PREFIX}/auth/student/login",
+            json={"username": "70105", "password": "12345"},
+            headers={"x-learnsite-device-ip": "127.0.0.1"},
+        )
+        assert login_response.status_code == 200
+        login_payload = login_response.json()["data"]
+        assert login_payload["expires_at"]
+        headers = {"Authorization": f"Bearer {login_payload['access_token']}"}
         me_response = client.get(f"{API_PREFIX}/auth/me", headers=headers)
         home_response = client.get(f"{API_PREFIX}/lesson-plans/student/home", headers=headers)
         teacher = staff_headers(client, "t1")
@@ -133,6 +210,29 @@ def test_student_login_auto_signs_from_bound_loopback_ip():
     assert sum(1 for item in roster["seats"] if item["student"]) == roster["checked_in_count"]
 
 
+def test_expired_access_token_is_rejected():
+    with SessionLocal() as session:
+        user = session.scalar(select(User).where(User.username == "70101"))
+        assert user is not None
+        expired_token, expires_at = create_access_token(
+            user_id=user.id,
+            user_type=user.user_type,
+            username=user.username,
+            issued_at=datetime.now(UTC) - timedelta(minutes=settings.session_ttl_minutes + 5),
+        )
+
+    assert expires_at < datetime.now(UTC)
+
+    with TestClient(app) as client:
+        response = client.get(
+            f"{API_PREFIX}/auth/me",
+            headers={"Authorization": f"Bearer {expired_token}"},
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Session expired"
+
+
 def test_student_can_open_reading_task_and_mark_it_read():
     with TestClient(app) as client:
         headers = student_headers(client, username="70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
@@ -157,6 +257,19 @@ def test_student_can_open_reading_task_and_mark_it_read():
         assert refreshed_response.status_code == 200
         refreshed_payload = refreshed_response.json()["data"]
         assert refreshed_payload["reading_progress"]["is_read"] is True
+
+
+def test_student_cannot_access_unassigned_task():
+    with TestClient(app) as client:
+        headers = student_headers(client, username="70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+
+        detail_response = client.get(f"{API_PREFIX}/tasks/63", headers=headers)
+        assert detail_response.status_code == 403
+        assert detail_response.json()["detail"] == "Current user cannot access this task"
+
+        mark_read_response = client.post(f"{API_PREFIX}/tasks/63/mark-read", headers=headers)
+        assert mark_read_response.status_code == 403
+        assert mark_read_response.json()["detail"] == "Current user cannot access this task"
 
 
 def test_student_personal_drive_upload_download_and_delete():
@@ -421,6 +534,7 @@ def test_staff_can_manage_groups_rebuild_and_adjust_leader():
         teacher = staff_headers(client, "t1")
         dashboard_payload = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
         class_701 = dashboard_payload["launchpad"]["classes"][0]
+        start_classroom_session_for_plan(client, teacher, class_id=class_701["id"], plan_id=22)
 
         initial_management = client.get(
             f"{API_PREFIX}/staff/classes/{class_701['id']}/group-management",
@@ -593,6 +707,8 @@ def test_student_and_staff_can_see_group_activity_feed():
 
 def test_group_programming_task_shared_draft_is_visible_to_all_members():
     with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        start_classroom_session_for_plan(client, teacher, class_id=1, plan_id=22)
         student_a = student_headers(client, username="70101")
         student_b = student_headers(client, username="70102")
         task_id = 83
@@ -685,6 +801,8 @@ def test_group_programming_task_shared_draft_is_visible_to_all_members():
 
 def test_group_draft_history_endpoint_returns_versions_and_final_snapshot():
     with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        start_classroom_session_for_plan(client, teacher, class_id=1, plan_id=22)
         student_a = student_headers(client, username="70101")
         student_b = student_headers(client, username="70102")
         task_id = 83
@@ -894,6 +1012,7 @@ def test_staff_can_view_group_task_progress_by_class_and_plan():
         class_701 = dashboard_payload["launchpad"]["classes"][0]
         plan_id = 22
         task_id = 83
+        start_classroom_session_for_plan(client, teacher, class_id=class_701["id"], plan_id=plan_id)
 
         initial_progress = client.get(
             f"{API_PREFIX}/staff/classes/{class_701['id']}/plans/{plan_id}/group-task-progress",
@@ -3899,27 +4018,15 @@ def test_staff_can_close_classroom_session_from_session_center():
     with TestClient(app) as client:
         teacher = staff_headers(client, "t1")
 
-        launchpad_response = client.get(f"{API_PREFIX}/classroom/launchpad", headers=teacher)
-        assert launchpad_response.status_code == 200
-        launchpad_payload = launchpad_response.json()["data"]
-
-        session_id: int | None = None
-        if launchpad_payload["active_sessions"]:
-            session_id = launchpad_payload["active_sessions"][0]["session_id"]
-        else:
-            dashboard_payload = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
-            available_classes = dashboard_payload["launchpad"]["classes"]
-            assert available_classes
-            plan_id = dashboard_payload["launchpad"]["ready_plans"][0]["id"]
-            create_response = client.post(
-                f"{API_PREFIX}/classroom/sessions",
-                headers=teacher,
-                json={"class_id": available_classes[0]["id"], "plan_id": plan_id},
-            )
-            assert create_response.status_code == 200
-            session_id = create_response.json()["data"]["session"]["session_id"]
-
-        assert session_id is not None
+        dashboard_payload = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
+        available_classes = dashboard_payload["launchpad"]["classes"]
+        assert available_classes
+        session_id = start_classroom_session_for_plan(
+            client,
+            teacher,
+            class_id=available_classes[0]["id"],
+            plan_id=22,
+        )
 
         close_response = client.post(f"{API_PREFIX}/classroom/sessions/{session_id}/close", headers=teacher)
         assert close_response.status_code == 200

@@ -14,8 +14,15 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps.auth import TASK_RUNTIME_COOKIE_NAME, get_current_user, require_student
 from app.api.deps.db import get_db
-from app.core.security import decode_access_token
+from app.core.config import settings
+from app.core.security import (
+    create_task_runtime_token,
+    decode_access_token,
+    decode_task_runtime_token,
+    is_access_token_expired,
+)
 from app.models import (
+    ClassroomSession,
     CurriculumLesson,
     CurriculumUnit,
     GroupTaskDraft,
@@ -23,6 +30,7 @@ from app.models import (
     LessonPlan,
     StudentGroup,
     StudentGroupMember,
+    StudentLessonPlanProgress,
     StudentProfile,
     Submission,
     SubmissionFile,
@@ -41,6 +49,7 @@ from app.services.classroom_switches import (
     serialize_classroom_capabilities,
 )
 from app.services.group_operation_logs import log_group_operation
+from app.services.staff_access import staff_can_access_class
 from app.services.student_groups import load_student_group_membership
 from app.services.submission_files import (
     guess_media_type,
@@ -52,7 +61,7 @@ from app.services.task_assets import normalize_relative_path, resolve_asset_file
 
 router = APIRouter()
 SUPPORTED_TASK_ASSET_SLOTS = {"web", "data_submit_form", "data_submit_visualization"}
-TASK_RUNTIME_COOKIE_MAX_AGE = 60 * 60 * 8
+TASK_RUNTIME_COOKIE_MAX_AGE = settings.task_runtime_ttl_seconds
 
 
 class GroupTaskDraftUpdateRequest(BaseModel):
@@ -80,6 +89,65 @@ def load_task(task_id: int, db: Session) -> Task:
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     return task
+
+
+def student_can_access_task(student: User, task: Task, db: Session) -> bool:
+    if student.user_type != "student":
+        return False
+    progress_exists = db.scalar(
+        select(StudentLessonPlanProgress.id).where(
+            StudentLessonPlanProgress.student_id == student.id,
+            StudentLessonPlanProgress.plan_id == task.plan_id,
+        )
+    )
+    return progress_exists is not None
+
+
+def staff_can_access_task(staff: User, task: Task, db: Session) -> bool:
+    if staff.user_type != "staff":
+        return False
+
+    session_class_ids = list(
+        db.scalars(
+            select(ClassroomSession.class_id)
+            .where(ClassroomSession.plan_id == task.plan_id)
+            .distinct()
+        ).all()
+    )
+    if session_class_ids:
+        return any(staff_can_access_class(staff, class_id, db) for class_id in session_class_ids)
+
+    progress_class_ids = list(
+        db.scalars(
+            select(StudentProfile.class_id)
+            .join(StudentLessonPlanProgress, StudentLessonPlanProgress.student_id == StudentProfile.user_id)
+            .where(StudentLessonPlanProgress.plan_id == task.plan_id)
+            .distinct()
+        ).all()
+    )
+    if progress_class_ids:
+        return any(staff_can_access_class(staff, class_id, db) for class_id in progress_class_ids)
+
+    # Draft / unassigned plans do not expose enough class bindings to scope staff preview more narrowly yet.
+    return True
+
+
+def user_can_access_task(user: User, task: Task, db: Session, *, allow_staff: bool = False) -> bool:
+    if user.user_type == "student":
+        return student_can_access_task(user, task, db)
+    if allow_staff and user.user_type == "staff":
+        return staff_can_access_task(user, task, db)
+    return False
+
+
+def ensure_user_can_access_task(user: User, task: Task, db: Session, *, allow_staff: bool = False) -> None:
+    if user_can_access_task(user, task, db, allow_staff=allow_staff):
+        return
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Current user cannot access this task")
+
+
+def ensure_student_can_access_task(student: User, task: Task, db: Session) -> None:
+    ensure_user_can_access_task(student, task, db, allow_staff=False)
 
 
 def task_submission_scope(task: Task) -> str:
@@ -308,36 +376,46 @@ def serialize_discussion_post(post: TaskDiscussionPost) -> dict:
     }
 
 
-def parse_query_token_user(task: Task, access_token: str | None, db: Session) -> User | None:
+def parse_access_token_user(access_token: str | None, db: Session) -> User | None:
     if not access_token:
         return None
     token_data = decode_access_token(access_token)
     if token_data is None:
         return None
+    if is_access_token_expired(token_data):
+        return None
     user = db.get(User, int(token_data.get("user_id", 0)))
     if user is None or not user.is_active:
         return None
-    if user.user_type == "student":
-        # Keep access model consistent with current task APIs: a logged-in student can access task payload.
-        return user
-    if user.user_type == "staff":
-        return user
-    return None
+    return user
 
 
-def extract_request_access_token(request: Request, access_token: str | None = None) -> str | None:
-    token_to_validate = (access_token or "").strip()
-    if token_to_validate:
-        return token_to_validate
+def parse_task_runtime_user(request: Request, task: Task, db: Session) -> User | None:
+    runtime_token = (request.cookies.get(TASK_RUNTIME_COOKIE_NAME) or "").strip()
+    if not runtime_token:
+        return None
+    token_data = decode_task_runtime_token(runtime_token)
+    if token_data is None:
+        return None
+    if is_access_token_expired(token_data):
+        return None
+    if int(token_data.get("task_id", 0)) != task.id:
+        return None
+    user = db.get(User, int(token_data.get("user_id", 0)))
+    if user is None or not user.is_active:
+        return None
+    if not user_can_access_task(user, task, db, allow_staff=True):
+        return None
+    return user
 
+
+def extract_request_access_token(request: Request) -> str | None:
     authorization = request.headers.get("authorization", "")
     if authorization.lower().startswith("bearer "):
         bearer_token = authorization.split(" ", 1)[1].strip()
         if bearer_token:
             return bearer_token
-
-    cookie_token = (request.cookies.get(TASK_RUNTIME_COOKIE_NAME) or "").strip()
-    return cookie_token or None
+    return None
 
 
 def task_request_base_path(request: Request, task_id: int) -> str:
@@ -438,26 +516,20 @@ def inject_task_runtime_context(html_text: str, context: dict[str, object]) -> s
         "const detail=reason&&typeof reason==='object'&&'stack' in reason?String(reason.stack||''):'Check Promise / async logic.';"
         "reportPreviewIssue('unhandled_rejection',message||'Page has an unhandled async error',detail||'Check Promise / async logic.');"
         "});"
-        "const sameOriginFetch=async (input,init)=>{"
-        "const requestInit=Object.assign({credentials:'same-origin'},init||{});"
-        "try{"
-        "const response=await window.fetch(input,requestInit);"
-        "if(response&&response.status>=400){"
-        "const target=typeof input==='string'?input:((input&&input.url)||'');"
-        "reportPreviewIssue('http_error',`Request returned ${response.status}`,target);"
-        "}"
-        "return response;"
-        "}catch(error){"
-        "const target=typeof input==='string'?input:((input&&input.url)||'');"
-        "const message=error instanceof Error?error.message:String(error||'Request failed');"
-        "reportPreviewIssue('fetch_error',message,target);"
-        "throw error;"
-        "}"
-        "};"
+        "const nativeFetch=window.fetch.bind(window);"
+        "const toAbsoluteUrl=(input)=>{try{if(typeof input==='string'){return new URL(input,window.location.href).toString();}if(input&&typeof input.url==='string'){return new URL(input.url,window.location.href).toString();}}catch(error){}return String(input||'');};"
+        "const taskBaseUrl=toAbsoluteUrl(String(context.taskBasePath||''));"
+        "const pendingRuntimeRequests=new Map();"
+        "let runtimeRequestSeq=0;"
+        "const decodeBase64Bytes=(value)=>{const normalized=String(value||'');if(!normalized){return new Uint8Array();}const binary=window.atob(normalized);const bytes=new Uint8Array(binary.length);for(let index=0;index<binary.length;index+=1){bytes[index]=binary.charCodeAt(index);}return bytes;};"
+        "const encodeBodyValue=async (body)=>{if(body==null){return {kind:'empty',value:'',mimeType:''};}if(typeof body==='string'){return {kind:'text',value:body,mimeType:''};}if(typeof URLSearchParams!=='undefined'&&body instanceof URLSearchParams){return {kind:'text',value:body.toString(),mimeType:'application/x-www-form-urlencoded;charset=UTF-8'};}if(typeof Blob!=='undefined'&&body instanceof Blob){const buffer=await body.arrayBuffer();const bytes=new Uint8Array(buffer);let binary='';for(let index=0;index<bytes.length;index+=1){binary+=String.fromCharCode(bytes[index]);}return {kind:'base64',value:window.btoa(binary),mimeType:body.type||''};}return {kind:'text',value:String(body),mimeType:''};};"
+        "window.addEventListener('message',(event)=>{const payload=event.data;if(!payload||payload.source!=='learnsite-task-runtime-response'||typeof payload.requestId!=='string'){return;}const pending=pendingRuntimeRequests.get(payload.requestId);if(!pending){return;}pendingRuntimeRequests.delete(payload.requestId);if(payload.error){pending.reject(new Error(String(payload.error||'Runtime request failed')));return;}const bodyBytes=decodeBase64Bytes(payload.bodyBase64||'');const headers=new Headers(payload.headers||{});pending.resolve(new Response(bodyBytes.byteLength?bodyBytes:null,{status:Number(payload.status||200),statusText:String(payload.statusText||''),headers}));});"
+        "const requestParentFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const requestInit=Object.assign({},init||{});const method=String(requestInit.method||((typeof Request!=='undefined'&&input instanceof Request)?input.method:'GET')||'GET').toUpperCase();const baseHeaders=requestInit.headers||((typeof Request!=='undefined'&&input instanceof Request)?input.headers:undefined)||{};const headers=new Headers(baseHeaders);const bodyPayload=await encodeBodyValue(requestInit.body);const requestId=`task-runtime:${previewKey}:${Date.now()}:${runtimeRequestSeq+=1}`;return await new Promise((resolve,reject)=>{pendingRuntimeRequests.set(requestId,{resolve,reject});try{if(window.parent&&window.parent!==window){window.parent.postMessage({source:'learnsite-task-runtime-request',requestId,previewKey,taskId:Number(context.taskId||0),url:absoluteUrl,method,headers:Object.fromEntries(headers.entries()),bodyKind:bodyPayload.kind,bodyValue:bodyPayload.value,bodyMimeType:bodyPayload.mimeType||''},previewParentOrigin||'*');return;}pendingRuntimeRequests.delete(requestId);reject(new Error('Preview parent is unavailable'));}catch(error){pendingRuntimeRequests.delete(requestId);reject(error instanceof Error?error:new Error('Preview parent is unavailable'));}});};"
+        "const runtimeFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const target=typeof input==='string'?input:((input&&input.url)||absoluteUrl);try{const response=taskBaseUrl&&absoluteUrl.startsWith(taskBaseUrl)?await requestParentFetch(input,init):await nativeFetch(input,init);if(response&&response.status>=400){reportPreviewIssue('http_error',`Request returned ${response.status}`,target);}return response;}catch(error){const message=error instanceof Error?error.message:String(error||'Request failed');reportPreviewIssue('fetch_error',message,target);throw error;}};"
         "window.__LEARNSITE_TASK_HELPERS__={"
-        "fetch:sameOriginFetch,"
+        "fetch:runtimeFetch,"
         "async getJson(input,init){"
-        "const response=await sameOriginFetch(input,init);"
+        "const response=await runtimeFetch(input,init);"
         "if(!response.ok){throw new Error((await response.text())||`Request failed: ${response.status}`);}"
         "return response.json();"
         "},"
@@ -468,9 +540,10 @@ def inject_task_runtime_context(html_text: str, context: dict[str, object]) -> s
         "options.method=options.method||'POST';"
         "options.headers=headers;"
         "options.body=JSON.stringify(data);"
-        "return sameOriginFetch(input,options);"
+        "return runtimeFetch(input,options);"
         "}"
         "};"
+        "window.fetch=runtimeFetch;"
         "})();"
         "</script>"
     )
@@ -938,6 +1011,7 @@ def task_detail(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     capability_context = build_student_classroom_context(student, db, request)
     programming_enabled, programming_message = (
         resolve_feature_access(capability_context, "programming_control")
@@ -982,13 +1056,46 @@ def task_detail(
     )
 
 
+@router.post("/{task_id}/runtime-session", response_model=ApiResponse)
+def create_task_runtime_session(
+    task_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    task = load_task(task_id, db)
+    ensure_user_can_access_task(user, task, db, allow_staff=True)
+    runtime_token, expires_at = create_task_runtime_token(
+        user_id=user.id,
+        user_type=user.user_type,
+        username=user.username,
+        task_id=task.id,
+        ttl_seconds=TASK_RUNTIME_COOKIE_MAX_AGE,
+    )
+    response = ApiResponse(
+        data={
+            "task_id": task.id,
+            "expires_at": expires_at.isoformat(),
+            "asset_base_path": build_absolute_api_url(request, f"/api/v1/tasks/{task.id}/assets"),
+        }
+    )
+    response.set_cookie(
+        key=TASK_RUNTIME_COOKIE_NAME,
+        value=runtime_token,
+        max_age=TASK_RUNTIME_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path=f"/api/v1/tasks/{task.id}/",
+    )
+    return response
+
+
 @router.get("/{task_id}/assets/{slot}/{asset_path:path}")
 def task_asset_file(
     task_id: int,
     slot: str,
     asset_path: str,
     request: Request,
-    access_token: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     task = load_task(task_id, db)
@@ -998,9 +1105,12 @@ def task_asset_file(
     if normalized_slot not in allowed_asset_slots_for_task(task):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
 
-    token_to_validate = extract_request_access_token(request, access_token)
-    if parse_query_token_user(task, token_to_validate, db) is None:
+    runtime_user = parse_task_runtime_user(request, task, db)
+    if runtime_user is None:
+        runtime_user = parse_access_token_user(extract_request_access_token(request), db)
+    if runtime_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+    ensure_user_can_access_task(runtime_user, task, db, allow_staff=True)
 
     try:
         normalized_path = normalize_relative_path(asset_path)
@@ -1032,25 +1142,17 @@ def task_asset_file(
     else:
         response = FileResponse(path=file_path, media_type=asset.content_type, filename=asset.original_name)
 
-    if token_to_validate:
-        response.set_cookie(
-            key=TASK_RUNTIME_COOKIE_NAME,
-            value=token_to_validate,
-            max_age=TASK_RUNTIME_COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="lax",
-            path=f"{task_request_base_path(request, task_id)}/",
-        )
     return response
 
 
 @router.get("/{task_id}/discussion", response_model=ApiResponse)
 def task_discussion_feed(
     task_id: int,
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_user_can_access_task(user, task, db, allow_staff=True)
     if (task.task_type or "").strip().lower() != "discussion":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
 
@@ -1095,6 +1197,7 @@ def create_task_discussion_post(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     if (task.task_type or "").strip().lower() != "discussion":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
 
@@ -1148,12 +1251,13 @@ def submit_task_data_payload(
     if not expected_token or expected_token != endpoint_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据提交接口不存在")
 
-    submitted_by_user_id: int | None = None
-    token = extract_request_access_token(request)
-    if token:
-        user = parse_query_token_user(task, token, db)
-        if user is not None:
-            submitted_by_user_id = user.id
+    user = parse_task_runtime_user(request, task, db)
+    if user is None:
+        user = parse_access_token_user(extract_request_access_token(request), db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+    ensure_user_can_access_task(user, task, db, allow_staff=True)
+    submitted_by_user_id: int | None = user.id
 
     serialized_payload = json.dumps(payload, ensure_ascii=False)
     if len(serialized_payload) > 200_000:
@@ -1183,11 +1287,17 @@ def submit_task_data_payload(
 def data_submit_records(
     task_id: int,
     endpoint_token: str,
+    request: Request,
     limit: int = Query(default=100, ge=1, le=300),
-    _: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    user = parse_task_runtime_user(request, task, db)
+    if user is None:
+        user = parse_access_token_user(extract_request_access_token(request), db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+    ensure_user_can_access_task(user, task, db, allow_staff=True)
     if (task.task_type or "").strip().lower() != "data_submit":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
 
@@ -1242,6 +1352,7 @@ def task_prerequisites(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     capability_context = build_student_classroom_context(student, db, request)
     blocked_items: list[dict] = []
     if is_programming_task(task):
@@ -1273,6 +1384,7 @@ def mark_task_as_read(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     if task.task_type != "reading":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有阅读任务支持已读确认")
 
@@ -1307,6 +1419,7 @@ def group_task_draft_history(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     if not is_group_submission_task(task):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是小组共同提交任务")
 
@@ -1337,6 +1450,7 @@ def update_group_task_draft(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     if not is_group_submission_task(task):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是小组共同提交任务")
 
@@ -1418,6 +1532,7 @@ async def submit_task(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
+    ensure_student_can_access_task(student, task, db)
     capability_context = build_student_classroom_context(student, db, request)
     if is_programming_task(task):
         ensure_feature_access(capability_context, "programming_control")

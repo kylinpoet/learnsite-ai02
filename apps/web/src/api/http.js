@@ -1,3 +1,4 @@
+import { clearPersistedSession, hasPersistedToken, notifySessionExpired } from '@/stores/authSession';
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 async function apiFetch(path, options = {}) {
     const headers = new Headers();
@@ -19,6 +20,10 @@ async function apiFetch(path, options = {}) {
     });
 }
 async function readApiError(response) {
+    if (response.status === 401 && hasPersistedToken()) {
+        clearPersistedSession();
+        notifySessionExpired();
+    }
     const contentType = response.headers.get('content-type') || '';
     if (contentType.includes('application/json')) {
         const payload = await response.json();

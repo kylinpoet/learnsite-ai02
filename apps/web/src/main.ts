@@ -8,6 +8,7 @@ import App from './App.vue';
 import router from './router';
 import { useAppStore } from './stores/app';
 import { useAuthStore } from './stores/auth';
+import { authSessionExpiredEvent } from './stores/authSession';
 import './styles/theme.css';
 import './styles/base.css';
 
@@ -19,6 +20,20 @@ useAppStore(pinia).initialize();
 
 const authStore = useAuthStore(pinia);
 authStore.initialize();
+
+if (typeof window !== 'undefined') {
+  window.addEventListener(authSessionExpiredEvent, () => {
+    authStore.clearSession();
+    const currentPath = router.currentRoute.value.path;
+    if (currentPath.startsWith('/staff')) {
+      void router.replace('/login/staff');
+      return;
+    }
+    if (currentPath.startsWith('/student')) {
+      void router.replace('/login/student');
+    }
+  });
+}
 
 app.use(router);
 app.use(ElementPlus);

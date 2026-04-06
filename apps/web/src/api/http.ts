@@ -1,3 +1,9 @@
+import {
+  clearPersistedSession,
+  hasPersistedToken,
+  notifySessionExpired,
+} from '@/stores/authSession';
+
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 type HttpMethod = 'DELETE' | 'GET' | 'POST' | 'PUT';
@@ -37,6 +43,11 @@ async function apiFetch(path: string, options: RequestOptions = {}) {
 }
 
 async function readApiError(response: Response) {
+  if (response.status === 401 && hasPersistedToken()) {
+    clearPersistedSession();
+    notifySessionExpired();
+  }
+
   const contentType = response.headers.get('content-type') || '';
 
   if (contentType.includes('application/json')) {

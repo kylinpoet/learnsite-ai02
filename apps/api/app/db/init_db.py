@@ -1171,17 +1171,5 @@ def init_db() -> None:
     ensure_runtime_schema()
 
     with SessionLocal() as session:
-        has_user = session.scalar(select(User.id).limit(1))
-        if not has_user:
-            seed_fresh_demo_data(session)
-            ensure_demo_group_tasks(session)
-            session.commit()
-            return
-
-        if session.scalar(select(AIProvider.id).limit(1)) is None:
-            seed_ai_providers(session)
         ensure_system_setting_defaults(session)
-        ensure_seed_student_groups(session)
-        ensure_demo_group_tasks(session)
-        ensure_seed_submission_storage(session)
         session.commit()

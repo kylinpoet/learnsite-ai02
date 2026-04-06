@@ -35,6 +35,35 @@ type TaskAssetUploadResponse = {
   assets: TaskAssetManifestItem[];
 };
 
+type TaskRuntimeSessionPayload = {
+  task_id: number;
+  expires_at: string | null;
+  asset_base_path: string;
+};
+
+type TaskRuntimeRequestMessage = {
+  source: 'learnsite-task-runtime-request';
+  requestId: string;
+  previewKey?: string;
+  taskId: number | null;
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  bodyKind?: 'empty' | 'text' | 'base64';
+  bodyValue?: string;
+  bodyMimeType?: string;
+};
+
+type TaskRuntimeResponseMessage = {
+  source: 'learnsite-task-runtime-response';
+  requestId: string;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  error?: string;
+};
+
 type UseTaskPreviewAssetsOptions = {
   authToken: Ref<string | null | undefined>;
   apiBaseUrl: string;
@@ -62,6 +91,7 @@ type UseTaskPreviewAssetsOptions = {
   ) => void;
   revealTaskPreview: (task: PlanFormTask, slot: TaskAssetSlot) => void;
   isTaskPersisted: (task: Pick<PlanFormTask, 'id'>) => boolean;
+  findTaskById?: (taskId: number) => PlanFormTask | null;
 };
 
 function encodeAssetPath(path: string) {
@@ -83,6 +113,7 @@ function isTaskPreviewMessagePayload(value: unknown): value is TaskPreviewMessag
     typeof payload.code === 'string'
   );
 }
+
 
 export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
   const uploadingTaskAssetKey = ref<string | null>(null);

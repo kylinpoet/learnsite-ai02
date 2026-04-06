@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>数据提交任务 - 可视化页</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        background: linear-gradient(180deg, #fffaf2 0%, #ffffff 100%);
+        color: #3c2f1f;
+      }
+      .shell {
+        max-width: 980px;
+        margin: 0 auto;
+        display: grid;
+        gap: 18px;
+      }
+      .metrics {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      }
+      .card {
+        padding: 18px;
+        border-radius: 20px;
+        background: #ffffff;
+        box-shadow: 0 16px 34px rgba(180, 122, 53, 0.12);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 10px 8px;
+        border-bottom: 1px solid #efe3cf;
+        text-align: left;
+      }
+      #status {
+        color: #7d6648;
+      }
+      .api-box {
+        padding: 14px 16px;
+        border-radius: 16px;
+        background: #fff1d9;
+        color: #7d6648;
+        font-size: 13px;
+        line-height: 1.7;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="api-box">
+        <strong>读取接口：</strong>
+        <span>http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881/records</span>
+      </section>
+      <section class="metrics">
+        <article class="card">
+          <p>提交总数</p>
+          <h2 id="record-count">0</h2>
+        </article>
+        <article class="card">
+          <p>平均分</p>
+          <h2 id="average-score">--</h2>
+        </article>
+      </section>
+
+      <section class="card">
+        <h1>数据提交任务</h1>
+        <p id="status">保存学案并进入学生端后，这里会自动读取最新提交记录。</p>
+        <table>
+          <thead>
+            <tr>
+              <th>提交时间</th>
+              <th>提交者</th>
+              <th>姓名</th>
+              <th>分数</th>
+              <th>备注</th>
+            </tr>
+          </thead>
+          <tbody id="records-body">
+            <tr>
+              <td colspan="5">暂无数据</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+    <script>
+      const RECORDS_API_URL = "http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881/records";
+      const statusElement = document.getElementById('status');
+      const bodyElement = document.getElementById('records-body');
+      const countElement = document.getElementById('record-count');
+      const averageElement = document.getElementById('average-score');
+
+      async function loadRecords() {
+        if (!RECORDS_API_URL) {
+          statusElement.textContent = '读取接口尚未生成';
+          return;
+        }
+
+        try {
+          const response = await fetch(RECORDS_API_URL);
+          if (!response.ok) {
+            throw new Error((await response.text()) || '读取失败');
+          }
+          const payload = await response.json();
+          const items = payload.data?.items || [];
+          countElement.textContent = String(items.length);
+          const scores = items
+            .map((item) => Number(item.payload?.score))
+            .filter((value) => !Number.isNaN(value));
+          averageElement.textContent = scores.length
+            ? String((scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1))
+            : '--';
+
+          if (!items.length) {
+            bodyElement.innerHTML = '<tr><td colspan="5">暂无数据</td></tr>';
+            statusElement.textContent = '暂时还没有提交数据';
+            return;
+          }
+
+          bodyElement.innerHTML = items
+            .map((item) => {
+              const payload = item.payload || {};
+              return '<tr>' +
+                '<td>' + (item.created_at || '--') + '</td>' +
+                '<td>' + (item.submitted_by?.display_name || '--') + '</td>' +
+                '<td>' + (payload.student_name || '--') + '</td>' +
+                '<td>' + (payload.score ?? '--') + '</td>' +
+                '<td>' + (payload.note || '--') + '</td>' +
+              '</tr>';
+            })
+            .join('');
+          statusElement.textContent = '已读取最新数据';
+        } catch (error) {
+          statusElement.textContent = error instanceof Error ? error.message : '读取失败，请稍后再试';
+        }
+      }
+
+      loadRecords();
+    </script>
+  </body>
+</html>

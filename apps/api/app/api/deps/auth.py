@@ -1,9 +1,9 @@
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.api.deps.db import get_db
-from app.core.security import decode_access_token
+from app.core.security import decode_access_token, is_access_token_expired
 from app.models import User
 from app.services.staff_access import is_admin_staff
 
@@ -13,10 +13,9 @@ TASK_RUNTIME_COOKIE_NAME = "learnsite_task_token"
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    task_runtime_token: str | None = Cookie(default=None, alias=TASK_RUNTIME_COOKIE_NAME),
     db: Session = Depends(get_db),
 ) -> User:
-    raw_token = credentials.credentials if credentials is not None else (task_runtime_token or "").strip()
+    raw_token = credentials.credentials if credentials is not None else ""
     if not raw_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -28,6 +27,11 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid access token",
+        )
+    if is_access_token_expired(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session expired",
         )
 
     user = db.get(User, token_data["user_id"])

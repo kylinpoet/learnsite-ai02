@@ -149,11 +149,9 @@ Write-Host ""
 Write-Host "LearnSite development windows launched." -ForegroundColor Green
 Write-Host "API      $apiStatus http://$ApiHost`:$ApiPort"
 Write-Host "Web      $webStatus http://$WebHost`:$WebPort"
-Write-Host "Student  70101 / 12345"
-Write-Host "Students 70101-70110, 70201-70210, 70301-70310, 80901-80910, 81201-81210 / 12345"
-Write-Host "Teacher  t1 / 222221"
-Write-Host "Teacher2 t2 / 222221"
-Write-Host "Admin    admin / 222221"
+Write-Host "Demo seed (explicit)  npm run dev:seed-demo"
+Write-Host "After seeding: Student 70101 / 12345"
+Write-Host "After seeding: Teacher t1 / 222221 | Teacher2 t2 / 222221 | Admin admin / 222221"
 Write-Host ""
 Write-Host "Note: the browser should open the frontend URL. API requests stay same-origin at /api/v1 and are proxied to $ApiHost`:$ApiPort by Vite." -ForegroundColor Cyan
-Write-Host "Demo: student login will auto-match bound seat IP and mark today's attendance." -ForegroundColor Cyan
+Write-Host "Demo attendance and sample accounts are available only after the explicit seed command." -ForegroundColor Cyan

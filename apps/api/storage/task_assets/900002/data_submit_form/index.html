@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>数据提交任务 - 学生提交页</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        background: linear-gradient(180deg, #f4f7ff 0%, #ffffff 100%);
+        color: #24324a;
+      }
+      .panel {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 24px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 18px 42px rgba(66, 97, 162, 0.14);
+      }
+      form {
+        display: grid;
+        gap: 14px;
+      }
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 14px;
+      }
+      input,
+      textarea {
+        border: 1px solid #cfd8ea;
+        border-radius: 14px;
+        padding: 10px 12px;
+        font: inherit;
+      }
+      button {
+        border: none;
+        border-radius: 999px;
+        padding: 10px 18px;
+        background: #4261a2;
+        color: #fff;
+        cursor: pointer;
+      }
+      #status {
+        min-height: 24px;
+        color: #5a6786;
+      }
+      .api-box {
+        margin: 0 0 16px;
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: #eef4ff;
+        color: #30456f;
+        font-size: 13px;
+        line-height: 1.7;
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <h1>数据提交任务</h1>
+      <p>这是数据提交任务的默认提交页模板。当前页面已经直连真实提交接口，教师后台可直接预览并继续改造。</p>
+      <div class="api-box">
+        <strong>提交接口：</strong>
+        <span>http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881</span>
+      </div>
+      <form id="submit-form">
+        <label>
+          学生姓名
+          <input id="student-name" name="student_name" placeholder="请输入姓名" />
+        </label>
+        <label>
+          分数
+          <input id="student-score" name="score" type="number" min="0" max="100" step="1" placeholder="请输入分数" />
+        </label>
+        <label>
+          补充说明
+          <textarea id="student-note" name="note" rows="4" placeholder="补充说明你的实验结果或观察。"></textarea>
+        </label>
+        <button type="submit">提交数据</button>
+      </form>
+      <p id="status">保存学案并进入学生端后，可直接提交数据。</p>
+    </main>
+    <script>
+      const formElement = document.getElementById('submit-form');
+      const statusElement = document.getElementById('status');
+      const SUBMIT_API_URL = "http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881";
+
+      formElement?.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (!SUBMIT_API_URL) {
+          statusElement.textContent = '提交接口尚未生成';
+          return;
+        }
+
+        const payload = {
+          student_name: document.getElementById('student-name')?.value || '',
+          score: Number(document.getElementById('student-score')?.value || 0),
+          note: document.getElementById('student-note')?.value || '',
+        };
+
+        try {
+          const response = await fetch(SUBMIT_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+          if (!response.ok) {
+            throw new Error((await response.text()) || '提交失败');
+          }
+          statusElement.textContent = '数据提交成功，已记录本次结果。';
+          formElement.reset();
+        } catch (error) {
+          statusElement.textContent = error instanceof Error ? error.message : '提交失败，请稍后再试';
+        }
+      });
+    </script>
+  </body>
+</html>

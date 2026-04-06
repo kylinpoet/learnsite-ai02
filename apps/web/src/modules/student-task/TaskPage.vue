@@ -140,6 +140,7 @@
                   <iframe
                     v-if="webTaskUrl"
                     :src="webTaskUrl"
+                    :sandbox="taskEmbedSandbox"
                     class="task-embed-frame"
                     title="网页任务"
                   ></iframe>
@@ -160,6 +161,7 @@
                         <iframe
                           v-if="dataSubmitFormUrl"
                           :src="dataSubmitFormUrl"
+                          :sandbox="taskEmbedSandbox"
                           class="task-embed-frame"
                           title="数据提交页"
                         ></iframe>
@@ -170,6 +172,7 @@
                       <iframe
                         v-if="dataSubmitVisualizationUrl"
                         :src="dataSubmitVisualizationUrl"
+                        :sandbox="taskEmbedSandbox"
                         class="task-embed-frame"
                         title="数据可视化页"
                       ></iframe>
@@ -389,7 +392,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -478,6 +481,35 @@ type TaskConfigState = {
   records_api_path: string;
 };
 
+type TaskRuntimeSessionPayload = {
+  task_id: number;
+  expires_at: string | null;
+  asset_base_path: string;
+};
+
+type TaskRuntimeRequestMessage = {
+  source: 'learnsite-task-runtime-request';
+  requestId: string;
+  previewKey?: string;
+  taskId: number;
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  bodyKind?: 'empty' | 'text' | 'base64';
+  bodyValue?: string;
+  bodyMimeType?: string;
+};
+
+type TaskRuntimeResponseMessage = {
+  source: 'learnsite-task-runtime-response';
+  requestId: string;
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  bodyBase64?: string;
+  error?: string;
+};
+
 type DiscussionPost = {
   id: number;
   task_id: number;
@@ -562,6 +594,8 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const taskEmbedSandbox = 'allow-scripts allow-forms allow-downloads';
+const runtimeSessionRefreshBufferMs = 15_000;
 
 const taskDetail = ref<TaskDetailPayload | null>(null);
 const submissionNote = ref('');
@@ -579,6 +613,8 @@ const discussionComposer = ref('');
 const isDiscussionLoading = ref(false);
 const isPostingDiscussion = ref(false);
 const dataSubmitActiveTab = ref<'submit' | 'visualization'>('submit');
+const taskRuntimeSessionExpiresAt = ref<string | null>(null);
+const taskRuntimeSessionLoading = ref(false);
 
 const currentSubmission = computed(() => taskDetail.value?.current_submission || null);
 const currentGroupDraft = computed(() => taskDetail.value?.group_draft || null);
@@ -820,6 +856,58 @@ function normalizeTaskConfig(rawConfig: unknown): TaskConfigState {
 
 const taskConfig = computed(() => normalizeTaskConfig(taskDetail.value?.config));
 
+function buildAbsoluteApiUrl(path: string) {
+  const normalized = path.trim();
+  if (!normalized) {
+    return '';
+  }
+  try {
+    return new URL(normalized, window.location.origin).toString();
+  } catch {
+    return normalized;
+  }
+}
+
+function parseTimestamp(value: string | null | undefined) {
+  if (!value) {
+    return 0;
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+const taskRuntimeSessionValid = computed(() => {
+  return parseTimestamp(taskRuntimeSessionExpiresAt.value) - runtimeSessionRefreshBufferMs > Date.now();
+});
+
+async function ensureTaskRuntimeSession(force = false) {
+  if (!taskDetail.value?.id || !authStore.token) {
+    return false;
+  }
+  if (!force && taskRuntimeSessionValid.value) {
+    return true;
+  }
+  if (taskRuntimeSessionLoading.value) {
+    return false;
+  }
+
+  taskRuntimeSessionLoading.value = true;
+  try {
+    const payload = await apiPost<TaskRuntimeSessionPayload>(
+      `/tasks/${taskDetail.value.id}/runtime-session`,
+      {},
+      authStore.token
+    );
+    taskRuntimeSessionExpiresAt.value = payload.expires_at;
+    return true;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '任务运行时会话初始化失败';
+    return false;
+  } finally {
+    taskRuntimeSessionLoading.value = false;
+  }
+}
+
 function encodeAssetPath(path: string) {
   return path
     .split('/')
@@ -829,10 +917,16 @@ function encodeAssetPath(path: string) {
 }
 
 function taskAssetUrl(slot: 'web' | 'data_submit_form' | 'data_submit_visualization', entryPath: string) {
-  if (!taskDetail.value?.id || !authStore.token || !entryPath) {
+  if (!taskDetail.value?.id || !entryPath) {
     return '';
   }
-  return `${apiBaseUrl}/tasks/${taskDetail.value.id}/assets/${slot}/${encodeAssetPath(entryPath)}?access_token=${encodeURIComponent(authStore.token)}`;
+  if (!taskRuntimeSessionValid.value) {
+    void ensureTaskRuntimeSession();
+    return '';
+  }
+  return buildAbsoluteApiUrl(
+    `${apiBaseUrl}/tasks/${taskDetail.value.id}/assets/${slot}/${encodeAssetPath(entryPath)}`
+  );
 }
 
 const webTaskUrl = computed(() =>
@@ -973,6 +1067,136 @@ async function downloadSavedFile(file: TaskSubmissionFile) {
   }
 }
 
+function isTaskRuntimeRequestMessage(value: unknown): value is TaskRuntimeRequestMessage {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const payload = value as Partial<TaskRuntimeRequestMessage>;
+  return (
+    payload.source === 'learnsite-task-runtime-request' &&
+    typeof payload.requestId === 'string' &&
+    typeof payload.taskId === 'number' &&
+    typeof payload.url === 'string'
+  );
+}
+
+function toTaskRuntimeResponseMessage(
+  requestId: string,
+  payload: Omit<TaskRuntimeResponseMessage, 'source' | 'requestId'>
+): TaskRuntimeResponseMessage {
+  return {
+    source: 'learnsite-task-runtime-response',
+    requestId,
+    ...payload,
+  };
+}
+
+function postTaskRuntimeResponse(target: MessageEventSource | null, message: TaskRuntimeResponseMessage) {
+  if (!target || typeof (target as WindowProxy).postMessage !== 'function') {
+    return;
+  }
+  (target as WindowProxy).postMessage(message, '*');
+}
+
+function isAllowedTaskRuntimeUrl(rawUrl: string) {
+  if (!taskDetail.value?.id) {
+    return false;
+  }
+  try {
+    const targetUrl = new URL(rawUrl, window.location.href);
+    const taskBaseUrl = new URL(buildAbsoluteApiUrl(`${apiBaseUrl}/tasks/${taskDetail.value.id}/`));
+    return targetUrl.origin === taskBaseUrl.origin && targetUrl.pathname.startsWith(taskBaseUrl.pathname);
+  } catch {
+    return false;
+  }
+}
+
+function decodeTaskRuntimeBody(message: TaskRuntimeRequestMessage) {
+  if (message.bodyKind === 'text') {
+    return message.bodyValue || '';
+  }
+  if (message.bodyKind === 'base64') {
+    const binary = window.atob(message.bodyValue || '');
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new Blob([bytes], { type: message.bodyMimeType || 'application/octet-stream' });
+  }
+  return undefined;
+}
+
+async function encodeTaskRuntimeResponseBody(response: Response) {
+  const buffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  bytes.forEach((value) => {
+    binary += String.fromCharCode(value);
+  });
+  return window.btoa(binary);
+}
+
+async function forwardTaskRuntimeRequest(message: TaskRuntimeRequestMessage) {
+  const requestHeaders = new Headers(message.headers || {});
+  requestHeaders.delete('authorization');
+  requestHeaders.delete('cookie');
+
+  const executeFetch = async () =>
+    fetch(message.url, {
+      method: message.method || 'GET',
+      headers: requestHeaders,
+      body: decodeTaskRuntimeBody(message),
+      credentials: 'include',
+    });
+
+  let response = await executeFetch();
+  if (response.status === 401 && (await ensureTaskRuntimeSession(true))) {
+    response = await executeFetch();
+  }
+  return response;
+}
+
+async function handleTaskRuntimeMessage(event: MessageEvent) {
+  if (!isTaskRuntimeRequestMessage(event.data)) {
+    return;
+  }
+  const message = event.data;
+  if (!taskDetail.value?.id || message.taskId !== taskDetail.value.id) {
+    postTaskRuntimeResponse(
+      event.source,
+      toTaskRuntimeResponseMessage(message.requestId, { error: 'Task runtime target mismatch' })
+    );
+    return;
+  }
+  if (!isAllowedTaskRuntimeUrl(message.url)) {
+    postTaskRuntimeResponse(
+      event.source,
+      toTaskRuntimeResponseMessage(message.requestId, { error: 'Task runtime request is not allowed' })
+    );
+    return;
+  }
+
+  try {
+    await ensureTaskRuntimeSession();
+    const response = await forwardTaskRuntimeRequest(message);
+    const responseHeaders = Object.fromEntries(response.headers.entries());
+    const bodyBase64 = await encodeTaskRuntimeResponseBody(response);
+    postTaskRuntimeResponse(
+      event.source,
+      toTaskRuntimeResponseMessage(message.requestId, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        bodyBase64,
+      })
+    );
+  } catch (error) {
+    postTaskRuntimeResponse(
+      event.source,
+      toTaskRuntimeResponseMessage(message.requestId, {
+        error: error instanceof Error ? error.message : 'Task runtime request failed',
+      })
+    );
+  }
+}
+
 async function loadTask() {
   if (!authStore.token) {
     errorMessage.value = '请先登录学生账号';
@@ -986,6 +1210,11 @@ async function loadTask() {
   try {
     const payload = await apiGet<TaskDetailPayload>(`/tasks/${route.params.taskId}`, authStore.token);
     hydrateTaskDetail(payload);
+    if (payload.task_type === 'web_page' || payload.task_type === 'data_submit') {
+      await ensureTaskRuntimeSession(true);
+    } else {
+      taskRuntimeSessionExpiresAt.value = null;
+    }
     if (payload.task_type === 'discussion') {
       await loadDiscussionFeed();
     } else {
@@ -1156,7 +1385,14 @@ async function goToPeerReview() {
   await router.push(`/student/reviews/${route.params.taskId}`);
 }
 
-onMounted(loadTask);
+onMounted(() => {
+  window.addEventListener('message', handleTaskRuntimeMessage);
+  void loadTask();
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('message', handleTaskRuntimeMessage);
+});
 </script>
 
 <style scoped>
