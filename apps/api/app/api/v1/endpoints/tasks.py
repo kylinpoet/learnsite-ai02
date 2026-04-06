@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from math import ceil
 from pathlib import Path
 
@@ -28,6 +28,7 @@ from app.models import (
     GroupTaskDraft,
     GroupTaskDraftVersion,
     LessonPlan,
+    ResourceItem,
     StudentGroup,
     StudentGroupMember,
     StudentLessonPlanProgress,
@@ -38,6 +39,7 @@ from app.models import (
     TaskDataSubmission,
     TaskDiscussionPost,
     TaskReadRecord,
+    TaskResourceLink,
     TaskWebAsset,
     User,
 )
@@ -83,7 +85,13 @@ def load_task(task_id: int, db: Session) -> Task:
             selectinload(Task.lesson_plan)
             .selectinload(LessonPlan.lesson)
             .selectinload(CurriculumLesson.unit)
-            .selectinload(CurriculumUnit.book)
+            .selectinload(CurriculumUnit.book),
+            selectinload(Task.resource_links)
+            .selectinload(TaskResourceLink.resource_item)
+            .selectinload(ResourceItem.category),
+            selectinload(Task.resource_links)
+            .selectinload(TaskResourceLink.resource_item)
+            .selectinload(ResourceItem.owner_staff),
         )
     )
     if task is None:
@@ -255,6 +263,161 @@ def load_task_read_record(task_id: int, student_id: int, db: Session) -> TaskRea
     )
 
 
+def load_student_plan_progress(student_id: int, plan_id: int, db: Session) -> StudentLessonPlanProgress | None:
+    return db.scalar(
+        select(StudentLessonPlanProgress).where(
+            StudentLessonPlanProgress.student_id == student_id,
+            StudentLessonPlanProgress.plan_id == plan_id,
+        )
+    )
+
+
+def sync_student_lesson_plan_progress(task: Task, student: User, db: Session) -> None:
+    progress = load_student_plan_progress(student.id, task.plan_id, db)
+    if progress is None:
+        return
+
+    required_tasks = [item for item in task.lesson_plan.tasks if item.is_required]
+    if not required_tasks:
+        progress.progress_status = "completed"
+        progress.completed_date = progress.completed_date or date.today()
+        return
+
+    reading_task_ids = [item.id for item in required_tasks if item.task_type == "reading"]
+    discussion_task_ids = [item.id for item in required_tasks if item.task_type == "discussion"]
+    data_submit_task_ids = [item.id for item in required_tasks if item.task_type == "data_submit"]
+    individual_submission_task_ids = [
+        item.id
+        for item in required_tasks
+        if item.task_type not in {"reading", "discussion", "data_submit"} and not is_group_submission_task(item)
+    ]
+    group_submission_task_ids = [
+        item.id
+        for item in required_tasks
+        if item.task_type not in {"reading", "discussion", "data_submit"} and is_group_submission_task(item)
+    ]
+
+    completed_reading_ids = set(
+        db.scalars(
+            select(TaskReadRecord.task_id).where(
+                TaskReadRecord.student_id == student.id,
+                TaskReadRecord.task_id.in_(reading_task_ids or [-1]),
+            )
+        ).all()
+    )
+    completed_discussion_ids = set(
+        db.scalars(
+            select(TaskDiscussionPost.task_id)
+            .where(
+                TaskDiscussionPost.author_user_id == student.id,
+                TaskDiscussionPost.task_id.in_(discussion_task_ids or [-1]),
+            )
+            .distinct()
+        ).all()
+    )
+    completed_data_submit_ids = set(
+        db.scalars(
+            select(TaskDataSubmission.task_id)
+            .where(
+                TaskDataSubmission.submitted_by_user_id == student.id,
+                TaskDataSubmission.task_id.in_(data_submit_task_ids or [-1]),
+            )
+            .distinct()
+        ).all()
+    )
+    completed_individual_submission_ids = set(
+        db.scalars(
+            select(Submission.task_id)
+            .where(
+                Submission.student_id == student.id,
+                Submission.task_id.in_(individual_submission_task_ids or [-1]),
+            )
+            .distinct()
+        ).all()
+    )
+
+    completed_group_submission_ids: set[int] = set()
+    if group_submission_task_ids:
+        membership = load_student_group_for_task(student.id, db)
+        if membership is not None:
+            completed_group_submission_ids = set(
+                db.scalars(
+                    select(Submission.task_id)
+                    .where(
+                        Submission.group_id == membership.group_id,
+                        Submission.task_id.in_(group_submission_task_ids),
+                    )
+                    .distinct()
+                ).all()
+            )
+
+    is_completed = True
+    for plan_task in required_tasks:
+        if plan_task.task_type == "reading":
+            if plan_task.id not in completed_reading_ids:
+                is_completed = False
+                break
+            continue
+        if plan_task.task_type == "discussion":
+            if plan_task.id not in completed_discussion_ids:
+                is_completed = False
+                break
+            continue
+        if plan_task.task_type == "data_submit":
+            if plan_task.id not in completed_data_submit_ids:
+                is_completed = False
+                break
+            continue
+        if is_group_submission_task(plan_task):
+            if plan_task.id not in completed_group_submission_ids:
+                is_completed = False
+                break
+            continue
+        if plan_task.id not in completed_individual_submission_ids:
+            is_completed = False
+            break
+
+    progress.progress_status = "completed" if is_completed else "pending"
+    progress.completed_date = (progress.completed_date or date.today()) if is_completed else None
+
+
+def serialize_task_resource(resource_link: TaskResourceLink) -> dict | None:
+    resource = resource_link.resource_item
+    if resource is None or not resource.is_published:
+        return None
+
+    return {
+        "id": resource_link.id,
+        "task_id": resource_link.task_id,
+        "resource_id": resource.id,
+        "relation_type": resource_link.relation_type,
+        "sort_order": resource_link.sort_order,
+        "title": resource.title,
+        "resource_type": resource.resource_type,
+        "summary": resource.summary,
+        "content": resource.content,
+        "external_url": resource.external_url,
+        "owner_name": resource.owner_staff.display_name if resource.owner_staff else "系统内置",
+        "category": (
+            {
+                "id": resource.category.id,
+                "name": resource.category.name,
+            }
+            if resource.category
+            else None
+        ),
+    }
+
+
+def serialize_task_resources(task: Task) -> list[dict]:
+    items: list[dict] = []
+    for resource_link in task.resource_links:
+        serialized = serialize_task_resource(resource_link)
+        if serialized is not None:
+            items.append(serialized)
+    return items
+
+
 def load_recommended_submissions(task_id: int, db: Session) -> list[Submission]:
     submissions = db.scalars(
         select(Submission)
@@ -390,7 +553,13 @@ def parse_access_token_user(access_token: str | None, db: Session) -> User | Non
     return user
 
 
-def parse_task_runtime_user(request: Request, task: Task, db: Session) -> User | None:
+def parse_task_runtime_user(
+    request: Request,
+    task: Task,
+    db: Session,
+    *,
+    enforce_task_access: bool = True,
+) -> User | None:
     runtime_token = (request.cookies.get(TASK_RUNTIME_COOKIE_NAME) or "").strip()
     if not runtime_token:
         return None
@@ -404,7 +573,7 @@ def parse_task_runtime_user(request: Request, task: Task, db: Session) -> User |
     user = db.get(User, int(token_data.get("user_id", 0)))
     if user is None or not user.is_active:
         return None
-    if not user_can_access_task(user, task, db, allow_staff=True):
+    if enforce_task_access and not user_can_access_task(user, task, db, allow_staff=True):
         return None
     return user
 
@@ -415,7 +584,36 @@ def extract_request_access_token(request: Request) -> str | None:
         bearer_token = authorization.split(" ", 1)[1].strip()
         if bearer_token:
             return bearer_token
+    query_token = str(request.query_params.get("access_token") or "").strip()
+    if query_token:
+        return query_token
     return None
+
+
+def allows_runtime_preview_without_assignment(request: Request, task: Task, user: User) -> bool:
+    if task.lesson_plan.status != "draft":
+        return False
+    if user.user_type not in {"student", "staff"}:
+        return False
+    return bool(request.cookies.get(TASK_RUNTIME_COOKIE_NAME) or extract_request_access_token(request))
+
+
+def set_task_runtime_cookie(response: Response, user: User, task: Task) -> None:
+    runtime_token, _ = create_task_runtime_token(
+        user_id=user.id,
+        user_type=user.user_type,
+        username=user.username,
+        task_id=task.id,
+        ttl_seconds=TASK_RUNTIME_COOKIE_MAX_AGE,
+    )
+    response.set_cookie(
+        key=TASK_RUNTIME_COOKIE_NAME,
+        value=runtime_token,
+        max_age=TASK_RUNTIME_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        path=f"/api/v1/tasks/{task.id}/",
+    )
 
 
 def task_request_base_path(request: Request, task_id: int) -> str:
@@ -787,6 +985,7 @@ def serialize_task_detail(
             "allow_resubmit_until_reviewed": True,
             "draft_enabled": is_group_submission_task(task),
         },
+        "resources": serialize_task_resources(task),
         "task_navigation": serialize_task_navigation(task),
         "reading_progress": serialize_reading_progress(task, read_record),
         "group_collaboration": (
@@ -1105,12 +1304,15 @@ def task_asset_file(
     if normalized_slot not in allowed_asset_slots_for_task(task):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="资源不存在")
 
-    runtime_user = parse_task_runtime_user(request, task, db)
+    runtime_user = parse_task_runtime_user(request, task, db, enforce_task_access=False)
+    access_token_user: User | None = None
     if runtime_user is None:
-        runtime_user = parse_access_token_user(extract_request_access_token(request), db)
-    if runtime_user is None:
+        access_token_user = parse_access_token_user(extract_request_access_token(request), db)
+    active_user = runtime_user or access_token_user
+    if active_user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
-    ensure_user_can_access_task(runtime_user, task, db, allow_staff=True)
+    if not allows_runtime_preview_without_assignment(request, task, active_user):
+        ensure_user_can_access_task(active_user, task, db, allow_staff=True)
 
     try:
         normalized_path = normalize_relative_path(asset_path)
@@ -1141,6 +1343,9 @@ def task_asset_file(
         )
     else:
         response = FileResponse(path=file_path, media_type=asset.content_type, filename=asset.original_name)
+
+    if access_token_user is not None:
+        set_task_runtime_cookie(response, access_token_user, task)
 
     return response
 
@@ -1220,6 +1425,8 @@ def create_task_discussion_post(
         content=content,
     )
     db.add(post)
+    db.flush()
+    sync_student_lesson_plan_progress(task, student, db)
     db.commit()
 
     latest_post = db.scalar(
@@ -1251,12 +1458,13 @@ def submit_task_data_payload(
     if not expected_token or expected_token != endpoint_token:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="数据提交接口不存在")
 
-    user = parse_task_runtime_user(request, task, db)
+    user = parse_task_runtime_user(request, task, db, enforce_task_access=False)
     if user is None:
         user = parse_access_token_user(extract_request_access_token(request), db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
-    ensure_user_can_access_task(user, task, db, allow_staff=True)
+    if not allows_runtime_preview_without_assignment(request, task, user):
+        ensure_user_can_access_task(user, task, db, allow_staff=True)
     submitted_by_user_id: int | None = user.id
 
     serialized_payload = json.dumps(payload, ensure_ascii=False)
@@ -1270,6 +1478,9 @@ def submit_task_data_payload(
         payload_json=serialized_payload,
     )
     db.add(item)
+    db.flush()
+    if user.user_type == "student":
+        sync_student_lesson_plan_progress(task, user, db)
     db.commit()
 
     return ApiResponse(
@@ -1292,12 +1503,13 @@ def data_submit_records(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     task = load_task(task_id, db)
-    user = parse_task_runtime_user(request, task, db)
+    user = parse_task_runtime_user(request, task, db, enforce_task_access=False)
     if user is None:
         user = parse_access_token_user(extract_request_access_token(request), db)
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
-    ensure_user_can_access_task(user, task, db, allow_staff=True)
+    if not allows_runtime_preview_without_assignment(request, task, user):
+        ensure_user_can_access_task(user, task, db, allow_staff=True)
     if (task.task_type or "").strip().lower() != "data_submit":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
 
@@ -1391,7 +1603,10 @@ def mark_task_as_read(
     read_record = load_task_read_record(task.id, student.id, db)
     if read_record is None:
         db.add(TaskReadRecord(task_id=task.id, student_id=student.id, read_at=datetime.now()))
-        db.commit()
+        db.flush()
+
+    sync_student_lesson_plan_progress(task, student, db)
+    db.commit()
 
     latest_read_record = load_task_read_record(task.id, student.id, db)
     submission, group_membership = load_task_submission_for_student(task, student, db)
@@ -1622,6 +1837,7 @@ async def submit_task(
                 else (latest_draft.version_no if latest_draft is not None else None)
             ),
         )
+    sync_student_lesson_plan_progress(task, student, db)
     db.commit()
 
     latest_submission, latest_group_membership = load_task_submission_for_student(task, student, db)

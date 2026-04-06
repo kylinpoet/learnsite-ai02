@@ -1,7 +1,5 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
 import '@vueup/vue-quill/dist/vue-quill.snow.css';
 
 import App from './App.vue';
@@ -36,7 +34,6 @@ if (typeof window !== 'undefined') {
 }
 
 app.use(router);
-app.use(ElementPlus);
 
 async function bootstrap() {
   if (authStore.token) {

@@ -250,7 +250,9 @@
                     <div class="session-focus-head">
                       <div>
                         <h4>课堂任务聚焦</h4>
-                        <p class="section-note">任务卡内直接查看“未交/已交/已评”进度，减少跳页。</p>
+                        <p class="section-note">
+                          任务卡内直接查看阅读已读或作业提交进度，减少在课堂中频繁跳页。
+                        </p>
                       </div>
                     </div>
                     <el-empty v-if="!currentSession.tasks.length" description="当前学案还没有任务" />
@@ -272,45 +274,75 @@
                           </div>
 
                           <div class="task-progress-grid">
-                            <div class="task-progress-stat task-progress-stat--pending">
-                              <span>未交 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
-                              <span>{{ progressPercent(task.progress.pending_count, task.progress.slot_total) }}%</span>
-                            </div>
-                            <el-progress
-                              :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
-                              :stroke-width="8"
-                              status="exception"
-                              :show-text="false"
-                            />
-                            <div class="task-progress-stat">
-                              <span>已交 {{ task.progress.submitted_count }}/{{ task.progress.slot_total }}</span>
-                              <span>{{ progressPercent(task.progress.submitted_count, task.progress.slot_total) }}%</span>
-                            </div>
-                            <el-progress
-                              :percentage="progressPercent(task.progress.submitted_count, task.progress.slot_total)"
-                              :stroke-width="8"
-                              :show-text="false"
-                            />
-                            <div class="task-progress-stat task-progress-stat--reviewed">
-                              <span>已评 {{ task.progress.reviewed_count }}/{{ task.progress.slot_total }}</span>
-                              <span>{{ progressPercent(task.progress.reviewed_count, task.progress.slot_total) }}%</span>
-                            </div>
-                            <el-progress
-                              :percentage="progressPercent(task.progress.reviewed_count, task.progress.slot_total)"
-                              :stroke-width="8"
-                              status="success"
-                              :show-text="false"
-                            />
+                            <template v-if="task.progress.mode === 'reading'">
+                              <div class="task-progress-stat task-progress-stat--pending">
+                                <span>未读 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
+                                <span>{{ progressPercent(task.progress.pending_count, task.progress.slot_total) }}%</span>
+                              </div>
+                              <el-progress
+                                :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
+                                :stroke-width="8"
+                                status="exception"
+                                :show-text="false"
+                              />
+                              <div class="task-progress-stat task-progress-stat--reviewed">
+                                <span>已读 {{ task.progress.completed_count }}/{{ task.progress.slot_total }}</span>
+                                <span>{{ progressPercent(task.progress.completed_count, task.progress.slot_total) }}%</span>
+                              </div>
+                              <el-progress
+                                :percentage="progressPercent(task.progress.completed_count, task.progress.slot_total)"
+                                :stroke-width="8"
+                                status="success"
+                                :show-text="false"
+                              />
+                              <p class="task-progress-note">阅读任务只统计学生已读确认，不进入提交批改链路。</p>
+                            </template>
+                            <template v-else>
+                              <div class="task-progress-stat task-progress-stat--pending">
+                                <span>未交 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
+                                <span>{{ progressPercent(task.progress.pending_count, task.progress.slot_total) }}%</span>
+                              </div>
+                              <el-progress
+                                :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
+                                :stroke-width="8"
+                                status="exception"
+                                :show-text="false"
+                              />
+                              <div class="task-progress-stat">
+                                <span>已交 {{ task.progress.submitted_count }}/{{ task.progress.slot_total }}</span>
+                                <span>{{ progressPercent(task.progress.submitted_count, task.progress.slot_total) }}%</span>
+                              </div>
+                              <el-progress
+                                :percentage="progressPercent(task.progress.submitted_count, task.progress.slot_total)"
+                                :stroke-width="8"
+                                :show-text="false"
+                              />
+                              <div class="task-progress-stat task-progress-stat--reviewed">
+                                <span>已评 {{ task.progress.reviewed_count }}/{{ task.progress.slot_total }}</span>
+                                <span>{{ progressPercent(task.progress.reviewed_count, task.progress.slot_total) }}%</span>
+                              </div>
+                              <el-progress
+                                :percentage="progressPercent(task.progress.reviewed_count, task.progress.slot_total)"
+                                :stroke-width="8"
+                                status="success"
+                                :show-text="false"
+                              />
+                            </template>
                           </div>
                         </div>
                         <div class="task-focus-actions">
-                          <el-button plain type="warning" @click="openTaskReview(task.id, 'pending_submit')">
-                            看未交
-                          </el-button>
-                          <el-button plain type="success" @click="openTaskReview(task.id, 'pending_review')">
-                            看待评
-                          </el-button>
-                          <el-button plain type="primary" @click="openTaskReview(task.id)">查看提交</el-button>
+                          <template v-if="task.progress.mode === 'reading'">
+                            <p class="task-focus-actions__note">阅读任务会随着学生确认已读实时刷新完成统计。</p>
+                          </template>
+                          <template v-else>
+                            <el-button plain type="warning" @click="openTaskReview(task.id, 'pending_submit')">
+                              看未交
+                            </el-button>
+                            <el-button plain type="success" @click="openTaskReview(task.id, 'pending_review')">
+                              看待评
+                            </el-button>
+                            <el-button plain type="primary" @click="openTaskReview(task.id)">查看提交</el-button>
+                          </template>
                         </div>
                       </article>
                     </div>
@@ -415,9 +447,11 @@ type RollCallHistoryItem = {
 };
 
 type SessionTaskProgress = {
+  mode: 'submission' | 'reading';
   slot_type: 'student' | 'group';
   slot_total: number;
   pending_count: number;
+  completed_count: number;
   submitted_count: number;
   reviewed_count: number;
 };
@@ -1117,6 +1151,13 @@ onMounted(() => {
 .task-focus-actions {
   display: grid;
   gap: 8px;
+}
+
+.task-focus-actions__note,
+.task-progress-note {
+  margin: 0;
+  color: var(--ls-muted);
+  line-height: 1.7;
 }
 
 .task-progress-grid {

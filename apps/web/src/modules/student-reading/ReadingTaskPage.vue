@@ -83,6 +83,43 @@
                 <template #header>学案导读</template>
                 <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
               </el-card>
+              <el-card v-if="taskDetail.resources.length" class="soft-card">
+                <template #header>
+                  <div class="info-row">
+                    <span>附件与拓展资源</span>
+                    <el-tag round type="info">{{ taskDetail.resources.length }} 项</el-tag>
+                  </div>
+                </template>
+
+                <div class="resource-grid">
+                  <article
+                    v-for="resource in taskDetail.resources"
+                    :key="resource.id"
+                    class="resource-card"
+                  >
+                    <div class="resource-card__head">
+                      <div class="chip-row">
+                        <el-tag round :type="resource.external_url ? 'warning' : 'success'">
+                          {{ resourceTypeLabel(resource) }}
+                        </el-tag>
+                        <el-tag v-if="resource.category" round type="info">
+                          {{ resource.category.name }}
+                        </el-tag>
+                      </div>
+                      <el-button link type="primary" @click="openResource(resource)">
+                        {{ resource.external_url ? '打开外链' : '查看资料' }}
+                      </el-button>
+                    </div>
+
+                    <h3>{{ resource.title }}</h3>
+                    <p class="resource-card__summary">{{ resourceSummaryText(resource) }}</p>
+                    <p class="resource-card__meta">
+                      {{ resource.owner_name }}
+                      <span v-if="resource.external_url"> · 外部链接</span>
+                    </p>
+                  </article>
+                </div>
+              </el-card>
             </el-col>
 
             <el-col :lg="8" :sm="24">
@@ -146,6 +183,24 @@ type NavigationTask = {
   task_type: string;
 };
 
+type ReadingResource = {
+  id: number;
+  task_id: number;
+  resource_id: number;
+  relation_type: string;
+  sort_order: number;
+  title: string;
+  resource_type: string;
+  summary: string | null;
+  content: string | null;
+  external_url: string | null;
+  owner_name: string;
+  category: {
+    id: number;
+    name: string;
+  } | null;
+};
+
 type ReadingTaskPayload = {
   id: number;
   title: string;
@@ -165,6 +220,7 @@ type ReadingTaskPayload = {
     previous_task: NavigationTask | null;
     next_task: NavigationTask | null;
   };
+  resources: ReadingResource[];
   reading_progress: {
     is_read: boolean;
     read_at: string | null;
@@ -206,6 +262,42 @@ function formatDateTime(value: string | null) {
     return '待确认';
   }
   return value.replace('T', ' ').slice(0, 16);
+}
+
+function resourceTypeLabel(resource: ReadingResource) {
+  if (resource.external_url) {
+    return '外链';
+  }
+  if (resource.relation_type === 'attachment') {
+    return '资料';
+  }
+  if (resource.resource_type === 'article') {
+    return '文章';
+  }
+  return '资源';
+}
+
+function resourceSummaryText(resource: ReadingResource) {
+  if (resource.summary?.trim()) {
+    return resource.summary.trim();
+  }
+  if (resource.external_url) {
+    return '教师为本任务推荐了外部参考链接，可直接跳转查看。';
+  }
+  return '可在资源中心查看这份资料的完整内容。';
+}
+
+function openResource(resource: ReadingResource) {
+  if (resource.external_url) {
+    window.open(resource.external_url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  void router.push({
+    path: '/student/resources',
+    query: {
+      resourceId: String(resource.resource_id),
+    },
+  });
 }
 
 async function loadReadingTask() {
@@ -303,5 +395,38 @@ watch(() => route.params.taskId, () => {
 
 .metric-value--small {
   font-size: 22px;
+}
+
+.resource-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.resource-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--ls-border);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.95));
+}
+
+.resource-card h3,
+.resource-card p {
+  margin: 0;
+}
+
+.resource-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.resource-card__summary,
+.resource-card__meta {
+  color: var(--ls-muted);
+  line-height: 1.7;
 }
 </style>

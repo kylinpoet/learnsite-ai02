@@ -302,6 +302,8 @@
               :can-upload-task-assets="canUploadTaskAssets"
               :task-asset-generation-key="taskAssetGenerationKey"
               :task-description-generation-key="taskDescriptionGenerationKey"
+              :asset-bindings="taskAssetBindings"
+              :data-submit-bindings="taskDataSubmitBindings"
               :add-task-row="addTaskRow"
               :handle-task-template-command="handleTaskTemplateCommand"
               :open-task-template-library="openTaskTemplateLibrary"
@@ -314,35 +316,7 @@
               :remove-task-row="removeTaskRow"
               :open-save-task-template-dialog="openSaveTaskTemplateDialog"
               :handle-task-type-change="handleTaskTypeChange"
-              :copy-task-data-submit-endpoint="copyTaskDataSubmitEndpoint"
-              :task-data-submit-prompt-api-path="taskDataSubmitPromptApiPath"
-              :task-data-submit-prompt-records-path="taskDataSubmitPromptRecordsPath"
-              :task-data-submit-endpoint-tag-type="taskDataSubmitEndpointTagType"
-              :task-data-submit-endpoint-status-label="taskDataSubmitEndpointStatusLabel"
-              :task-data-submit-alert-title="taskDataSubmitAlertTitle"
-              :task-data-submit-alert-description="taskDataSubmitAlertDescription"
               :generate-task-description-draft="generateTaskDescriptionDraft"
-              :get-task-asset-entry-path="getTaskAssetEntryPath"
-              :set-task-asset-entry-path="setTaskAssetEntryPath"
-              :get-task-html-source="getTaskHtmlSource"
-              :set-task-html-source="setTaskHtmlSource"
-              :task-asset-input-id="taskAssetInputId"
-              :open-task-asset-picker="openTaskAssetPicker"
-              :handle-task-asset-change="handleTaskAssetChange"
-              :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-              :upload-task-html-source="uploadTaskHtmlSource"
-              :task-preview-feedback="taskPreviewFeedback"
-              :task-preview-display-detail="taskPreviewDisplayDetail"
-              :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-              :has-task-inline-preview="hasTaskInlinePreview"
-              :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-              :task-asset-preview-url="taskAssetPreviewUrl"
-              :task-preview-frame-key="taskPreviewFrameKey"
-              :toggle-task-preview-detail="toggleTaskPreviewDetail"
-              :copy-task-preview-detail="copyTaskPreviewDetail"
-              :retry-task-preview="retryTaskPreview"
-              :handle-task-preview-load="handleTaskPreviewLoad"
-              :handle-task-preview-error="handleTaskPreviewError"
             />
           </el-tab-pane>
         </el-tabs>
@@ -490,7 +464,9 @@ import type {
   PlanDetail,
   PlanFormTask,
   PlanSummary,
+  TaskAssetEditorBindings,
   TaskAssetSlot,
+  TaskDataSubmitEndpointBindings,
   TaskHtmlPromptBuildOptions,
   TaskHtmlPromptDialogState,
   TaskHtmlPromptGenerationStatus,
@@ -773,6 +749,40 @@ const {
   revealTaskPreview,
   isTaskPersisted,
 });
+
+const taskAssetBindings: TaskAssetEditorBindings = {
+  getTaskAssetEntryPath,
+  setTaskAssetEntryPath,
+  getTaskHtmlSource,
+  setTaskHtmlSource,
+  taskAssetInputId,
+  openTaskAssetPicker,
+  handleTaskAssetChange,
+  openTaskHtmlPromptDialog,
+  uploadTaskHtmlSource,
+  taskPreviewFeedback,
+  taskPreviewDisplayDetail,
+  taskPreviewDetailToggleLabel,
+  hasTaskInlinePreview,
+  taskInlinePreviewSrcdoc,
+  taskAssetPreviewUrl,
+  taskPreviewFrameKey,
+  toggleTaskPreviewDetail,
+  copyTaskPreviewDetail,
+  retryTaskPreview,
+  handleTaskPreviewLoad,
+  handleTaskPreviewError,
+};
+
+const taskDataSubmitBindings: TaskDataSubmitEndpointBindings = {
+  copyTaskDataSubmitEndpoint,
+  taskDataSubmitPromptApiPath,
+  taskDataSubmitPromptRecordsPath,
+  taskDataSubmitEndpointTagType,
+  taskDataSubmitEndpointStatusLabel,
+  taskDataSubmitAlertTitle,
+  taskDataSubmitAlertDescription,
+};
 
 const selectedPlanId = computed(() => {
   const routePlanId = Number(route.params.planId);

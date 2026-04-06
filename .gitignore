@@ -16,3 +16,5 @@ apps/api/learnsite.db
 apps/api/*.db
 coverage/
 *.vue.js
+*.log
+*.db

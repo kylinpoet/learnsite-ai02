@@ -180,6 +180,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 
 import { apiGet } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
@@ -218,6 +219,7 @@ type ResourceDetailPayload = ResourceSummary & {
 };
 
 const authStore = useAuthStore();
+const route = useRoute();
 
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -229,6 +231,17 @@ const resourceDetail = ref<ResourceDetailPayload | null>(null);
 const activeCategory = computed(() =>
   resourceData.value?.categories.find((item) => String(item.id) === activeCategoryKey.value) || null
 );
+
+function requestedResourceId() {
+  const value = Number(route.query.resourceId);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function findCategoryByResourceId(resourceId: number) {
+  return resourceData.value?.categories.find((category) =>
+    category.items.some((item) => item.id === resourceId)
+  ) || null;
+}
 
 function typeLabel(type: string) {
   if (type === 'article') {
@@ -268,10 +281,15 @@ async function loadResources() {
 
   try {
     resourceData.value = await apiGet<ResourceListPayload>('/resources/student', authStore.token);
-    const firstCategory = resourceData.value.categories[0];
+    const routeResourceId = requestedResourceId();
+    const preferredCategory = routeResourceId ? findCategoryByResourceId(routeResourceId) : null;
+    const firstCategory = preferredCategory || resourceData.value.categories[0];
     if (firstCategory) {
       activeCategoryKey.value = String(firstCategory.id);
-      const firstResource = firstCategory.items[0] || resourceData.value.featured_items[0];
+      const firstResource =
+        (routeResourceId && firstCategory.items.find((item) => item.id === routeResourceId))
+        || firstCategory.items[0]
+        || resourceData.value.featured_items[0];
       if (firstResource) {
         await loadResourceDetail(firstResource.id);
       }
@@ -302,6 +320,22 @@ watch(activeCategoryKey, async (value) => {
     await loadResourceDetail(category.items[0].id);
   }
 });
+
+watch(
+  () => route.query.resourceId,
+  async () => {
+    const resourceId = requestedResourceId();
+    if (!resourceId || !resourceData.value || selectedResourceId.value === resourceId) {
+      return;
+    }
+    const category = findCategoryByResourceId(resourceId);
+    if (!category) {
+      return;
+    }
+    activeCategoryKey.value = String(category.id);
+    await loadResourceDetail(resourceId);
+  }
+);
 
 onMounted(loadResources);
 </script>

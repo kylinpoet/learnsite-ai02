@@ -14,27 +14,27 @@
     :preview-note="'生成、粘贴或上传后，这里直接显示入口页。'"
     :empty-description="'生成或粘贴网页任务 HTML 后，这里会直接显示预览。'"
     :show-asset-table="true"
-    :get-task-asset-entry-path="getTaskAssetEntryPath"
-    :set-task-asset-entry-path="setTaskAssetEntryPath"
-    :get-task-html-source="getTaskHtmlSource"
-    :set-task-html-source="setTaskHtmlSource"
-    :task-asset-input-id="taskAssetInputId"
-    :open-task-asset-picker="openTaskAssetPicker"
-    :handle-task-asset-change="handleTaskAssetChange"
-    :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-    :upload-task-html-source="uploadTaskHtmlSource"
-    :task-preview-feedback="taskPreviewFeedback"
-    :task-preview-display-detail="taskPreviewDisplayDetail"
-    :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-    :has-task-inline-preview="hasTaskInlinePreview"
-    :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-    :task-asset-preview-url="taskAssetPreviewUrl"
-    :task-preview-frame-key="taskPreviewFrameKey"
-    :toggle-task-preview-detail="toggleTaskPreviewDetail"
-    :copy-task-preview-detail="copyTaskPreviewDetail"
-    :retry-task-preview="retryTaskPreview"
-    :handle-task-preview-load="handleTaskPreviewLoad"
-    :handle-task-preview-error="handleTaskPreviewError"
+    :get-task-asset-entry-path="assetBindings.getTaskAssetEntryPath"
+    :set-task-asset-entry-path="assetBindings.setTaskAssetEntryPath"
+    :get-task-html-source="assetBindings.getTaskHtmlSource"
+    :set-task-html-source="assetBindings.setTaskHtmlSource"
+    :task-asset-input-id="assetBindings.taskAssetInputId"
+    :open-task-asset-picker="assetBindings.openTaskAssetPicker"
+    :handle-task-asset-change="assetBindings.handleTaskAssetChange"
+    :open-task-html-prompt-dialog="assetBindings.openTaskHtmlPromptDialog"
+    :upload-task-html-source="assetBindings.uploadTaskHtmlSource"
+    :task-preview-feedback="assetBindings.taskPreviewFeedback"
+    :task-preview-display-detail="assetBindings.taskPreviewDisplayDetail"
+    :task-preview-detail-toggle-label="assetBindings.taskPreviewDetailToggleLabel"
+    :has-task-inline-preview="assetBindings.hasTaskInlinePreview"
+    :task-inline-preview-srcdoc="assetBindings.taskInlinePreviewSrcdoc"
+    :task-asset-preview-url="assetBindings.taskAssetPreviewUrl"
+    :task-preview-frame-key="assetBindings.taskPreviewFrameKey"
+    :toggle-task-preview-detail="assetBindings.toggleTaskPreviewDetail"
+    :copy-task-preview-detail="assetBindings.copyTaskPreviewDetail"
+    :retry-task-preview="assetBindings.retryTaskPreview"
+    :handle-task-preview-load="assetBindings.handleTaskPreviewLoad"
+    :handle-task-preview-error="assetBindings.handleTaskPreviewError"
   />
 </template>
 
@@ -42,43 +42,13 @@
 import { computed } from 'vue';
 
 import TaskAssetSlotEditor from './TaskAssetSlotEditor.vue';
-import type {
-  PlanFormTask,
-  TaskAssetPickerMode,
-  TaskAssetSlot,
-  TaskPreviewFeedback,
-} from '../lessonPlan.types';
+import type { PlanFormTask, TaskAssetEditorBindings } from '../lessonPlan.types';
 
 const props = defineProps<{
   task: PlanFormTask;
   canUpload: boolean;
   generationLoading: boolean;
-  getTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  setTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
-  getTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  setTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
-  taskAssetInputId: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => string;
-  openTaskAssetPicker: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => void;
-  handleTaskAssetChange: (
-    task: PlanFormTask,
-    slot: TaskAssetSlot,
-    isFolder: boolean,
-    event: Event
-  ) => void;
-  openTaskHtmlPromptDialog: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  uploadTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  taskPreviewFeedback: (task: PlanFormTask, slot: TaskAssetSlot) => TaskPreviewFeedback | null;
-  taskPreviewDisplayDetail: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskPreviewDetailToggleLabel: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  hasTaskInlinePreview: (task: PlanFormTask, slot: TaskAssetSlot) => boolean;
-  taskInlinePreviewSrcdoc: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskAssetPreviewUrl: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskPreviewFrameKey: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  toggleTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  copyTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  retryTaskPreview: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  handleTaskPreviewLoad: (task: PlanFormTask, slot: TaskAssetSlot, event: Event) => void;
-  handleTaskPreviewError: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+  assetBindings: TaskAssetEditorBindings;
 }>();
 
 const notes = computed(() => [

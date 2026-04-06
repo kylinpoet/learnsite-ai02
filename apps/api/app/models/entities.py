@@ -570,6 +570,11 @@ class ResourceItem(TimestampMixin, Base):
 
     owner_staff: Mapped[User | None] = relationship(foreign_keys=[owner_staff_user_id])
     category: Mapped[ResourceCategory | None] = relationship(back_populates="items")
+    task_links: Mapped[list[TaskResourceLink]] = relationship(
+        back_populates="resource_item",
+        cascade="all, delete-orphan",
+        order_by="(TaskResourceLink.sort_order.asc(), TaskResourceLink.id.asc())",
+    )
 
 
 class CurriculumBook(TimestampMixin, Base):
@@ -656,6 +661,11 @@ class Task(TimestampMixin, Base):
     )
     read_records: Mapped[list[TaskReadRecord]] = relationship(back_populates="task")
     peer_review_votes: Mapped[list[PeerReviewVote]] = relationship(back_populates="task")
+    resource_links: Mapped[list[TaskResourceLink]] = relationship(
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="(TaskResourceLink.sort_order.asc(), TaskResourceLink.id.asc())",
+    )
     web_assets: Mapped[list[TaskWebAsset]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
@@ -688,6 +698,22 @@ class TaskWebAsset(TimestampMixin, Base):
     content_type: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
     task: Mapped[Task] = relationship(back_populates="web_assets")
+
+
+class TaskResourceLink(TimestampMixin, Base):
+    __tablename__ = "task_resources"
+    __table_args__ = (
+        UniqueConstraint("task_id", "resource_id", name="uq_task_resources_task_resource"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"), nullable=False, index=True)
+    resource_id: Mapped[int] = mapped_column(ForeignKey("resource_items.id"), nullable=False, index=True)
+    relation_type: Mapped[str] = mapped_column(String(30), nullable=False, default="reference")
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    task: Mapped[Task] = relationship(back_populates="resource_links")
+    resource_item: Mapped[ResourceItem] = relationship(back_populates="task_links")
 
 
 class TaskDiscussionPost(TimestampMixin, Base):

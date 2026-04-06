@@ -38,7 +38,7 @@
 | 作品互评 | `student/myevaluate.aspx` | `/student/reviews/:taskId` + `/api/v1/peer-reviews/task/{task_id}` | 已完成 | 已实现作品墙、推荐投票、互评统计、互评附件展示 |
 | 网盘基础版 | `student/groupshare.aspx` | `/student/drive` | 已完成 | 已接通个人网盘与小组网盘的容量统计、文件列表、上传、下载、删除，小组共享空间已接入真实协作链路 |
 | 个人资料中心 | `profile/*` | `/student/profile` | 已完成 | 已接通基本信息、最近 20 条签到记录、密码修改，以及班级申请、相片上传、姓名/性别维护 |
-| 阅读任务页 | `student/description.aspx` | `/student/courses/:courseId/readings/:taskId` | 已完成 | 已接通真实富文本内容、学案导读、上下任务跳转与已读确认；附件展示留待 `task_resources` 接入 |
+| 阅读任务页 | `student/description.aspx` | `/student/courses/:courseId/readings/:taskId` | 已完成 | 已接通真实富文本内容、学案导读、`task_resources` 资源卡片、上下任务跳转与已读确认；教师课堂侧可统计阅读完成情况，阅读完成会联动学案整体进度 |
 | 小组页 | `profile/mygroup.aspx` | `/student/groups` | 已完成 | 已展示真实小组成员、共享网盘概览、课堂动态与操作日志 |
 
 ## 4. Phase 2 教师主链路
@@ -1010,3 +1010,28 @@
 1. 继续拆分教师学案页任务编辑主块，把当前 `LessonPlanPage.vue` 里剩余的任务配置渲染层进一步下沉到子组件。
 2. 对教师学案页做一轮真实浏览器联调，重点回归数据提交任务的保存后预览、错误面板与 AI 生成页链路。
 3. 评估教师学案页及相关模块的懒加载 / 拆包策略，优先压降当前构建产物中的大 chunk 告警。
+
+## 36. 2026-04-06 教师学案页联调回归与构建收口完成
+
+本次完成项：
+
+1. 原“继续拆分教师学案页任务编辑主块”已完成：
+   - 新增 `LessonPlanTaskEditorCard.vue`、`LessonPlanTaskTabLabel.vue`、`TaskTemplatePickerDropdown.vue`
+   - `LessonPlanPage.vue`、`LessonPlanTaskConfigPanel.vue`、`TaskDataSubmitEditor.vue`、`TaskWebPageEditor.vue` 与 `lessonPlan.types.ts` 已继续瘦身，任务配置渲染层进一步下沉到子组件
+2. 原“对教师学案页做一轮真实浏览器联调”已完成：
+   - 已在真实浏览器联调 `/staff/lesson-plans`
+   - 重点回归 `data_submit` 任务的保存后预览、预览错误面板、错误详情复制 / 重试，以及 AI 生成提交页链路
+   - 已验证预览报错后可恢复，保存前后的 iframe 预览与正式接口地址链路保持正常
+3. 原“评估教师学案页及相关模块的懒加载 / 拆包策略”已完成本轮收口：
+   - Web 端已移除全量 `app.use(ElementPlus)`，改为按需引入 Element Plus 组件 / 指令 / 样式
+   - `vite.config.ts` 已接入按需解析插件，教师学案页相关构建产物体积明显下降
+   - `npm run build:web` 已不再出现大 chunk 告警
+
+本次验证结果：
+
+1. `npm run typecheck:web`
+   - 结果：通过
+2. `npm run build:web`
+   - 结果：通过，且无大 chunk 告警
+3. 真实浏览器联调
+   - 结果：通过，教师学案页与依赖 `v-loading` 的教师测验页均可正常访问与操作

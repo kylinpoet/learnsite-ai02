@@ -66,7 +66,7 @@
       <p>这是数据提交任务的默认提交页模板。当前页面已经直连真实提交接口，教师后台可直接预览并继续改造。</p>
       <div class="api-box">
         <strong>提交接口：</strong>
-        <span>http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881</span>
+        <span>http://localhost:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881</span>
       </div>
       <form id="submit-form">
         <label>
@@ -88,7 +88,7 @@
     <script>
       const formElement = document.getElementById('submit-form');
       const statusElement = document.getElementById('status');
-      const SUBMIT_API_URL = "http://127.0.0.1:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881";
+      const SUBMIT_API_URL = "http://localhost:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881";
 
       formElement?.addEventListener('submit', async (event) => {
         event.preventDefault();

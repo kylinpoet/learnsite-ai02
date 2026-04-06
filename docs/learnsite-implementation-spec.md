@@ -408,7 +408,7 @@ learnsite-platform/
    - `task_navigation`：上一任务 / 下一任务
    - `reading_progress`：已读状态、已读时间、是否还能标记
 2. 当前阅读页内容主要来自教师在任务说明中录入的富文本 HTML。
-3. 附件展示将在 `task_resources` 接入后继续补齐。
+3. 已接入 `task_resources`，学生阅读页会展示任务资料卡片与外链资源，教师课堂页同步统计阅读已读情况。
 
 ### 个人资料中心
 
@@ -1057,3 +1057,26 @@ learnsite-platform/
    - 任务 Tab 行为已拆到 `useLessonPlanTaskRows`。
    - 任务预览 / 资源上传已拆到 `useTaskPreviewAssets`。
    - 任务模板库状态与批量整理逻辑已拆到 `useTaskTemplateLibrary`。
+
+## 22. 2026-04-06 教师学案页联调回归与构建收口
+
+本次进一步确认并收口了以下实现状态：
+
+1. 任务编辑主块继续拆分
+   - `LessonPlanPage.vue` 中剩余的任务配置渲染层已继续下沉到子组件。
+   - 本轮新增 `LessonPlanTaskEditorCard.vue`、`LessonPlanTaskTabLabel.vue`、`TaskTemplatePickerDropdown.vue`，用于承接任务卡片壳层、任务页签标签与模板选择入口。
+   - `LessonPlanTaskConfigPanel.vue`、`TaskDataSubmitEditor.vue`、`TaskWebPageEditor.vue` 已同步围绕新的子组件边界整理。
+2. 教师学案页真实浏览器联调
+   - 已对 `/staff/lesson-plans` 做真实浏览器联调回归。
+   - 回归重点覆盖 `data_submit` 任务的保存后预览、预览失败错误面板、错误详情展开与复制，以及 AI 生成提交页链路。
+   - 已确认预览报错后可恢复，未保存源码的 `srcdoc` 预览与保存后的正式任务资源预览都能正常工作。
+3. 构建与拆包收口
+   - Web 入口已移除全量 `app.use(ElementPlus)` 与整包样式引入，改为按需引入 Element Plus 组件、指令与样式。
+   - `vite.config.ts` 已接入 `unplugin-vue-components` 与 `unplugin-element-plus`，用于教师端页面的按需解析与样式注入。
+   - 当前 `npm run build:web` 已不再出现大 chunk 告警，教师学案页相关模块的构建产物体积已明显下降。
+
+本轮验证：
+
+1. `npm run typecheck:web`：通过
+2. `npm run build:web`：通过，且无大 chunk 告警
+3. 真实浏览器联调：通过，教师学案页与依赖 `v-loading` 的教师页面未出现回归

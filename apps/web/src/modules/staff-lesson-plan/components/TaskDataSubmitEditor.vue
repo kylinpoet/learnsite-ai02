@@ -2,8 +2,8 @@
   <div>
     <el-alert
       :closable="false"
-      :title="taskDataSubmitAlertTitle(task)"
-      :description="taskDataSubmitAlertDescription(task)"
+      :title="dataSubmitBindings.taskDataSubmitAlertTitle(task)"
+      :description="dataSubmitBindings.taskDataSubmitAlertDescription(task)"
       type="info"
     />
 
@@ -11,16 +11,16 @@
       <article class="data-submit-endpoint-card">
         <div class="data-submit-endpoint-card__head">
           <strong>学生提交接口</strong>
-          <el-tag round :type="taskDataSubmitEndpointTagType(task)">
-            {{ taskDataSubmitEndpointStatusLabel(task) }}
+          <el-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
+            {{ dataSubmitBindings.taskDataSubmitEndpointStatusLabel(task) }}
           </el-tag>
         </div>
-        <code>{{ taskDataSubmitPromptApiPath(task) }}</code>
+        <code>{{ dataSubmitBindings.taskDataSubmitPromptApiPath(task) }}</code>
         <p class="section-note">
           AI 生成网页时可以直接使用这条地址；预生成的任务 ID 会在保存学案后原样落地，不需要再替换接口。
         </p>
         <el-space wrap>
-          <el-button plain size="small" @click="copyTaskDataSubmitEndpoint(task, 'submit')">
+          <el-button plain size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'submit')">
             复制提交接口
           </el-button>
         </el-space>
@@ -29,16 +29,16 @@
       <article class="data-submit-endpoint-card">
         <div class="data-submit-endpoint-card__head">
           <strong>数据读取接口</strong>
-          <el-tag round :type="taskDataSubmitEndpointTagType(task)">
-            {{ taskDataSubmitEndpointStatusLabel(task) }}
+          <el-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
+            {{ dataSubmitBindings.taskDataSubmitEndpointStatusLabel(task) }}
           </el-tag>
         </div>
-        <code>{{ taskDataSubmitPromptRecordsPath(task) }}</code>
+        <code>{{ dataSubmitBindings.taskDataSubmitPromptRecordsPath(task) }}</code>
         <p class="section-note">
           数据可视化页可以直接读取这条地址，预览阶段与正式保存后的接口保持一致。
         </p>
         <el-space wrap>
-          <el-button plain size="small" @click="copyTaskDataSubmitEndpoint(task, 'records')">
+          <el-button plain size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'records')">
             复制读取接口
           </el-button>
         </el-space>
@@ -67,27 +67,27 @@
             :source-placeholder="'<html><body>学生数据提交页面源码</body></html>'"
             :preview-note="'提交按钮与表单效果会直接在这里显示。'"
             :empty-description="'生成或粘贴提交页 HTML 后，这里会直接显示预览。'"
-            :get-task-asset-entry-path="getTaskAssetEntryPath"
-            :set-task-asset-entry-path="setTaskAssetEntryPath"
-            :get-task-html-source="getTaskHtmlSource"
-            :set-task-html-source="setTaskHtmlSource"
-            :task-asset-input-id="taskAssetInputId"
-            :open-task-asset-picker="openTaskAssetPicker"
-            :handle-task-asset-change="handleTaskAssetChange"
-            :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-            :upload-task-html-source="uploadTaskHtmlSource"
-            :task-preview-feedback="taskPreviewFeedback"
-            :task-preview-display-detail="taskPreviewDisplayDetail"
-            :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-            :has-task-inline-preview="hasTaskInlinePreview"
-            :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-            :task-asset-preview-url="taskAssetPreviewUrl"
-            :task-preview-frame-key="taskPreviewFrameKey"
-            :toggle-task-preview-detail="toggleTaskPreviewDetail"
-            :copy-task-preview-detail="copyTaskPreviewDetail"
-            :retry-task-preview="retryTaskPreview"
-            :handle-task-preview-load="handleTaskPreviewLoad"
-            :handle-task-preview-error="handleTaskPreviewError"
+            :get-task-asset-entry-path="assetBindings.getTaskAssetEntryPath"
+            :set-task-asset-entry-path="assetBindings.setTaskAssetEntryPath"
+            :get-task-html-source="assetBindings.getTaskHtmlSource"
+            :set-task-html-source="assetBindings.setTaskHtmlSource"
+            :task-asset-input-id="assetBindings.taskAssetInputId"
+            :open-task-asset-picker="assetBindings.openTaskAssetPicker"
+            :handle-task-asset-change="assetBindings.handleTaskAssetChange"
+            :open-task-html-prompt-dialog="assetBindings.openTaskHtmlPromptDialog"
+            :upload-task-html-source="assetBindings.uploadTaskHtmlSource"
+            :task-preview-feedback="assetBindings.taskPreviewFeedback"
+            :task-preview-display-detail="assetBindings.taskPreviewDisplayDetail"
+            :task-preview-detail-toggle-label="assetBindings.taskPreviewDetailToggleLabel"
+            :has-task-inline-preview="assetBindings.hasTaskInlinePreview"
+            :task-inline-preview-srcdoc="assetBindings.taskInlinePreviewSrcdoc"
+            :task-asset-preview-url="assetBindings.taskAssetPreviewUrl"
+            :task-preview-frame-key="assetBindings.taskPreviewFrameKey"
+            :toggle-task-preview-detail="assetBindings.toggleTaskPreviewDetail"
+            :copy-task-preview-detail="assetBindings.copyTaskPreviewDetail"
+            :retry-task-preview="assetBindings.retryTaskPreview"
+            :handle-task-preview-load="assetBindings.handleTaskPreviewLoad"
+            :handle-task-preview-error="assetBindings.handleTaskPreviewError"
           />
         </div>
       </el-tab-pane>
@@ -107,27 +107,27 @@
             :source-placeholder="'<html><body>数据可视化页面源码</body></html>'"
             :preview-note="'图表、统计卡片和表格会直接在这里显示。'"
             :empty-description="'生成或粘贴可视化页 HTML 后，这里会直接显示预览。'"
-            :get-task-asset-entry-path="getTaskAssetEntryPath"
-            :set-task-asset-entry-path="setTaskAssetEntryPath"
-            :get-task-html-source="getTaskHtmlSource"
-            :set-task-html-source="setTaskHtmlSource"
-            :task-asset-input-id="taskAssetInputId"
-            :open-task-asset-picker="openTaskAssetPicker"
-            :handle-task-asset-change="handleTaskAssetChange"
-            :open-task-html-prompt-dialog="openTaskHtmlPromptDialog"
-            :upload-task-html-source="uploadTaskHtmlSource"
-            :task-preview-feedback="taskPreviewFeedback"
-            :task-preview-display-detail="taskPreviewDisplayDetail"
-            :task-preview-detail-toggle-label="taskPreviewDetailToggleLabel"
-            :has-task-inline-preview="hasTaskInlinePreview"
-            :task-inline-preview-srcdoc="taskInlinePreviewSrcdoc"
-            :task-asset-preview-url="taskAssetPreviewUrl"
-            :task-preview-frame-key="taskPreviewFrameKey"
-            :toggle-task-preview-detail="toggleTaskPreviewDetail"
-            :copy-task-preview-detail="copyTaskPreviewDetail"
-            :retry-task-preview="retryTaskPreview"
-            :handle-task-preview-load="handleTaskPreviewLoad"
-            :handle-task-preview-error="handleTaskPreviewError"
+            :get-task-asset-entry-path="assetBindings.getTaskAssetEntryPath"
+            :set-task-asset-entry-path="assetBindings.setTaskAssetEntryPath"
+            :get-task-html-source="assetBindings.getTaskHtmlSource"
+            :set-task-html-source="assetBindings.setTaskHtmlSource"
+            :task-asset-input-id="assetBindings.taskAssetInputId"
+            :open-task-asset-picker="assetBindings.openTaskAssetPicker"
+            :handle-task-asset-change="assetBindings.handleTaskAssetChange"
+            :open-task-html-prompt-dialog="assetBindings.openTaskHtmlPromptDialog"
+            :upload-task-html-source="assetBindings.uploadTaskHtmlSource"
+            :task-preview-feedback="assetBindings.taskPreviewFeedback"
+            :task-preview-display-detail="assetBindings.taskPreviewDisplayDetail"
+            :task-preview-detail-toggle-label="assetBindings.taskPreviewDetailToggleLabel"
+            :has-task-inline-preview="assetBindings.hasTaskInlinePreview"
+            :task-inline-preview-srcdoc="assetBindings.taskInlinePreviewSrcdoc"
+            :task-asset-preview-url="assetBindings.taskAssetPreviewUrl"
+            :task-preview-frame-key="assetBindings.taskPreviewFrameKey"
+            :toggle-task-preview-detail="assetBindings.toggleTaskPreviewDetail"
+            :copy-task-preview-detail="assetBindings.copyTaskPreviewDetail"
+            :retry-task-preview="assetBindings.retryTaskPreview"
+            :handle-task-preview-load="assetBindings.handleTaskPreviewLoad"
+            :handle-task-preview-error="assetBindings.handleTaskPreviewError"
           />
         </div>
       </el-tab-pane>
@@ -140,9 +140,8 @@ import TaskAssetSlotEditor from './TaskAssetSlotEditor.vue';
 import TaskDescriptionEditor from './TaskDescriptionEditor.vue';
 import type {
   PlanFormTask,
-  TaskAssetPickerMode,
-  TaskAssetSlot,
-  TaskPreviewFeedback,
+  TaskAssetEditorBindings,
+  TaskDataSubmitEndpointBindings,
 } from '../lessonPlan.types';
 
 defineProps<{
@@ -151,40 +150,9 @@ defineProps<{
   descriptionGenerating: boolean;
   submitGenerationLoading: boolean;
   visualizationGenerationLoading: boolean;
-  copyTaskDataSubmitEndpoint: (task: PlanFormTask, type: 'submit' | 'records') => void;
-  taskDataSubmitPromptApiPath: (task: PlanFormTask) => string;
-  taskDataSubmitPromptRecordsPath: (task: PlanFormTask) => string;
-  taskDataSubmitEndpointTagType: (task: PlanFormTask) => string;
-  taskDataSubmitEndpointStatusLabel: (task: PlanFormTask) => string;
-  taskDataSubmitAlertTitle: (task: PlanFormTask) => string;
-  taskDataSubmitAlertDescription: (task: PlanFormTask) => string;
+  dataSubmitBindings: TaskDataSubmitEndpointBindings;
   generateTaskDescriptionDraft: (task: PlanFormTask) => void;
-  getTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  setTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
-  getTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  setTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
-  taskAssetInputId: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => string;
-  openTaskAssetPicker: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => void;
-  handleTaskAssetChange: (
-    task: PlanFormTask,
-    slot: TaskAssetSlot,
-    isFolder: boolean,
-    event: Event
-  ) => void;
-  openTaskHtmlPromptDialog: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  uploadTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  taskPreviewFeedback: (task: PlanFormTask, slot: TaskAssetSlot) => TaskPreviewFeedback | null;
-  taskPreviewDisplayDetail: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskPreviewDetailToggleLabel: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  hasTaskInlinePreview: (task: PlanFormTask, slot: TaskAssetSlot) => boolean;
-  taskInlinePreviewSrcdoc: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskAssetPreviewUrl: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  taskPreviewFrameKey: (task: PlanFormTask, slot: TaskAssetSlot) => string;
-  toggleTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  copyTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  retryTaskPreview: (task: PlanFormTask, slot: TaskAssetSlot) => void;
-  handleTaskPreviewLoad: (task: PlanFormTask, slot: TaskAssetSlot, event: Event) => void;
-  handleTaskPreviewError: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+  assetBindings: TaskAssetEditorBindings;
 }>();
 </script>
 

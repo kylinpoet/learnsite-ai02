@@ -33,6 +33,7 @@ from app.models import (
     TaskDataSubmission,
     TaskDiscussionPost,
     TaskReadRecord,
+    TaskResourceLink,
     TaskWebAsset,
     User,
     ClassroomSession,
@@ -583,6 +584,7 @@ def delete_task_related_records(task_ids: list[int], db: Session) -> None:
         db.execute(delete(TaskDiscussionPost).where(TaskDiscussionPost.task_id == task_id))
         db.execute(delete(TaskDataSubmission).where(TaskDataSubmission.task_id == task_id))
         db.execute(delete(TaskReadRecord).where(TaskReadRecord.task_id == task_id))
+        db.execute(delete(TaskResourceLink).where(TaskResourceLink.task_id == task_id))
         db.execute(delete(Task).where(Task.id == task_id))
         clear_task_dir(task_id)
 

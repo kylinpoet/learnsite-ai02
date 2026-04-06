@@ -23,7 +23,7 @@ from app.core.security import create_access_token
 from app.db.demo_seed import seed_demo_data
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
-from app.models import User
+from app.models import StudentLessonPlanProgress, User
 
 API_PREFIX = "/api/v1"
 DB_PATH = TEST_DB_PATH
@@ -245,6 +245,9 @@ def test_student_can_open_reading_task_and_mark_it_read():
         assert detail_payload["task_navigation"]["next_task"]["id"] == 58
         assert detail_payload["reading_progress"]["is_read"] is False
         assert detail_payload["reading_progress"]["read_at"] is None
+        assert len(detail_payload["resources"]) >= 2
+        assert any(item["external_url"] for item in detail_payload["resources"])
+        assert any(not item["external_url"] for item in detail_payload["resources"])
 
         mark_read_response = client.post(f"{API_PREFIX}/tasks/57/mark-read", headers=headers)
         assert mark_read_response.status_code == 200
@@ -257,6 +260,158 @@ def test_student_can_open_reading_task_and_mark_it_read():
         assert refreshed_response.status_code == 200
         refreshed_payload = refreshed_response.json()["data"]
         assert refreshed_payload["reading_progress"]["is_read"] is True
+
+
+def test_reading_completion_contributes_to_lesson_plan_progress():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        student = student_headers(client, username="70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = curriculum[0]["units"][0]["lessons"][0]["id"]
+
+        created_plan = create_published_plan_with_active_session(
+            client,
+            teacher,
+            lesson_id=lesson_id,
+            title="阅读联动学案进度",
+            content="<p>测试阅读任务与学案进度联动。</p>",
+            assigned_date="2026-04-06",
+            tasks=[
+                {
+                    "title": "阅读导学",
+                    "task_type": "reading",
+                    "description": "<p>先完成阅读。</p>",
+                    "sort_order": 1,
+                    "is_required": True,
+                },
+                {
+                    "title": "上传观察记录",
+                    "task_type": "upload_image",
+                    "description": "<p>再提交作品。</p>",
+                    "sort_order": 2,
+                    "is_required": True,
+                },
+            ],
+        )
+
+        plan_detail = client.get(
+            f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
+            headers=teacher,
+        )
+        assert plan_detail.status_code == 200
+        tasks = plan_detail.json()["data"]["plan"]["tasks"]
+        reading_task = next(item for item in tasks if item["task_type"] == "reading")
+        upload_task = next(item for item in tasks if item["task_type"] == "upload_image")
+
+        with SessionLocal() as session:
+            student_user = session.scalar(select(User).where(User.username == "70101"))
+            assert student_user is not None
+            progress = session.scalar(
+                select(StudentLessonPlanProgress).where(
+                    StudentLessonPlanProgress.student_id == student_user.id,
+                    StudentLessonPlanProgress.plan_id == created_plan["id"],
+                )
+            )
+            assert progress is not None
+            assert progress.progress_status == "pending"
+            assert progress.completed_date is None
+
+        mark_read_response = client.post(f"{API_PREFIX}/tasks/{reading_task['id']}/mark-read", headers=student)
+        assert mark_read_response.status_code == 200
+
+        with SessionLocal() as session:
+            student_user = session.scalar(select(User).where(User.username == "70101"))
+            assert student_user is not None
+            progress = session.scalar(
+                select(StudentLessonPlanProgress).where(
+                    StudentLessonPlanProgress.student_id == student_user.id,
+                    StudentLessonPlanProgress.plan_id == created_plan["id"],
+                )
+            )
+            assert progress is not None
+            assert progress.progress_status == "pending"
+            assert progress.completed_date is None
+
+        submit_response = client.post(
+            f"{API_PREFIX}/tasks/{upload_task['id']}/submit",
+            headers=student,
+            data={"submission_note": "已完成作品说明"},
+        )
+        assert submit_response.status_code == 200
+
+        with SessionLocal() as session:
+            student_user = session.scalar(select(User).where(User.username == "70101"))
+            assert student_user is not None
+            progress = session.scalar(
+                select(StudentLessonPlanProgress).where(
+                    StudentLessonPlanProgress.student_id == student_user.id,
+                    StudentLessonPlanProgress.plan_id == created_plan["id"],
+                )
+            )
+            assert progress is not None
+            assert progress.progress_status == "completed"
+            assert progress.completed_date is not None
+
+
+def test_classroom_session_detail_reports_reading_completion_stats():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        student = student_headers(client, username="70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = curriculum[0]["units"][0]["lessons"][0]["id"]
+
+        create_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "课堂阅读统计测试",
+                "content": "<p>测试教师侧阅读统计。</p>",
+                "assigned_date": "2026-04-06",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "title": "阅读材料",
+                        "task_type": "reading",
+                        "description": "<p>阅读后点击已读。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                    }
+                ],
+            },
+        )
+        assert create_response.status_code == 200
+        created_plan = create_response.json()["data"]["plan"]
+        reading_task_id = created_plan["tasks"][0]["id"]
+
+        publish_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}/publish",
+            headers=teacher,
+        )
+        assert publish_response.status_code == 200
+
+        session_id = start_classroom_session_for_plan(
+            client,
+            teacher,
+            class_id=1,
+            plan_id=created_plan["id"],
+        )
+
+        mark_read_response = client.post(f"{API_PREFIX}/tasks/{reading_task_id}/mark-read", headers=student)
+        assert mark_read_response.status_code == 200
+
+        session_detail = client.get(
+            f"{API_PREFIX}/classroom/sessions/{session_id}",
+            headers=teacher,
+        )
+        assert session_detail.status_code == 200
+        task_payload = next(
+            item for item in session_detail.json()["data"]["tasks"] if item["id"] == reading_task_id
+        )
+        assert task_payload["progress"]["mode"] == "reading"
+        assert task_payload["progress"]["completed_count"] == 1
+        assert task_payload["progress"]["reviewed_count"] == 0
+        assert task_payload["progress"]["pending_count"] == task_payload["progress"]["slot_total"] - 1
 
 
 def test_student_cannot_access_unassigned_task():

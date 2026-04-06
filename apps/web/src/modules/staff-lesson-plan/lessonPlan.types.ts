@@ -215,3 +215,37 @@ export type TaskPreviewFeedback = {
   detailPreview: string;
   hasExpandableDetail: boolean;
 };
+
+export type TaskAssetEditorBindings = {
+  getTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  setTaskAssetEntryPath: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
+  getTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  setTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot, value: string) => void;
+  taskAssetInputId: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => string;
+  openTaskAssetPicker: (task: PlanFormTask, slot: TaskAssetSlot, mode: TaskAssetPickerMode) => void;
+  handleTaskAssetChange: (task: PlanFormTask, slot: TaskAssetSlot, isFolder: boolean, event: Event) => void;
+  openTaskHtmlPromptDialog: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+  uploadTaskHtmlSource: (task: PlanFormTask, slot: TaskAssetSlot) => void | Promise<void>;
+  taskPreviewFeedback: (task: PlanFormTask, slot: TaskAssetSlot) => TaskPreviewFeedback | null;
+  taskPreviewDisplayDetail: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  taskPreviewDetailToggleLabel: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  hasTaskInlinePreview: (task: PlanFormTask, slot: TaskAssetSlot) => boolean;
+  taskInlinePreviewSrcdoc: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  taskAssetPreviewUrl: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  taskPreviewFrameKey: (task: PlanFormTask, slot: TaskAssetSlot) => string;
+  toggleTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+  copyTaskPreviewDetail: (task: PlanFormTask, slot: TaskAssetSlot) => void | Promise<void>;
+  retryTaskPreview: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+  handleTaskPreviewLoad: (task: PlanFormTask, slot: TaskAssetSlot, event: Event) => void;
+  handleTaskPreviewError: (task: PlanFormTask, slot: TaskAssetSlot) => void;
+};
+
+export type TaskDataSubmitEndpointBindings = {
+  copyTaskDataSubmitEndpoint: (task: PlanFormTask, type: 'submit' | 'records') => void | Promise<void>;
+  taskDataSubmitPromptApiPath: (task: PlanFormTask) => string;
+  taskDataSubmitPromptRecordsPath: (task: PlanFormTask) => string;
+  taskDataSubmitEndpointTagType: (task: PlanFormTask) => string;
+  taskDataSubmitEndpointStatusLabel: (task: PlanFormTask) => string;
+  taskDataSubmitAlertTitle: (task: PlanFormTask) => string;
+  taskDataSubmitAlertDescription: (task: PlanFormTask) => string;
+};

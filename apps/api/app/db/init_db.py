@@ -46,6 +46,7 @@ from app.models import (
     Submission,
     SubmissionFile,
     Task,
+    TaskResourceLink,
     TaskTemplate,
     TeacherClassAssignment,
     TypingRecord,
@@ -1118,6 +1119,43 @@ def seed_resources(session, teachers: dict[str, User]) -> None:
     session.flush()
 
 
+def seed_task_resources(session) -> None:
+    if session.scalar(select(TaskResourceLink.id).limit(1)) is not None:
+        return
+
+    resource_items = list(
+        session.scalars(select(ResourceItem).order_by(ResourceItem.id.asc())).all()
+    )
+    if not resource_items:
+        return
+
+    resource_id_by_index = {index: item.id for index, item in enumerate(resource_items)}
+    link_specs = [
+        (55, 0, "attachment", 1),
+        (57, 0, "attachment", 1),
+        (57, 2, "external_link", 2),
+        (63, 1, "attachment", 1),
+        (71, 1, "attachment", 1),
+        (74, 4, "attachment", 1),
+        (81, 4, "attachment", 1),
+        (81, 2, "external_link", 2),
+    ]
+
+    session.add_all(
+        [
+            TaskResourceLink(
+                task_id=task_id,
+                resource_id=resource_id_by_index[resource_index],
+                relation_type=relation_type,
+                sort_order=sort_order,
+            )
+            for task_id, resource_index, relation_type, sort_order in link_specs
+            if resource_index in resource_id_by_index
+        ]
+    )
+    session.flush()
+
+
 def seed_fresh_demo_data(session) -> None:
     seed_system_settings(session)
     seed_ai_providers(session)
@@ -1162,6 +1200,7 @@ def seed_fresh_demo_data(session) -> None:
     seed_quizzes(session, teachers, classes_by_name)
     seed_typing(session, teachers, classes_by_name)
     seed_resources(session, teachers)
+    seed_task_resources(session)
     ensure_default_review_templates(session)
     ensure_seed_submission_storage(session)
 

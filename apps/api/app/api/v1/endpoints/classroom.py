@@ -26,6 +26,7 @@ from app.models import (
     Submission,
     SystemSetting,
     Task,
+    TaskReadRecord,
     User,
 )
 from app.schemas.common import ApiResponse
@@ -297,12 +298,53 @@ def build_task_progress_snapshot(session: ClassroomSession, db: Session) -> list
             ).all()
         )
 
+    read_records: list[TaskReadRecord] = []
+    if task_ids and student_ids:
+        read_records = list(
+            db.scalars(
+                select(TaskReadRecord).where(
+                    TaskReadRecord.task_id.in_(task_ids),
+                    TaskReadRecord.student_id.in_(student_ids),
+                )
+            ).all()
+        )
+
     submissions_by_task: dict[int, list[Submission]] = {}
     for item in submissions:
         submissions_by_task.setdefault(item.task_id, []).append(item)
 
+    read_student_ids_by_task: dict[int, set[int]] = {}
+    for item in read_records:
+        read_student_ids_by_task.setdefault(item.task_id, set()).add(item.student_id)
+
     payload: list[dict] = []
     for task in tasks:
+        if task.task_type == "reading":
+            slot_ids = list(student_ids)
+            slot_total = len(slot_ids)
+            completed_count = len(read_student_ids_by_task.get(task.id, set()))
+            pending_count = max(slot_total - completed_count, 0)
+            payload.append(
+                {
+                    "id": task.id,
+                    "title": task.title,
+                    "task_type": task.task_type,
+                    "sort_order": task.sort_order,
+                    "is_required": task.is_required,
+                    "submission_scope": task.submission_scope,
+                    "progress": {
+                        "mode": "reading",
+                        "slot_type": "student",
+                        "slot_total": slot_total,
+                        "pending_count": pending_count,
+                        "completed_count": completed_count,
+                        "submitted_count": completed_count,
+                        "reviewed_count": 0,
+                    },
+                }
+            )
+            continue
+
         task_submissions = submissions_by_task.get(task.id, [])
         use_group_slots = task.submission_scope == "group" and bool(group_ids)
 
@@ -333,6 +375,7 @@ def build_task_progress_snapshot(session: ClassroomSession, db: Session) -> list
         reviewed_count = sum(1 for status_text in slot_status_map.values() if status_text == "reviewed")
         submitted_count = sum(1 for status_text in slot_status_map.values() if status_text == "submitted")
         pending_count = max(slot_total - submitted_count - reviewed_count, 0)
+        completed_count = submitted_count + reviewed_count
 
         payload.append(
             {
@@ -343,9 +386,11 @@ def build_task_progress_snapshot(session: ClassroomSession, db: Session) -> list
                 "is_required": task.is_required,
                 "submission_scope": task.submission_scope,
                 "progress": {
+                    "mode": "submission",
                     "slot_type": slot_type,
                     "slot_total": slot_total,
                     "pending_count": pending_count,
+                    "completed_count": completed_count,
                     "submitted_count": submitted_count,
                     "reviewed_count": reviewed_count,
                 },
