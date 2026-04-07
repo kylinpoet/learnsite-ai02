@@ -1,6 +1,6 @@
 <template>
   <div class="app-layout staff-layout">
-    <AppShellHeader title="教职工工作台" kicker="Teacher & Admin Console">
+    <AppShellHeader title="教师工作台" kicker="教学与管理总览">
       <template #actions>
         <SessionActionMenu />
       </template>
@@ -10,7 +10,10 @@
         <section v-for="group in navGroups" :key="group.title" class="nav-group">
           <p class="nav-group-title">{{ group.title }}</p>
           <RouterLink v-for="item in group.items" :key="item.to" :to="item.to" class="nav-link">
-            {{ item.label }}
+            <span class="nav-link__content">
+              <AppIcon :icon="item.icon" class="nav-link__icon" />
+              <span>{{ item.label }}</span>
+            </span>
           </RouterLink>
         </section>
       </aside>
@@ -23,9 +26,24 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import {
+  BookCopy,
+  Bot,
+  CalendarCheck2,
+  ClipboardCheck,
+  FileQuestion,
+  FolderKanban,
+  Keyboard,
+  LayoutDashboard,
+  MonitorPlay,
+  NotebookPen,
+  Settings2,
+  Users2,
+} from 'lucide-vue-next';
+import { computed, markRaw } from 'vue';
 import { RouterLink, RouterView } from 'vue-router';
 
+import AppIcon from '@/components/AppIcon.vue';
 import AppShellHeader from '@/components/AppShellHeader.vue';
 import FloatingAiCompanion from '@/components/FloatingAiCompanion.vue';
 import SessionActionMenu from '@/components/SessionActionMenu.vue';
@@ -36,37 +54,37 @@ const authStore = useAuthStore();
 const navGroups = computed(() => {
   const groups = [
     {
-      title: '工作总览',
+      title: '总览',
       items: [
-        { label: '工作台', to: '/staff/dashboard' },
-        { label: '课堂会话中心', to: '/staff/classroom' },
+        { label: '仪表盘', to: '/staff/dashboard', icon: markRaw(LayoutDashboard) },
+        { label: '课堂控制', to: '/staff/classroom', icon: markRaw(MonitorPlay) },
       ],
     },
     {
-      title: '教学内容',
+      title: '教学',
       items: [
-        { label: '学案管理', to: '/staff/lesson-plans' },
-        { label: '课程体系', to: '/staff/curriculum' },
-        { label: '测验题库', to: '/staff/quizzes' },
-        { label: '打字内容', to: '/staff/typing' },
-        { label: '资源中心', to: '/staff/resources' },
-        { label: '智能体', to: '/staff/assistants' },
+        { label: '学案管理', to: '/staff/lesson-plans', icon: markRaw(NotebookPen) },
+        { label: '课程内容', to: '/staff/curriculum', icon: markRaw(BookCopy) },
+        { label: '测验题库', to: '/staff/quizzes', icon: markRaw(FileQuestion) },
+        { label: '打字训练', to: '/staff/typing', icon: markRaw(Keyboard) },
+        { label: '资源中心', to: '/staff/resources', icon: markRaw(FolderKanban) },
+        { label: 'AI 助手', to: '/staff/assistants', icon: markRaw(Bot) },
       ],
     },
     {
-      title: '课堂反馈',
+      title: '反馈',
       items: [
-        { label: '作品评分', to: '/staff/submissions' },
-        { label: '签到', to: '/staff/attendance' },
-        { label: '学生', to: '/staff/students' },
+        { label: '提交批改', to: '/staff/submissions', icon: markRaw(ClipboardCheck) },
+        { label: '签到考勤', to: '/staff/attendance', icon: markRaw(CalendarCheck2) },
+        { label: '学生名单', to: '/staff/students', icon: markRaw(Users2) },
       ],
     },
   ];
 
   if (authStore.isAdmin) {
     groups.push({
-      title: '系统配置',
-      items: [{ label: '系统设置', to: '/staff/admin/system' }],
+      title: '系统',
+      items: [{ label: '系统设置', to: '/staff/admin/system', icon: markRaw(Settings2) }],
     });
   }
 
@@ -108,6 +126,16 @@ const navGroups = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.nav-link__content {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nav-link__icon {
+  opacity: 0.88;
 }
 
 .staff-layout .side-nav {

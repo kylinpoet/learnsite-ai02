@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>数据提交任务 - 学生提交页</title>
+    <title>测试0407 - 学生提交页</title>
     <style>
       body {
         margin: 0;
@@ -62,11 +62,11 @@
   </head>
   <body>
     <main class="panel">
-      <h1>数据提交任务</h1>
+      <h1>测试0407</h1>
       <p>这是数据提交任务的默认提交页模板。当前页面已经直连真实提交接口，教师后台可直接预览并继续改造。</p>
       <div class="api-box">
         <strong>提交接口：</strong>
-        <span>http://localhost:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881</span>
+        <span>http://127.0.0.1:5173/api/v1/tasks/900003/data-submit/f9a378cffdb7aa7e40715844da15757aaf29</span>
       </div>
       <form id="submit-form">
         <label>
@@ -88,7 +88,7 @@
     <script>
       const formElement = document.getElementById('submit-form');
       const statusElement = document.getElementById('status');
-      const SUBMIT_API_URL = "http://localhost:5173/api/v1/tasks/900002/data-submit/4b876a74650e9c82ff2d099793c0cafc9881";
+      const SUBMIT_API_URL = "http://127.0.0.1:5173/api/v1/tasks/900003/data-submit/f9a378cffdb7aa7e40715844da15757aaf29";
 
       formElement?.addEventListener('submit', async (event) => {
         event.preventDefault();

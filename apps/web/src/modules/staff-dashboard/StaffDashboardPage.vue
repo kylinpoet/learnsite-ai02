@@ -37,6 +37,46 @@
 
       <template #default>
         <template v-if="dashboard">
+          <section class="metric-grid dashboard-metric-grid">
+            <article v-for="item in dashboardMetricCards" :key="item.label" class="metric-tile dashboard-metric-card">
+              <div class="dashboard-metric-card__top">
+                <span class="dashboard-metric-card__icon" :class="`dashboard-metric-card__icon--${item.tone}`">
+                  <AppIcon :icon="item.icon" :size="20" />
+                </span>
+                <p class="metric-label">{{ item.label }}</p>
+              </div>
+              <p class="metric-value">{{ item.value }}</p>
+              <p class="metric-note">{{ item.note }}</p>
+            </article>
+          </section>
+
+          <section class="dashboard-insights-grid">
+            <article class="soft-card panel dashboard-chart-card">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">班级节奏</p>
+                  <h3>签到与到课分布</h3>
+                  <p class="section-note">按可开课班级查看今日已签到与待签到人数，方便快速判断课堂状态。</p>
+                </div>
+                <el-tag round type="info">{{ dashboard.launchpad.classes.length }} 个班级</el-tag>
+              </div>
+              <el-empty v-if="!dashboard.launchpad.classes.length" description="当前还没有可视化班级数据" />
+              <AppChart v-else :height="280" :option="classAttendanceChartOption" />
+            </article>
+
+            <article class="soft-card panel dashboard-chart-card">
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">今日重点</p>
+                  <h3>工作台任务分布</h3>
+                  <p class="section-note">把签到、待评阅和推荐作品放进同一张图里，帮助老师先处理最紧急的事项。</p>
+                </div>
+                <el-tag round type="warning">实时总览</el-tag>
+              </div>
+              <AppChart :height="280" :option="teacherOpsChartOption" />
+            </article>
+          </section>
+
           <section class="soft-card panel">
             <div class="panel-head">
               <div>
@@ -973,12 +1013,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { CheckCheck, ClipboardList, MonitorPlay, Sparkles } from 'lucide-vue-next';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
+import AppIcon from '@/components/AppIcon.vue';
+import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
+import { readThemeToken } from '@/utils/themeTokens';
 
 type Student = {
   user_id: number;
@@ -1266,7 +1310,9 @@ type EditableGroup = {
 };
 type EditableStudent = GroupManagerStudent & { target_group_id: number | null };
 
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 const router = useRouter();
+const appStore = useAppStore();
 const authStore = useAuthStore();
 
 const dashboard = ref<DashboardPayload | null>(null);
@@ -1410,6 +1456,190 @@ const groupTaskCompletionRows = computed<GroupTaskCompletionRow[]>(() => {
     })
     .sort((left, right) => left.group_no - right.group_no || left.group_id - right.group_id);
 });
+const dashboardMetricCards = computed(() => {
+  const overview = dashboard.value?.today_overview;
+  if (!overview) {
+    return [];
+  }
+
+  return [
+    {
+      label: 'Checked In',
+      value: overview.checked_in_today,
+      note: `${overview.pending_signin_count} students still pending`,
+      icon: CheckCheck,
+      tone: 'primary',
+    },
+    {
+      label: 'Active Sessions',
+      value: overview.active_session_count,
+      note: `${overview.active_class_count} classes currently in session`,
+      icon: MonitorPlay,
+      tone: 'accent',
+    },
+    {
+      label: 'Pending Reviews',
+      value: overview.pending_review_count,
+      note: 'Submission review items that still need teacher attention',
+      icon: ClipboardList,
+      tone: 'warning',
+    },
+    {
+      label: 'Featured Work',
+      value: overview.recommended_count,
+      note: 'Recommended items ready for showcase or class discussion',
+      icon: Sparkles,
+      tone: 'success',
+    },
+  ];
+});
+
+const classAttendanceChartOption = computed(() => {
+  appStore.currentTheme;
+  const classes = dashboard.value?.launchpad.classes || [];
+  const textColor = readThemeToken('--ls-text', '#243a4d');
+  const mutedColor = readThemeToken('--ls-muted', '#61758b');
+  const borderColor = readThemeToken('--ls-border', 'rgba(36, 70, 87, 0.14)');
+  const primaryColor = readThemeToken('--ls-primary', '#ff8a1f');
+  const accentColor = readThemeToken('--ls-accent', '#11c7b1');
+
+  return {
+    color: [accentColor, primaryColor],
+    grid: {
+      left: 12,
+      right: 12,
+      top: 36,
+      bottom: 8,
+      containLabel: true,
+    },
+    legend: {
+      top: 0,
+      textStyle: {
+        color: mutedColor,
+      },
+    },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: {
+        type: 'shadow',
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: classes.map((item) => item.class_name),
+      axisLine: {
+        lineStyle: {
+          color: borderColor,
+        },
+      },
+      axisLabel: {
+        color: mutedColor,
+        interval: 0,
+      },
+    },
+    yAxis: {
+      type: 'value',
+      minInterval: 1,
+      axisLine: {
+        show: false,
+      },
+      splitLine: {
+        lineStyle: {
+          color: borderColor,
+        },
+      },
+      axisLabel: {
+        color: mutedColor,
+      },
+    },
+    series: [
+      {
+        name: 'Checked in',
+        type: 'bar',
+        stack: 'attendance',
+        barMaxWidth: 28,
+        data: classes.map((item) => item.checked_in_count),
+        itemStyle: {
+          borderRadius: [10, 10, 0, 0],
+        },
+      },
+      {
+        name: 'Pending',
+        type: 'bar',
+        stack: 'attendance',
+        barMaxWidth: 28,
+        data: classes.map((item) => Math.max(item.student_count - item.checked_in_count, 0)),
+        itemStyle: {
+          borderRadius: [10, 10, 0, 0],
+        },
+      },
+    ],
+    textStyle: {
+      color: textColor,
+      fontFamily: 'var(--ls-font)',
+    },
+  };
+});
+
+const teacherOpsChartOption = computed(() => {
+  appStore.currentTheme;
+  const overview = dashboard.value?.today_overview;
+  const textColor = readThemeToken('--ls-text', '#243a4d');
+  const mutedColor = readThemeToken('--ls-muted', '#61758b');
+  const primaryColor = readThemeToken('--ls-primary', '#ff8a1f');
+  const accentColor = readThemeToken('--ls-accent', '#11c7b1');
+  const warningColor = '#ffb347';
+  const neutralColor = '#8f96b5';
+
+  return {
+    tooltip: {
+      trigger: 'item',
+    },
+    legend: {
+      bottom: 0,
+      itemWidth: 12,
+      itemHeight: 12,
+      textStyle: {
+        color: mutedColor,
+      },
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['46%', '72%'],
+        center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: {
+          borderRadius: 14,
+          borderColor: '#ffffff',
+          borderWidth: 3,
+        },
+        label: {
+          color: textColor,
+          formatter: '{b}\n{c}',
+          fontSize: 12,
+        },
+        emphasis: {
+          label: {
+            fontSize: 13,
+            fontWeight: 700,
+          },
+        },
+        data: [
+          { value: overview?.checked_in_today || 0, name: 'Checked in', itemStyle: { color: accentColor } },
+          { value: overview?.pending_signin_count || 0, name: 'Pending sign-in', itemStyle: { color: primaryColor } },
+          { value: overview?.pending_review_count || 0, name: 'Pending review', itemStyle: { color: warningColor } },
+          { value: overview?.recommended_count || 0, name: 'Featured work', itemStyle: { color: neutralColor } },
+        ],
+      },
+    ],
+    textStyle: {
+      color: textColor,
+      fontFamily: 'var(--ls-font)',
+    },
+  };
+});
+
 const launchPreviewText = computed(() => {
   if (!selectedClass.value || !selectedPlan.value) return '请选择班级和学案，然后一键开课。';
   return `将“${selectedPlan.value.title}”推送到 ${selectedClass.value.class_name}，学生登录后会自动签到，并在座位图和小组面板中同步呈现。`;
@@ -2079,6 +2309,62 @@ onMounted(() => {
     linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(239, 246, 255, 0.92));
 }
 
+.dashboard-metric-grid,
+.dashboard-insights-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.dashboard-metric-grid {
+  display: grid;
+}
+
+.dashboard-insights-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.dashboard-metric-card {
+  display: grid;
+  gap: 12px;
+}
+
+.dashboard-metric-card__top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard-metric-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 14px;
+  background: var(--ls-primary-soft);
+  color: var(--ls-primary);
+}
+
+.dashboard-metric-card__icon--accent {
+  background: color-mix(in srgb, var(--ls-accent) 16%, white);
+  color: var(--ls-accent);
+}
+
+.dashboard-metric-card__icon--warning {
+  background: rgba(255, 179, 71, 0.18);
+  color: #c97805;
+}
+
+.dashboard-metric-card__icon--success {
+  background: rgba(40, 185, 126, 0.16);
+  color: #1a9a68;
+}
+
+.dashboard-chart-card {
+  display: grid;
+  gap: 18px;
+}
+
 .panel {
   padding: 22px;
 }
@@ -2536,6 +2822,8 @@ onMounted(() => {
 }
 
 @media (max-width: 1200px) {
+  .dashboard-metric-grid,
+  .dashboard-insights-grid,
   .group-grid,
   .history-grid,
   .log-filter-grid,
