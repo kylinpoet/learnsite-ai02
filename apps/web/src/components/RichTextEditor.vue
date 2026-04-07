@@ -65,13 +65,13 @@ function handleUpdate(value: unknown) {
 .rich-text-editor :deep(.ql-toolbar.ql-snow) {
   border-radius: 16px 16px 0 0;
   border-color: var(--ls-border);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ls-card);
 }
 
 .rich-text-editor :deep(.ql-container.ql-snow) {
   border-radius: 0 0 16px 16px;
   border-color: var(--ls-border);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ls-panel-soft);
   min-height: calc(var(--editor-min-height) + 2px);
   height: auto;
 }

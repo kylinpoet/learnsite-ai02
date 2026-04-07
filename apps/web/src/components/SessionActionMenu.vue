@@ -71,9 +71,9 @@ async function logout() {
   min-width: 148px;
   flex: 0 0 auto;
   padding: 10px 14px;
-  border: 1px solid var(--ls-border);
+  border: 1px solid var(--ls-chip-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--ls-chip-bg);
 }
 
 .session-name,

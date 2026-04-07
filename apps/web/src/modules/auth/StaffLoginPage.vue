@@ -118,7 +118,8 @@ async function handleLogin() {
 
 .staff-note-card {
   max-width: 620px;
-  background: linear-gradient(180deg, rgba(250, 252, 255, 0.9) 0%, rgba(255, 255, 255, 0.84) 100%);
+  border-color: var(--ls-auth-note-border);
+  background: var(--ls-auth-note-bg);
 }
 
 .staff-capability-grid {
@@ -130,9 +131,9 @@ async function handleLogin() {
   display: grid;
   gap: 4px;
   padding: 14px 16px;
-  border: 1px solid rgba(41, 74, 124, 0.1);
+  border: 1px solid var(--ls-auth-note-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.82);
+  background: var(--ls-panel-soft);
 }
 
 .staff-capability-item strong {
@@ -146,12 +147,14 @@ async function handleLogin() {
 }
 
 .staff-login-page__tag {
-  background: rgba(66, 97, 162, 0.14);
-  color: #2f4f86;
+  background: var(--ls-auth-tag-bg);
+  color: var(--ls-auth-tag-text);
 }
 
 .staff-login-page :deep(.el-tag) {
   border: none;
+  background: var(--ls-auth-tag-bg);
+  color: var(--ls-auth-tag-text);
 }
 
 .staff-login-page :deep(.el-form-item__label) {
@@ -162,16 +165,16 @@ async function handleLogin() {
 .staff-login-page :deep(.el-input__wrapper) {
   min-height: 46px;
   border-radius: 14px;
-  background: rgba(249, 251, 255, 0.96);
-  box-shadow: 0 0 0 1px rgba(35, 58, 92, 0.1) inset;
+  background: var(--ls-input-bg);
+  box-shadow: var(--ls-input-shadow);
 }
 
 .staff-login-page :deep(.el-button--primary) {
   min-height: 48px;
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg, #4261a2 0%, #5472b8 100%);
-  box-shadow: 0 14px 28px rgba(66, 97, 162, 0.2);
+  background: var(--ls-button-gradient);
+  box-shadow: var(--ls-button-shadow);
 }
 
 .staff-login-page :deep(.el-alert) {

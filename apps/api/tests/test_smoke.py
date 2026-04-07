@@ -4465,11 +4465,11 @@ def test_system_theme_can_be_configured_and_is_shared_to_staff_and_student():
         assert bootstrap_response.status_code == 200
         bootstrap_payload = bootstrap_response.json()["data"]
         original_system = bootstrap_payload["system"]
-        assert any(item["code"] == "forest" for item in bootstrap_payload["theme_presets"])
+        assert any(item["code"] == "neon-pulse" for item in bootstrap_payload["theme_presets"])
 
         update_payload = {
             **original_system,
-            "theme_code": "forest",
+            "theme_code": "neon-pulse",
         }
         update_response = client.put(
             f"{API_PREFIX}/settings/system",
@@ -4477,18 +4477,18 @@ def test_system_theme_can_be_configured_and_is_shared_to_staff_and_student():
             json=update_payload,
         )
         assert update_response.status_code == 200
-        assert update_response.json()["data"]["theme_code"] == "forest"
+        assert update_response.json()["data"]["theme_code"] == "neon-pulse"
 
         theme_catalog = client.get(f"{API_PREFIX}/settings/themes")
         assert theme_catalog.status_code == 200
-        assert theme_catalog.json()["data"]["current_theme_code"] == "forest"
+        assert theme_catalog.json()["data"]["current_theme_code"] == "neon-pulse"
 
         teacher_me = client.get(f"{API_PREFIX}/auth/me", headers=teacher)
         student_me = client.get(f"{API_PREFIX}/auth/me", headers=student)
         assert teacher_me.status_code == 200
         assert student_me.status_code == 200
-        assert teacher_me.json()["data"]["theme"] == "forest"
-        assert student_me.json()["data"]["theme"] == "forest"
+        assert teacher_me.json()["data"]["theme"] == "neon-pulse"
+        assert student_me.json()["data"]["theme"] == "neon-pulse"
 
         restore_response = client.put(
             f"{API_PREFIX}/settings/system",

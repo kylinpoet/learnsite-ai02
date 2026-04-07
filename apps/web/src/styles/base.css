@@ -35,23 +35,28 @@ a {
   flex-direction: column;
   gap: 10px;
   padding: 20px;
-  border: 1px solid var(--ls-border);
+  border: 1px solid var(--ls-sidebar-border, var(--ls-border));
   border-radius: 24px;
-  background: var(--ls-surface);
-  box-shadow: var(--ls-shadow);
+  background: var(--ls-sidebar-bg, var(--ls-surface));
+  box-shadow: var(--ls-sidebar-shadow, var(--ls-shadow));
 }
 
 .nav-link {
   padding: 12px 14px;
   border-radius: 14px;
-  color: var(--ls-text);
+  color: var(--ls-nav-text, var(--ls-text));
   transition: 0.2s ease;
 }
 
-.nav-link:hover,
+.nav-link:hover {
+  background: var(--ls-nav-hover-bg, var(--ls-primary-soft));
+  color: var(--ls-nav-hover-color, var(--ls-primary));
+}
+
 .router-link-active {
-  background: var(--ls-primary-soft);
-  color: var(--ls-primary);
+  background: var(--ls-nav-active-bg, var(--ls-primary-soft));
+  color: var(--ls-nav-active-color, var(--ls-primary));
+  box-shadow: var(--ls-nav-active-shadow, none);
 }
 
 .page-stack {
@@ -68,7 +73,7 @@ a {
   padding: 28px;
   border: 1px solid var(--ls-border);
   border-radius: 28px;
-  background: var(--ls-surface);
+  background: var(--ls-panel, var(--ls-surface));
   box-shadow: var(--ls-shadow);
 }
 
@@ -123,6 +128,7 @@ a {
 .soft-card {
   border-radius: 24px;
   border: 1px solid var(--ls-border);
+  background: var(--ls-card, var(--ls-surface));
   box-shadow: var(--ls-shadow);
 }
 
@@ -138,23 +144,15 @@ a {
 .auth-backdrop {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(circle at 16% 16%, rgba(255, 210, 111, 0.24), transparent 28%),
-    radial-gradient(circle at 78% 18%, rgba(47, 135, 255, 0.22), transparent 24%),
-    radial-gradient(circle at 68% 76%, rgba(44, 154, 99, 0.14), transparent 24%);
+  background: var(--ls-auth-backdrop);
 }
 
 .auth-layout--student .auth-backdrop {
-  background:
-    radial-gradient(circle at 10% 14%, rgba(255, 208, 112, 0.34), transparent 24%),
-    radial-gradient(circle at 84% 18%, rgba(91, 157, 255, 0.24), transparent 26%),
-    radial-gradient(circle at 58% 74%, rgba(53, 187, 161, 0.18), transparent 24%),
-    linear-gradient(145deg, rgba(247, 252, 255, 0.96) 0%, rgba(235, 245, 255, 0.95) 44%, rgba(255, 247, 222, 0.95) 100%);
+  background: var(--ls-auth-student-backdrop);
 }
 
 .auth-layout--staff .auth-backdrop {
-  background:
-    linear-gradient(180deg, rgba(242, 248, 255, 0.98) 0%, rgba(236, 243, 252, 0.98) 100%);
+  background: var(--ls-auth-staff-backdrop);
 }
 
 .auth-layout--staff .auth-backdrop::before,
@@ -173,8 +171,8 @@ a {
   right: 12%;
   width: 220px;
   height: 220px;
-  border: 1px solid rgba(102, 157, 255, 0.16);
-  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--ls-auth-student-orb-border);
+  background: var(--ls-auth-student-orb-bg);
 }
 
 .auth-layout--student .auth-backdrop::after {
@@ -182,8 +180,8 @@ a {
   bottom: 12%;
   width: 280px;
   height: 280px;
-  border: 1px solid rgba(255, 214, 120, 0.18);
-  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid var(--ls-auth-student-ring-border);
+  background: var(--ls-auth-student-ring-bg);
 }
 
 .auth-layout--staff .auth-backdrop::before {
@@ -192,7 +190,7 @@ a {
   width: 100%;
   height: 220px;
   border-radius: 0 0 48px 48px;
-  background: linear-gradient(180deg, rgba(215, 230, 252, 0.7), rgba(215, 230, 252, 0));
+  background: var(--ls-auth-staff-ribbon);
 }
 
 .auth-layout--staff .auth-backdrop::after {
@@ -200,8 +198,8 @@ a {
   right: 120px;
   width: 360px;
   height: 360px;
-  border: 1px solid rgba(56, 107, 179, 0.09);
-  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--ls-auth-staff-orb-border);
+  background: var(--ls-auth-staff-orb-bg);
 }
 
 .auth-card {
@@ -210,8 +208,8 @@ a {
   padding: clamp(24px, 4vw, 42px);
   border-radius: 36px;
   border: 1px solid var(--ls-border);
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 28px 80px rgba(44, 71, 110, 0.14);
+  background: var(--ls-auth-card);
+  box-shadow: var(--ls-auth-card-shadow);
 }
 
 .auth-card--public {
@@ -219,13 +217,11 @@ a {
 }
 
 .auth-card--student {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(255, 255, 255, 0.88) 100%);
+  background: var(--ls-auth-card-student);
 }
 
 .auth-card--staff {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 252, 255, 0.94) 100%);
+  background: var(--ls-auth-card-staff);
 }
 
 .auth-hero {
@@ -268,7 +264,7 @@ a {
   gap: 18px;
   align-content: flex-start;
   padding: 24px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ls-auth-form-panel);
 }
 
 .auth-form-panel__top {
@@ -289,8 +285,8 @@ a {
   align-items: center;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(255, 210, 111, 0.18);
-  color: #9a6a05;
+  background: var(--ls-auth-tag-bg);
+  color: var(--ls-auth-tag-text);
   font-size: 12px;
   font-weight: 700;
 }
@@ -305,9 +301,9 @@ a {
   display: inline-flex;
   align-items: center;
   padding: 9px 14px;
-  border: 1px solid rgba(47, 135, 255, 0.14);
+  border: 1px solid var(--ls-auth-pill-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--ls-auth-pill-bg);
   color: var(--ls-text);
   font-size: 13px;
   font-weight: 700;
@@ -317,9 +313,9 @@ a {
   display: grid;
   gap: 12px;
   padding: 18px 20px;
-  border: 1px solid rgba(47, 135, 255, 0.12);
+  border: 1px solid var(--ls-auth-note-border);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.62);
+  background: var(--ls-auth-note-bg);
 }
 
 .auth-note-card__kicker {
@@ -361,8 +357,8 @@ a {
   padding: 18px;
   overflow: auto;
   border-radius: 18px;
-  background: #152033;
-  color: #ecf4ff;
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
 }
 
 .metric-grid {
@@ -376,7 +372,7 @@ a {
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), var(--ls-surface));
+  background: var(--ls-panel-strong, linear-gradient(180deg, rgba(255, 255, 255, 0.98), var(--ls-surface)));
 }
 
 .metric-label,

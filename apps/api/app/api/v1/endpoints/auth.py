@@ -97,7 +97,7 @@ def current_user(
             "username": user.username,
             "display_name": user.display_name,
             "roles": roles,
-            "theme": read_system_settings(db).get("theme_code", "sky"),
+            "theme": read_system_settings(db).get("theme_code", "mango-splash"),
             "expires_at": token_data["expires_at"].isoformat() if token_data else None,
         }
     )

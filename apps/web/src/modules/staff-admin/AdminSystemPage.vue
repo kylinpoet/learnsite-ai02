@@ -782,7 +782,7 @@ const errorMessage = ref('');
 const systemForm = ref({
   school_name: '',
   active_grade_nos: [] as number[],
-  theme_code: 'sky',
+  theme_code: 'mango-splash',
   student_register_enabled: false,
   assistant_enabled: false,
   auto_attendance_on_login: true,

@@ -95,7 +95,7 @@ STUDENT_IMPORT_HEADER_ALIASES = {
 class SystemSettingsPayload(BaseModel):
     school_name: str = Field(min_length=1, max_length=120)
     active_grade_nos: list[int] = Field(min_length=1)
-    theme_code: str = Field(default="sky", min_length=1, max_length=30)
+    theme_code: str = Field(default="mango-splash", min_length=1, max_length=30)
     student_register_enabled: bool = False
     assistant_enabled: bool = True
     auto_attendance_on_login: bool = True
@@ -1290,7 +1290,7 @@ def list_theme_presets(db: Session = Depends(get_db)) -> ApiResponse:
     system_settings = read_system_settings(db)
     return ApiResponse(
         data={
-            "current_theme_code": system_settings.get("theme_code", "sky"),
+            "current_theme_code": system_settings.get("theme_code", "mango-splash"),
             "presets": theme_presets_payload(),
         }
     )

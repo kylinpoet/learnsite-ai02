@@ -106,8 +106,8 @@ async function handleLogin() {
 <style scoped>
 .student-note-card {
   max-width: 560px;
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.86) 0%, rgba(245, 250, 255, 0.84) 100%);
+  border-color: var(--ls-auth-note-border);
+  background: var(--ls-auth-note-bg);
 }
 
 .student-login-page :deep(.el-form-item__label) {
@@ -118,15 +118,16 @@ async function handleLogin() {
 .student-login-page :deep(.el-input__wrapper) {
   min-height: 46px;
   border-radius: 16px;
-  box-shadow: 0 0 0 1px rgba(44, 76, 132, 0.08) inset;
+  background: var(--ls-input-bg);
+  box-shadow: var(--ls-input-shadow);
 }
 
 .student-login-page :deep(.el-button--primary) {
   min-height: 48px;
   border: none;
   border-radius: 16px;
-  background: linear-gradient(135deg, #3e95ff 0%, #4ea9ff 100%);
-  box-shadow: 0 16px 30px rgba(62, 149, 255, 0.22);
+  background: var(--ls-button-gradient);
+  box-shadow: var(--ls-button-shadow);
 }
 
 .student-login-page :deep(.el-alert) {

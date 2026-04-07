@@ -81,15 +81,13 @@ const navGroups = computed(() => {
 
 .staff-layout {
   padding: 18px 20px 24px;
-  background:
-    linear-gradient(180deg, rgba(220, 233, 249, 0.72) 0, rgba(220, 233, 249, 0.18) 220px, transparent 220px),
-    linear-gradient(180deg, #f4f7fb 0%, #f8fafc 100%);
+  background: var(--ls-shell-wash), var(--ls-shell-base);
 }
 
 .staff-layout :deep(.shell-header) {
   margin-bottom: 16px;
   padding: 8px 6px 18px;
-  border-bottom: 1px solid rgba(39, 62, 99, 0.08);
+  border-bottom: 1px solid var(--ls-shell-divider);
 }
 
 .staff-layout :deep(.shell-title) {
@@ -118,31 +116,29 @@ const navGroups = computed(() => {
   gap: 14px;
   padding: 18px 14px;
   border-radius: 28px;
-  border-color: rgba(35, 58, 92, 0.08);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.98) 100%);
-  box-shadow: 0 18px 36px rgba(45, 70, 112, 0.08);
+  border-color: var(--ls-sidebar-border);
+  background: var(--ls-sidebar-bg);
+  box-shadow: var(--ls-sidebar-shadow);
 }
 
 .staff-layout .nav-link {
   padding: 12px 14px;
   border-radius: 16px;
   font-weight: 600;
-  color: rgba(29, 45, 68, 0.88);
+  color: var(--ls-nav-text);
 }
 
 .staff-layout .nav-link:hover,
 .staff-layout .router-link-active {
-  background: rgba(255, 255, 255, 0.92);
-  color: #355b98;
-  box-shadow:
-    inset 0 0 0 1px rgba(53, 91, 152, 0.12),
-    0 10px 22px rgba(53, 91, 152, 0.08);
+  background: var(--ls-nav-active-bg);
+  color: var(--ls-nav-active-color);
+  box-shadow: var(--ls-nav-active-shadow);
 }
 
 .nav-group-title {
   margin: 0 0 2px;
   padding: 0 10px;
-  color: #6f7e95;
+  color: var(--ls-summary-label);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -155,10 +151,10 @@ const navGroups = computed(() => {
 
 .staff-layout :deep(.hero-panel) {
   padding: 24px 26px;
-  border-color: rgba(35, 58, 92, 0.08);
+  border-color: var(--ls-sidebar-border);
   border-radius: 28px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.94) 100%);
-  box-shadow: 0 16px 34px rgba(45, 70, 112, 0.08);
+  background: var(--ls-panel);
+  box-shadow: var(--ls-shadow);
 }
 
 .staff-layout :deep(.hero-copy) {
@@ -172,8 +168,8 @@ const navGroups = computed(() => {
 .staff-layout :deep(.metric-tile) {
   padding: 16px 18px;
   border-radius: 20px;
-  border-color: rgba(35, 58, 92, 0.08);
-  background: rgba(255, 255, 255, 0.96);
+  border-color: var(--ls-sidebar-border);
+  background: var(--ls-panel-strong);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
@@ -183,10 +179,10 @@ const navGroups = computed(() => {
 }
 
 .staff-layout :deep(.soft-card) {
-  border-color: rgba(35, 58, 92, 0.08);
+  border-color: var(--ls-sidebar-border);
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 14px 32px rgba(45, 70, 112, 0.06);
+  background: var(--ls-card);
+  box-shadow: var(--ls-shadow);
 }
 
 @media (max-width: 960px) {

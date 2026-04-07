@@ -2060,9 +2060,9 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 6px;
   padding: 18px 18px 16px;
-  border: 1px solid rgba(35, 58, 92, 0.08);
+  border: 1px solid var(--ls-summary-border);
   border-radius: 22px;
-  background: linear-gradient(180deg, rgba(250, 252, 255, 0.96) 0%, rgba(244, 248, 255, 0.88) 100%);
+  background: var(--ls-summary-bg);
 }
 
 .lesson-plan-hero__summary strong {
@@ -2077,7 +2077,7 @@ onBeforeUnmount(() => {
 
 .lesson-plan-hero__summary-label {
   margin: 0;
-  color: #667996;
+  color: var(--ls-summary-label);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -2107,7 +2107,7 @@ onBeforeUnmount(() => {
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.8);
+  background: var(--ls-panel-soft);
 }
 
 .editor-tabs {
@@ -2118,9 +2118,9 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 12px;
   padding: 18px;
-  border: 1px solid rgba(66, 97, 162, 0.12);
+  border: 1px solid var(--ls-content-panel-border);
   border-radius: 20px;
-  background: rgba(248, 251, 255, 0.9);
+  background: var(--ls-content-panel-bg);
 }
 
 .dialog-task-head {

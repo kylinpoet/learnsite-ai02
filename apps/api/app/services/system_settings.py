@@ -10,14 +10,12 @@ from sqlalchemy.orm import Session
 from app.models import SystemSetting
 
 SYSTEM_THEME_PRESETS: list[dict[str, str]] = [
-    {"code": "sky", "name": "晴空蓝", "description": "清爽明亮，适合作为默认教学主题"},
-    {"code": "forest", "name": "森林绿", "description": "沉静自然，适合专注学习场景"},
-    {"code": "citrus", "name": "活力橙", "description": "活泼轻快，适合课堂互动氛围"},
-    {"code": "blossom", "name": "樱花粉", "description": "柔和亲和，适合初中生视觉偏好"},
-    {"code": "night", "name": "星夜蓝", "description": "稳重清晰，适合长时间阅读"},
+    {"code": "mango-splash", "name": "芒果冲浪", "description": "橙黄与海盐青的高亮组合，适合作为默认课堂主题"},
+    {"code": "berry-pop", "name": "莓莓汽泡", "description": "亮粉、亮蓝与奶油黄混合，更像初中生会主动选择的活力主题"},
+    {"code": "neon-pulse", "name": "电光霓虹", "description": "电蓝与霓虹感紫粉更有科技感，适合信息科技课程氛围"},
 ]
 SYSTEM_THEME_CODES = {item["code"] for item in SYSTEM_THEME_PRESETS}
-DEFAULT_THEME_CODE = "sky"
+DEFAULT_THEME_CODE = "mango-splash"
 
 ARCHIVED_CLASS_IDS_KEY = "archived_class_ids"
 CLASS_ARCHIVE_RECORDS_KEY = "class_archive_records"

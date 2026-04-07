@@ -58,8 +58,8 @@ const sanitizedHtml = computed(() => {
 .rich-text-content :deep(blockquote) {
   margin-left: 0;
   padding: 10px 14px;
-  border-left: 4px solid rgba(67, 109, 185, 0.35);
-  background: rgba(67, 109, 185, 0.08);
+  border-left: 4px solid var(--ls-blockquote-border);
+  background: var(--ls-blockquote-bg);
   border-radius: 12px;
 }
 
@@ -67,7 +67,7 @@ const sanitizedHtml = computed(() => {
   overflow-x: auto;
   padding: 14px;
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.06);
+  background: var(--ls-panel-soft);
 }
 
 .rich-text-content :deep(img) {
