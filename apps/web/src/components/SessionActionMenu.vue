@@ -63,12 +63,13 @@ async function logout() {
   display: flex;
   gap: 10px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
 }
 
 .session-chip {
-  min-width: 0;
+  min-width: 148px;
+  flex: 0 0 auto;
   padding: 10px 14px;
   border: 1px solid var(--ls-border);
   border-radius: 16px;
@@ -83,16 +84,19 @@ async function logout() {
 .session-name {
   font-weight: 700;
   color: var(--ls-ink);
+  white-space: nowrap;
 }
 
 .session-meta {
   margin-top: 2px;
   color: var(--ls-muted);
   font-size: 12px;
+  white-space: nowrap;
 }
 
 @media (max-width: 960px) {
   .session-tools {
+    flex-wrap: wrap;
     justify-content: flex-start;
   }
 }
