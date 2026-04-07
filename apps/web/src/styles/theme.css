@@ -1,5 +1,6 @@
 :root {
-  --ls-font: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ls-font: "MiSans", "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --ls-display-font: "Alibaba PuHuiTi 3.0", "MiSans", "HarmonyOS Sans SC", "Source Han Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --ls-bg: #f5f8ff;
   --ls-surface: rgba(255, 255, 255, 0.86);
   --ls-border: rgba(29, 52, 84, 0.12);
