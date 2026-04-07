@@ -20,6 +20,7 @@ os.environ["LEARNSITE_STORAGE_ROOT"] = str(TEST_STORAGE_ROOT)
 from app.main import app
 from app.core.config import settings
 from app.core.security import create_access_token
+from app.api.deps.auth import TASK_RUNTIME_COOKIE_NAME
 from app.db.demo_seed import seed_demo_data
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
@@ -3532,6 +3533,69 @@ def test_data_submit_task_inline_html_source_persists_and_materializes_assets():
         assert updated_submit_entry_response.status_code == 200
         assert "saved-submit-v2" in updated_submit_entry_response.text
         assert "saved-submit-v1" not in updated_submit_entry_response.text
+
+
+def test_student_runtime_session_sets_cookie_for_data_submit_assets():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        student = student_headers(client, "70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
+
+        curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+        lesson_id = curriculum[0]["units"][0]["lessons"][0]["id"]
+
+        create_plan_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": lesson_id,
+                "title": "杩愯鏃朵細璇漀ookie 娴嬭瘯",
+                "content": "<p>娴嬭瘯瀛︾敓浠诲姟璧勬簮杩愯鏃朵細璇濄€?/p>",
+                "assigned_date": "2026-04-07",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "title": "娲诲姩涓€锛氭彁浜ゆ暟鎹?",
+                        "task_type": "data_submit",
+                        "description": "<p>璇峰～鍐欏苟鎻愪氦鏁版嵁銆?/p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                        "config": {
+                            "submit_entry_path": "index.html",
+                            "visualization_entry_path": "viewer/index.html",
+                            "submit_html_source": "<!doctype html><html><body><main>runtime-submit</main></body></html>",
+                            "visualization_html_source": "<!doctype html><html><body><main>runtime-view</main></body></html>",
+                        },
+                    }
+                ],
+            },
+        )
+        assert create_plan_response.status_code == 200
+        created_plan = create_plan_response.json()["data"]["plan"]
+        created_task = created_plan["tasks"][0]
+        task_id = created_task["id"]
+
+        with SessionLocal() as session:
+            student_user = session.scalar(select(User).where(User.username == "70101"))
+            assert student_user is not None
+            session.add(
+                StudentLessonPlanProgress(
+                    student_id=student_user.id,
+                    plan_id=created_plan["id"],
+                    progress_status="pending",
+                    assigned_date=datetime.strptime("2026-04-07", "%Y-%m-%d").date(),
+                    completed_date=None,
+                )
+            )
+            session.commit()
+
+        runtime_response = client.post(f"{API_PREFIX}/tasks/{task_id}/runtime-session", headers=student)
+        assert runtime_response.status_code == 200
+        assert TASK_RUNTIME_COOKIE_NAME in runtime_response.headers.get("set-cookie", "")
+
+        asset_response = client.get(f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/index.html")
+        assert asset_response.status_code == 200
+        assert "runtime-submit" in asset_response.text
+        assert "__LEARNSITE_TASK_CONTEXT__" in asset_response.text
 
 
 def test_staff_can_reserve_task_ids_for_data_submit_tasks_and_keep_ids_on_save():

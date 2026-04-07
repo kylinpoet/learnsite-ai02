@@ -152,6 +152,27 @@
                     <h3>数据提交任务</h3>
                     <span>先在提交页完成数据上报，再切换到可视化页查看结果。</span>
                   </div>
+                  <div class="section-head section-head--compact">
+                    <span>可以将提交页或可视化页在新标签页中打开，方便单独查看和连续使用。</span>
+                    <div class="section-head__actions">
+                      <el-button
+                        plain
+                        size="small"
+                        :disabled="!dataSubmitFormUrl"
+                        @click="openTaskResourceInNewTab(dataSubmitFormUrl, 'submit')"
+                      >
+                        新标签打开提交页
+                      </el-button>
+                      <el-button
+                        plain
+                        size="small"
+                        :disabled="!dataSubmitVisualizationUrl"
+                        @click="openTaskResourceInNewTab(dataSubmitVisualizationUrl, 'visualization')"
+                      >
+                        新标签打开可视化页
+                      </el-button>
+                    </div>
+                  </div>
                   <el-tabs v-model="dataSubmitActiveTab">
                     <el-tab-pane label="学生提交页" name="submit">
                       <div class="data-submit-tab-pane">
@@ -1385,6 +1406,20 @@ async function goToPeerReview() {
   await router.push(`/student/reviews/${route.params.taskId}`);
 }
 
+function openTaskResourceInNewTab(url: string, label: 'submit' | 'visualization') {
+  const pageLabel = label === 'submit' ? '数据提交页' : '数据可视化页';
+
+  if (!url) {
+    ElMessage.warning(`${pageLabel} 还没有可打开的页面资源`);
+    return;
+  }
+
+  const openedWindow = window.open(url, '_blank', 'noopener,noreferrer');
+  if (!openedWindow) {
+    ElMessage.warning(`浏览器拦截了${pageLabel}的新标签页，请允许弹窗后重试`);
+  }
+}
+
 onMounted(() => {
   window.addEventListener('message', handleTaskRuntimeMessage);
   void loadTask();
@@ -1486,6 +1521,12 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.section-head__actions {
+  display: flex;
+  gap: 10px;
   flex-wrap: wrap;
 }
 

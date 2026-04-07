@@ -1259,6 +1259,7 @@ def task_detail(
 def create_task_runtime_session(
     task_id: int,
     request: Request,
+    response: Response,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
@@ -1271,13 +1272,6 @@ def create_task_runtime_session(
         task_id=task.id,
         ttl_seconds=TASK_RUNTIME_COOKIE_MAX_AGE,
     )
-    response = ApiResponse(
-        data={
-            "task_id": task.id,
-            "expires_at": expires_at.isoformat(),
-            "asset_base_path": build_absolute_api_url(request, f"/api/v1/tasks/{task.id}/assets"),
-        }
-    )
     response.set_cookie(
         key=TASK_RUNTIME_COOKIE_NAME,
         value=runtime_token,
@@ -1286,7 +1280,13 @@ def create_task_runtime_session(
         samesite="lax",
         path=f"/api/v1/tasks/{task.id}/",
     )
-    return response
+    return ApiResponse(
+        data={
+            "task_id": task.id,
+            "expires_at": expires_at.isoformat(),
+            "asset_base_path": build_absolute_api_url(request, f"/api/v1/tasks/{task.id}/assets"),
+        }
+    )
 
 
 @router.get("/{task_id}/assets/{slot}/{asset_path:path}")
