@@ -18,15 +18,21 @@ from app.api.deps.auth import require_staff, require_student
 from app.api.deps.db import get_db
 from app.models import (
     AttendanceRecord,
+    ClassSeatAssignment,
+    ComputerRoom,
+    ComputerSeat,
     CurriculumLesson,
     CurriculumUnit,
     GroupTaskDraft,
     GroupTaskDraftVersion,
     LessonPlan,
+    SchoolClass,
     PeerReviewVote,
     Submission,
     SubmissionFile,
+    StudentGroupMember,
     StudentLessonPlanProgress,
+    StudentProfile,
     SystemSetting,
     Task,
     TaskTemplate,
@@ -1307,7 +1313,23 @@ def student_home(
     student: User = Depends(require_student),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    profile = student.student_profile
+    student_with_relations = db.scalar(
+        select(User)
+        .where(User.id == student.id)
+        .options(
+            selectinload(User.student_profile)
+            .selectinload(StudentProfile.school_class)
+            .selectinload(SchoolClass.default_room)
+            .selectinload(ComputerRoom.seats),
+            selectinload(User.seat_assignments)
+            .selectinload(ClassSeatAssignment.seat)
+            .selectinload(ComputerSeat.room),
+        )
+    )
+    if student_with_relations is None or student_with_relations.student_profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="student profile not found")
+
+    profile = student_with_relations.student_profile
 
     progresses = db.scalars(
         select(StudentLessonPlanProgress)
@@ -1335,6 +1357,63 @@ def student_home(
     pending_items.sort(key=lambda item: item["date"], reverse=True)
     completed_items.sort(key=lambda item: item["date"], reverse=True)
 
+    latest_assignment = next(
+        (
+            assignment
+            for assignment in sorted(student_with_relations.seat_assignments, key=lambda item: item.id, reverse=True)
+            if assignment.seat is not None
+        ),
+        None,
+    )
+    latest_attendance = db.scalar(
+        select(AttendanceRecord)
+        .where(AttendanceRecord.student_id == student.id)
+        .options(selectinload(AttendanceRecord.seat).selectinload(ComputerSeat.room))
+        .order_by(AttendanceRecord.attendance_date.desc(), AttendanceRecord.checked_in_at.desc(), AttendanceRecord.id.desc())
+    )
+    latest_seat = (
+        latest_attendance.seat
+        if latest_attendance is not None and latest_attendance.seat is not None
+        else (latest_assignment.seat if latest_assignment is not None else None)
+    )
+
+    room = profile.school_class.default_room if profile.school_class is not None else None
+    seat_cells: list[dict[str, object | None | bool | int]] = []
+    if room is not None:
+        seat_by_position = {(seat.row_no, seat.col_no): seat for seat in room.seats}
+        max_row = max(room.row_count, max((seat.row_no for seat in room.seats), default=0))
+        max_col = max(room.col_count, max((seat.col_no for seat in room.seats), default=0))
+        for row_no in range(1, max_row + 1):
+            for col_no in range(1, max_col + 1):
+                seat = seat_by_position.get((row_no, col_no))
+                if seat is None:
+                    seat_cells.append(
+                        {
+                            "seat_key": f"virtual-{profile.class_id}-{row_no}-{col_no}",
+                            "seat_id": None,
+                            "seat_label": f"{row_no}-{col_no}",
+                            "row_no": row_no,
+                            "col_no": col_no,
+                            "is_virtual": True,
+                            "is_enabled": False,
+                            "is_current": False,
+                        }
+                    )
+                    continue
+
+                seat_cells.append(
+                    {
+                        "seat_key": f"seat-{seat.id}",
+                        "seat_id": seat.id,
+                        "seat_label": seat.seat_label,
+                        "row_no": seat.row_no,
+                        "col_no": seat.col_no,
+                        "is_virtual": False,
+                        "is_enabled": seat.is_enabled,
+                        "is_current": latest_seat is not None and seat.id == latest_seat.id,
+                    }
+                )
+
     classmates_today = db.scalars(
         select(AttendanceRecord)
         .where(
@@ -1352,16 +1431,114 @@ def student_home(
         for record in sorted(classmates_today, key=lambda item: item.checked_in_at)
     ]
 
+    membership_group_ids = db.scalars(
+        select(StudentGroupMember.group_id).where(StudentGroupMember.student_user_id == student.id)
+    ).all()
+    submission_owner_filters = [Submission.student_id == student.id]
+    if membership_group_ids:
+        submission_owner_filters.append(Submission.group_id.in_(membership_group_ids))
+
+    reviewed_submissions = db.scalars(
+        select(Submission)
+        .where(
+            Submission.submit_status == "reviewed",
+            Submission.score.is_not(None),
+            or_(*submission_owner_filters),
+        )
+        .options(selectinload(Submission.task).selectinload(Task.lesson_plan))
+        .order_by(Submission.updated_at.desc(), Submission.id.desc())
+    ).all()
+
+    latest_reviewed_by_task: dict[int, Submission] = {}
+    for submission in reviewed_submissions:
+        if submission.task_id not in latest_reviewed_by_task:
+            latest_reviewed_by_task[submission.task_id] = submission
+
+    plan_score_map: dict[int, dict[str, object]] = {}
+    for submission in latest_reviewed_by_task.values():
+        if submission.score is None or submission.task is None or submission.task.lesson_plan is None:
+            continue
+
+        plan = submission.task.lesson_plan
+        score_bucket = plan_score_map.setdefault(
+            plan.id,
+            {
+                "plan_id": plan.id,
+                "title": plan.title,
+                "scores": [],
+                "reviewed_task_count": 0,
+                "latest_scored_at": None,
+                "teacher_comment": None,
+                "is_recommended": False,
+            },
+        )
+        score_bucket["scores"].append(submission.score)
+        score_bucket["reviewed_task_count"] = int(score_bucket["reviewed_task_count"]) + 1
+
+        reviewed_at = submission.updated_at
+        latest_scored_at = score_bucket["latest_scored_at"]
+        if latest_scored_at is None or reviewed_at > latest_scored_at:
+            score_bucket["latest_scored_at"] = reviewed_at
+            score_bucket["teacher_comment"] = submission.teacher_comment
+            score_bucket["is_recommended"] = bool(submission.is_recommended)
+
+    scored_plans = [
+        {
+            "plan_id": int(item["plan_id"]),
+            "title": str(item["title"]),
+            "score": round(sum(item["scores"]) / len(item["scores"]), 1),
+            "reviewed_task_count": int(item["reviewed_task_count"]),
+            "scored_at": item["latest_scored_at"].isoformat() if item["latest_scored_at"] else None,
+            "teacher_comment": item["teacher_comment"],
+            "is_recommended": bool(item["is_recommended"]),
+        }
+        for item in plan_score_map.values()
+        if item["scores"]
+    ]
+    scored_plans.sort(key=lambda item: item["scored_at"] or "", reverse=True)
+
+    scored_plan_values = [float(item["score"]) for item in scored_plans]
+
     payload = {
         "pending_courses": pending_items,
         "completed_courses": completed_items,
         "attendance_today": attendance_today,
         "profile": {
             "student_no": profile.student_no,
-            "name": student.display_name,
+            "name": student_with_relations.display_name,
             "class_name": profile.school_class.class_name,
             "grade_no": profile.grade_no,
+            "seat_label": latest_seat.seat_label if latest_seat is not None else None,
+            "room_name": (
+                latest_seat.room.name
+                if latest_seat is not None and latest_seat.room is not None
+                else (room.name if room is not None else None)
+            ),
         },
+        "seat_overview": {
+            "room": (
+                {
+                    "id": room.id,
+                    "name": room.name,
+                    "row_count": max(room.row_count, max((seat.row_no for seat in room.seats), default=0)),
+                    "col_count": max(room.col_count, max((seat.col_no for seat in room.seats), default=0)),
+                }
+                if room is not None
+                else None
+            ),
+            "current_seat_id": latest_seat.id if latest_seat is not None else None,
+            "seats": seat_cells,
+        },
+        "score_summary": {
+            "scored_plan_count": len(scored_plans),
+            "reviewed_task_count": len(latest_reviewed_by_task),
+            "average_score": (
+                round(sum(scored_plan_values) / len(scored_plan_values), 1) if scored_plan_values else None
+            ),
+            "best_score": max(scored_plan_values) if scored_plan_values else None,
+            "latest_scored_at": scored_plans[0]["scored_at"] if scored_plans else None,
+        },
+        "scored_plans": scored_plans,
     }
     return ApiResponse(data=payload)
 

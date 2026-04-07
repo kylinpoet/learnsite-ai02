@@ -197,7 +197,12 @@ def test_student_login_auto_signs_from_bound_loopback_ip():
     assert home_response.status_code == 200
     home_payload = home_response.json()["data"]
     assert home_payload["profile"]["class_name"] == "701班"
+    assert home_payload["profile"]["seat_label"]
+    assert home_payload["profile"]["room_name"]
     assert any(item["name"] == "郑嘉木" for item in home_payload["attendance_today"])
+    assert home_payload["seat_overview"]["room"] is not None
+    assert any(item["is_current"] for item in home_payload["seat_overview"]["seats"])
+    assert home_payload["score_summary"]["scored_plan_count"] >= 0
 
     assert dashboard_response.status_code == 200
     roster = find_roster(dashboard_response.json()["data"], "701班")
@@ -3343,6 +3348,15 @@ def test_teacher_can_complete_full_teaching_roundtrip():
         assert student_task_payload["current_submission"]["can_resubmit"] is False
         assert student_task_payload["recommended_showcase"]["count"] >= 1
         assert student_task_payload["recommended_showcase"]["items"][0]["submission_id"] == submission_id
+
+        student_home = client.get(f"{API_PREFIX}/lesson-plans/student/home", headers=student)
+        assert student_home.status_code == 200
+        student_home_payload = student_home.json()["data"]
+        scored_plan = next(item for item in student_home_payload["scored_plans"] if item["plan_id"] == plan["id"])
+        assert scored_plan["score"] == 120
+        assert scored_plan["teacher_comment"] == "方案完整，推荐展示。"
+        assert student_home_payload["score_summary"]["scored_plan_count"] >= 1
+        assert student_home_payload["score_summary"]["best_score"] >= 120
 
         blocked_resubmit = client.post(
             f"{API_PREFIX}/tasks/{upload_task_id}/submit",

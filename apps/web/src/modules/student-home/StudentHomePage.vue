@@ -2,10 +2,10 @@
   <div class="page-stack student-home-page">
     <section class="hero-panel student-home-hero">
       <div>
-        <p class="eyebrow">学生主页</p>
+        <p class="eyebrow">学生首页</p>
         <h2>{{ pageTitle }}</h2>
         <p class="hero-copy">
-          这里把学生档案、学习进度、今日签到和近期学习节奏集中到同一屏里，方便你一进平台就看到最值得先处理的任务。
+          这里把学习概览、学案进度、图表趋势、座位表和评阅得分整合到一个入口里，方便你一登录就看到最该先处理的任务。
         </p>
       </div>
       <el-button :disabled="!firstPendingCourseId" type="primary" @click="goToFirstPendingCourse">
@@ -32,7 +32,7 @@
 
       <template #default>
         <template v-if="homeData">
-          <section class="metric-grid student-home-metrics">
+          <section class="student-home-metrics">
             <article v-for="item in overviewCards" :key="item.label" class="metric-tile student-metric-card">
               <div class="student-metric-card__top">
                 <span class="student-card-icon" :class="`student-card-icon--${item.tone}`">
@@ -41,45 +41,88 @@
                 <p class="metric-label">{{ item.label }}</p>
               </div>
               <p class="metric-value">{{ item.value }}</p>
-              <p class="metric-note">{{ item.note }}</p>
             </article>
           </section>
 
           <section class="student-home-grid">
-            <el-card class="soft-card student-profile-card">
+            <el-card class="soft-card student-list-card">
               <template #header>
                 <div class="student-card-head">
                   <div class="student-card-head__main">
                     <span class="student-card-icon student-card-icon--primary">
-                      <AppIcon :icon="UserCircle2" :size="20" />
+                      <AppIcon :icon="ListTodo" :size="20" />
                     </span>
                     <div>
-                      <strong>学生档案</strong>
-                      <p class="section-note">当前登录学生的身份信息和班级归属。</p>
+                      <strong>待完成学案</strong>
+                      <p class="section-note">优先从这里继续当前还没完成的学习任务。</p>
                     </div>
                   </div>
-                  <el-tag round>{{ homeData.profile.class_name }}</el-tag>
+                  <el-tag round>{{ pendingCount }} 份</el-tag>
                 </div>
               </template>
 
-              <div class="student-profile-grid">
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">姓名</span>
-                  <strong>{{ homeData.profile.name }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">学号</span>
-                  <strong>{{ homeData.profile.student_no }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">班级</span>
-                  <strong>{{ homeData.profile.class_name }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">年级</span>
-                  <strong>{{ homeData.profile.grade_no }}</strong>
-                </article>
-              </div>
+              <el-empty v-if="!homeData.pending_courses.length" description="当前没有待完成的学案。" />
+              <el-timeline v-else>
+                <el-timeline-item
+                  v-for="item in homeData.pending_courses"
+                  :key="item.id"
+                  :timestamp="formatDate(item.date)"
+                >
+                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
+                </el-timeline-item>
+              </el-timeline>
+            </el-card>
+
+            <el-card class="soft-card student-list-card">
+              <template #header>
+                <div class="student-card-head">
+                  <div class="student-card-head__main">
+                    <span class="student-card-icon student-card-icon--success">
+                      <AppIcon :icon="Clock3" :size="20" />
+                    </span>
+                    <div>
+                      <strong>已完成学案</strong>
+                      <p class="section-note">回顾复盘时，可以从这里重新打开已完成内容。</p>
+                    </div>
+                  </div>
+                  <el-tag round type="success">{{ completedCount }} 份</el-tag>
+                </div>
+              </template>
+
+              <el-empty v-if="!homeData.completed_courses.length" description="暂时还没有已完成的学案。" />
+              <el-timeline v-else>
+                <el-timeline-item
+                  v-for="item in homeData.completed_courses"
+                  :key="item.id"
+                  :timestamp="formatDate(item.date)"
+                >
+                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
+                </el-timeline-item>
+              </el-timeline>
+            </el-card>
+          </section>
+
+          <section class="student-home-grid">
+            <el-card class="soft-card student-chart-card">
+              <template #header>
+                <div class="student-card-head">
+                  <div class="student-card-head__main">
+                    <span class="student-card-icon student-card-icon--success">
+                      <AppIcon :icon="TrendingUp" :size="20" />
+                    </span>
+                    <div>
+                      <strong>近期学习节奏</strong>
+                      <p class="section-note">按日期观察待完成与已完成学案的变化趋势。</p>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <el-empty
+                v-if="!courseTimelineData.length"
+                description="暂时没有带日期的学习记录，无法生成趋势图。"
+              />
+              <AppChart v-else :height="280" :option="courseTimelineChartOption" />
             </el-card>
 
             <el-card class="soft-card student-chart-card">
@@ -104,23 +147,88 @@
           </section>
 
           <section class="student-home-grid">
-            <el-card class="soft-card student-chart-card">
+            <el-card class="soft-card student-profile-card">
               <template #header>
                 <div class="student-card-head">
                   <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--success">
-                      <AppIcon :icon="TrendingUp" :size="20" />
+                    <span class="student-card-icon student-card-icon--primary">
+                      <AppIcon :icon="UserCircle2" :size="20" />
                     </span>
                     <div>
-                      <strong>近期学习节奏</strong>
-                      <p class="section-note">按日期观察待完成与已完成学案的变化趋势。</p>
+                      <strong>学生档案</strong>
+                      <p class="section-note">当前登录学生的基础信息、座位定位和学案评阅摘要。</p>
                     </div>
                   </div>
+                  <el-tag round>{{ homeData.profile.class_name }}</el-tag>
                 </div>
               </template>
 
-              <el-empty v-if="!courseTimelineData.length" description="暂时没有带日期的学习记录，无法生成趋势图。" />
-              <AppChart v-else :height="280" :option="courseTimelineChartOption" />
+              <div class="student-profile-grid">
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">姓名</span>
+                  <strong>{{ homeData.profile.name }}</strong>
+                </article>
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">学号</span>
+                  <strong>{{ homeData.profile.student_no }}</strong>
+                </article>
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">班级</span>
+                  <strong>{{ homeData.profile.class_name }}</strong>
+                </article>
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">年级</span>
+                  <strong>{{ homeData.profile.grade_no }} 年级</strong>
+                </article>
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">当前机房</span>
+                  <strong>{{ currentRoomLabel }}</strong>
+                </article>
+                <article class="student-profile-item">
+                  <span class="student-profile-item__label">当前座位</span>
+                  <strong>{{ currentSeatLabel }}</strong>
+                </article>
+              </div>
+
+              <div class="student-profile-panels">
+                <section class="student-profile-section">
+                  <div class="student-profile-section__head">
+                    <div>
+                      <strong>学案得分信息</strong>
+                      <p class="section-note">老师评阅后，这里会同步汇总最近的得分和评语。</p>
+                    </div>
+                    <el-tag round type="success">{{ scoredPlanCount }} 份</el-tag>
+                  </div>
+
+                  <div class="student-score-summary">
+                    <article v-for="item in scoreCards" :key="item.label" class="student-score-stat">
+                      <span class="student-score-stat__label">{{ item.label }}</span>
+                      <strong>{{ item.value }}</strong>
+                      <p>{{ item.note }}</p>
+                    </article>
+                  </div>
+
+                  <div v-if="recentScoredPlans.length" class="student-score-list">
+                    <article v-for="item in recentScoredPlans" :key="item.plan_id" class="student-score-item">
+                      <div class="student-score-item__main">
+                        <RouterLink class="student-score-item__link" :to="`/student/courses/${item.plan_id}`">
+                          {{ item.title }}
+                        </RouterLink>
+                        <p class="student-score-item__meta">
+                          <span>{{ formatDateTime(item.scored_at) }}</span>
+                          <span>已评 {{ item.reviewed_task_count }} 项</span>
+                          <span v-if="item.teacher_comment">{{ item.teacher_comment }}</span>
+                        </p>
+                      </div>
+                      <el-tag round :type="item.is_recommended ? 'warning' : 'success'">
+                        {{ formatScore(item.score) }}
+                      </el-tag>
+                    </article>
+                  </div>
+
+                  <el-empty v-else description="老师评阅后，这里会显示学案得分。" />
+                </section>
+              </div>
             </el-card>
 
             <el-card class="soft-card student-list-card">
@@ -132,7 +240,7 @@
                     </span>
                     <div>
                       <strong>今日签到动态</strong>
-                      <p class="section-note">同步展示今天的课堂签到记录。</p>
+                      <p class="section-note">同步展示今天班级内的签到更新。</p>
                     </div>
                   </div>
                   <el-tag round>{{ attendanceCount }} 条</el-tag>
@@ -153,62 +261,6 @@
                   <span class="student-attendance-item__time">{{ item.checked_in_at }}</span>
                 </article>
               </div>
-            </el-card>
-          </section>
-
-          <section class="student-home-grid">
-            <el-card class="soft-card student-list-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--primary">
-                      <AppIcon :icon="ListTodo" :size="20" />
-                    </span>
-                    <div>
-                      <strong>待完成学案</strong>
-                      <p class="section-note">从这里继续下一份还没完成的学案。</p>
-                    </div>
-                  </div>
-                </div>
-              </template>
-
-              <el-empty v-if="!homeData.pending_courses.length" description="当前没有待完成的学案。" />
-              <el-timeline v-else>
-                <el-timeline-item
-                  v-for="item in homeData.pending_courses"
-                  :key="item.id"
-                  :timestamp="item.date"
-                >
-                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
-                </el-timeline-item>
-              </el-timeline>
-            </el-card>
-
-            <el-card class="soft-card student-list-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--success">
-                      <AppIcon :icon="Clock3" :size="20" />
-                    </span>
-                    <div>
-                      <strong>已完成学案</strong>
-                      <p class="section-note">需要回顾时，可以从这里重新打开已完成内容。</p>
-                    </div>
-                  </div>
-                </div>
-              </template>
-
-              <el-empty v-if="!homeData.completed_courses.length" description="暂时还没有已完成的学案。" />
-              <el-timeline v-else>
-                <el-timeline-item
-                  v-for="item in homeData.completed_courses"
-                  :key="item.id"
-                  :timestamp="item.date"
-                >
-                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
-                </el-timeline-item>
-              </el-timeline>
             </el-card>
           </section>
         </template>
@@ -237,16 +289,61 @@ import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { readThemeToken } from '@/utils/themeTokens';
 
+type HomeCourseItem = {
+  id: number;
+  title: string;
+  date: string;
+};
+
+type SeatOverviewCell = {
+  seat_key: string;
+  seat_id: number | null;
+  seat_label: string;
+  row_no: number;
+  col_no: number;
+  is_virtual: boolean;
+  is_enabled: boolean;
+  is_current: boolean;
+};
+
 type HomePayload = {
-  pending_courses: Array<{ id: number; title: string; date: string }>;
-  completed_courses: Array<{ id: number; title: string; date: string }>;
+  pending_courses: HomeCourseItem[];
+  completed_courses: HomeCourseItem[];
   attendance_today: Array<{ name: string; checked_in_at: string }>;
   profile: {
     student_no: string;
     name: string;
     class_name: string;
     grade_no: number;
+    seat_label: string | null;
+    room_name: string | null;
   };
+  seat_overview: {
+    room: {
+      id: number;
+      name: string;
+      row_count: number;
+      col_count: number;
+    } | null;
+    current_seat_id: number | null;
+    seats: SeatOverviewCell[];
+  };
+  score_summary: {
+    scored_plan_count: number;
+    reviewed_task_count: number;
+    average_score: number | null;
+    best_score: number | null;
+    latest_scored_at: string | null;
+  };
+  scored_plans: Array<{
+    plan_id: number;
+    title: string;
+    score: number;
+    reviewed_task_count: number;
+    scored_at: string | null;
+    teacher_comment: string | null;
+    is_recommended: boolean;
+  }>;
 };
 
 const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
@@ -257,6 +354,27 @@ const homeData = ref<HomePayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
 
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return '--';
+  }
+  return value.split('T')[0].split('-').join('.');
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) {
+    return '--';
+  }
+  return value.replace('T', ' ').slice(0, 16);
+}
+
+function formatScore(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return '--';
+  }
+  return Number.isInteger(value) ? `${value} 分` : `${value.toFixed(1)} 分`;
+}
+
 const pageTitle = computed(() =>
   homeData.value ? `${homeData.value.profile.name} 的学习中心` : '学生学习中心'
 );
@@ -264,40 +382,67 @@ const firstPendingCourseId = computed(() => homeData.value?.pending_courses[0]?.
 const pendingCount = computed(() => homeData.value?.pending_courses.length || 0);
 const completedCount = computed(() => homeData.value?.completed_courses.length || 0);
 const attendanceCount = computed(() => homeData.value?.attendance_today.length || 0);
+const scoredPlanCount = computed(() => homeData.value?.score_summary.scored_plan_count || 0);
+const reviewedTaskCount = computed(() => homeData.value?.score_summary.reviewed_task_count || 0);
 const totalCourseCount = computed(() => pendingCount.value + completedCount.value);
 const completionRate = computed(() =>
   totalCourseCount.value ? Math.round((completedCount.value / totalCourseCount.value) * 100) : 0
 );
+const currentSeatLabel = computed(() => homeData.value?.profile.seat_label || '未识别座位');
+const currentRoomLabel = computed(() => homeData.value?.profile.room_name || '当前还没有机房定位记录');
+const latestScoredAtLabel = computed(() => formatDate(homeData.value?.score_summary.latest_scored_at));
+const recentScoredPlans = computed(() => homeData.value?.scored_plans.slice(0, 4) || []);
+
 const overviewCards = computed(() => [
   {
     label: '待完成学案',
     value: pendingCount.value,
-    note: '优先从这里继续当前还没完成的学习任务。',
     icon: ListTodo,
     tone: 'primary',
   },
   {
     label: '已完成学案',
     value: completedCount.value,
-    note: totalCourseCount.value ? `全部 ${totalCourseCount.value} 份学案中的已完成数量` : '还没有学习计划数据',
-    icon: GraduationCap,
+    icon: Clock3,
     tone: 'accent',
   },
   {
-    label: '签到动态',
-    value: attendanceCount.value,
-    note: '首页同步展示课堂签到的最新更新。',
+    label: '已评分学案',
+    value: scoredPlanCount.value,
     icon: BadgeCheck,
     tone: 'success',
   },
   {
     label: '完成率',
-    value: completionRate.value,
-    note: '当前学案集合中已经完成的占比。',
+    value: `${completionRate.value}%`,
     icon: TrendingUp,
     tone: 'warning',
   },
 ]);
+
+const scoreCards = computed(() => [
+  {
+    label: '已评分学案',
+    value: `${scoredPlanCount.value} 份`,
+    note: scoredPlanCount.value ? '最近有老师评阅结果同步回来' : '老师评阅后会在这里累计',
+  },
+  {
+    label: '已评分任务',
+    value: `${reviewedTaskCount.value} 项`,
+    note: reviewedTaskCount.value ? '按每个任务的最新评阅结果统计' : '当前还没有已评分任务',
+  },
+  {
+    label: '平均得分',
+    value: formatScore(homeData.value?.score_summary.average_score),
+    note: homeData.value?.score_summary.average_score !== null ? '跨学案平均分' : '暂时还没有平均分数据',
+  },
+  {
+    label: '最高得分',
+    value: formatScore(homeData.value?.score_summary.best_score),
+    note: homeData.value?.score_summary.latest_scored_at ? `最近评阅 ${latestScoredAtLabel.value}` : '等待老师评阅',
+  },
+]);
+
 const courseTimelineData = computed(() => {
   const bucket = new Map<string, { pending: number; completed: number }>();
 
@@ -318,6 +463,7 @@ const courseTimelineData = computed(() => {
     .slice(-7)
     .map(([date, value]) => ({ date, ...value }));
 });
+
 const courseStatusChartOption = computed(() => {
   appStore.currentTheme;
   const textColor = readThemeToken('--ls-text', '#243a4d');
@@ -347,7 +493,7 @@ const courseStatusChartOption = computed(() => {
         },
         label: {
           color: textColor,
-          formatter: '{b}\\n{c}',
+          formatter: '{b}\n{c}',
           fontSize: 12,
         },
         data: [
@@ -387,6 +533,7 @@ const courseStatusChartOption = computed(() => {
     },
   };
 });
+
 const courseTimelineChartOption = computed(() => {
   appStore.currentTheme;
   const textColor = readThemeToken('--ls-text', '#243a4d');
@@ -415,7 +562,7 @@ const courseTimelineChartOption = computed(() => {
     },
     xAxis: {
       type: 'category',
-      data: courseTimelineData.value.map((item) => item.date),
+      data: courseTimelineData.value.map((item) => formatDate(item.date)),
       axisLine: {
         lineStyle: {
           color: borderColor,
@@ -499,6 +646,7 @@ onMounted(loadHome);
 
 .student-home-hero {
   align-items: center;
+  gap: 16px;
 }
 
 .student-home-hero__button {
@@ -508,45 +656,69 @@ onMounted(loadHome);
 }
 
 .student-home-metrics,
-.student-home-grid {
+.student-home-grid,
+.student-profile-grid,
+.student-profile-panels,
+.student-score-summary,
+.student-score-list,
+.student-attendance-list {
   display: grid;
   gap: 16px;
 }
 
 .student-home-metrics {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
 }
 
 .student-home-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.student-profile-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.student-score-summary {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
 .student-metric-card {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  min-height: 96px;
+  align-content: center;
 }
 
 .student-metric-card__top,
 .student-card-head,
 .student-card-head__main,
 .student-attendance-item,
-.student-attendance-item__name {
+.student-attendance-item__name,
+.student-profile-section__head,
+.student-score-item {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.student-card-head {
+.student-card-head,
+.student-profile-section__head,
+.student-score-item {
   justify-content: space-between;
-  align-items: flex-start;
 }
 
-.student-card-head__main {
+.student-card-head,
+.student-card-head__main,
+.student-profile-section__head {
   align-items: flex-start;
 }
 
 .student-card-head strong,
-.student-profile-item strong {
+.student-profile-item strong,
+.student-score-stat strong,
+.student-score-item__link {
   color: var(--ls-ink);
 }
 
@@ -582,47 +754,85 @@ onMounted(loadHome);
   min-height: 100%;
 }
 
-.student-profile-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+.student-profile-item,
+.student-profile-section,
+.student-score-stat,
+.student-attendance-item,
+.student-score-item {
+  border: 1px solid var(--ls-border);
+  border-radius: 18px;
+  background: var(--ls-panel-soft);
 }
 
 .student-profile-item {
   display: grid;
   gap: 6px;
   padding: 16px;
-  border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-panel-soft);
 }
 
-.student-profile-item__label {
+.student-profile-item__label,
+.student-score-stat__label,
+.student-attendance-item__time {
   color: var(--ls-muted);
   font-size: 13px;
 }
 
-.student-attendance-list {
+.student-profile-section {
   display: grid;
-  gap: 10px;
+  gap: 12px;
+  padding: 16px;
+}
+
+.student-score-stat {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.student-score-stat p,
+.student-score-item__meta {
+  margin: 0;
+  color: var(--ls-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.student-score-item {
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.student-score-item__main {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.student-score-item__link {
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.student-score-item__link:hover {
+  color: var(--ls-primary);
+}
+
+.student-score-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .student-attendance-item {
   justify-content: space-between;
   padding: 12px 14px;
-  border: 1px solid var(--ls-border);
-  border-radius: 16px;
-  background: var(--ls-panel-soft);
 }
 
 .student-attendance-item__name {
   color: var(--ls-ink);
   font-weight: 700;
-}
-
-.student-attendance-item__time {
-  color: var(--ls-muted);
-  font-size: 13px;
 }
 
 .section-note {
@@ -632,19 +842,22 @@ onMounted(loadHome);
 }
 
 @media (max-width: 1200px) {
-  .student-home-metrics {
+  .student-home-grid,
+  .student-profile-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .student-home-grid {
-    grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .student-home-metrics,
-  .student-profile-grid {
+  .student-home-grid,
+  .student-profile-grid,
+  .student-score-summary {
     grid-template-columns: 1fr;
+  }
+
+  .student-score-item {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>
