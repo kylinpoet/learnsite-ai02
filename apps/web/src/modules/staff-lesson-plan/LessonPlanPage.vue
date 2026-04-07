@@ -1,7 +1,7 @@
 ﻿<template>
   <div class="page-stack lesson-plan-page">
-    <section class="hero-panel">
-      <div>
+    <section class="hero-panel lesson-plan-hero">
+      <div class="lesson-plan-hero__copy">
         <p class="eyebrow">教师学案管理</p>
         <h2>{{ pageTitle }}</h2>
         <p class="hero-copy">
@@ -9,11 +9,24 @@
           把这份学案推送给班级，形成完整教学闭环。
         </p>
       </div>
-      <el-space wrap>
-        <el-button type="primary" @click="openCreateDialog">新建学案</el-button>
-        <el-button plain @click="router.push('/staff/curriculum')">查看课程体系</el-button>
-        <el-button plain @click="selectPlan(plans[0]?.id || null)">回到最新学案</el-button>
-      </el-space>
+      <div class="lesson-plan-hero__actions">
+        <article class="lesson-plan-hero__summary">
+          <p class="lesson-plan-hero__summary-label">当前最新学案</p>
+          <strong>{{ plans[0]?.title || '还没有学案' }}</strong>
+          <span>
+            {{
+              plans[0]
+                ? `${plans[0].lesson.title} · ${planStatusLabel(plans[0].status)}`
+                : '先绑定课次，再添加正文和任务。'
+            }}
+          </span>
+        </article>
+        <el-space wrap class="lesson-plan-hero__buttons">
+          <el-button type="primary" @click="openCreateDialog">新建学案</el-button>
+          <el-button plain @click="router.push('/staff/curriculum')">查看课程体系</el-button>
+          <el-button plain @click="selectPlan(plans[0]?.id || null)">回到最新学案</el-button>
+        </el-space>
+      </div>
     </section>
 
     <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
@@ -2020,6 +2033,61 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
+.lesson-plan-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.lesson-plan-hero__copy {
+  display: grid;
+  gap: 10px;
+}
+
+.lesson-plan-hero__copy h2 {
+  margin: 0;
+  font-size: clamp(34px, 4vw, 44px);
+}
+
+.lesson-plan-hero__actions {
+  display: grid;
+  gap: 14px;
+  align-content: space-between;
+}
+
+.lesson-plan-hero__summary {
+  display: grid;
+  gap: 6px;
+  padding: 18px 18px 16px;
+  border: 1px solid rgba(35, 58, 92, 0.08);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(250, 252, 255, 0.96) 0%, rgba(244, 248, 255, 0.88) 100%);
+}
+
+.lesson-plan-hero__summary strong {
+  font-size: 18px;
+  color: var(--ls-text);
+}
+
+.lesson-plan-hero__summary span {
+  color: var(--ls-muted);
+  line-height: 1.6;
+}
+
+.lesson-plan-hero__summary-label {
+  margin: 0;
+  color: #667996;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.lesson-plan-hero__buttons {
+  align-items: flex-start;
+}
+
 .info-row {
   display: flex;
   align-items: center;
@@ -2096,6 +2164,10 @@ onBeforeUnmount(() => {
 @media (max-width: 1024px) {
   .lesson-plan-page {
     width: 100%;
+  }
+
+  .lesson-plan-hero {
+    grid-template-columns: 1fr;
   }
 }
 
