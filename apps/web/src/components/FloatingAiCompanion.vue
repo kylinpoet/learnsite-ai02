@@ -97,8 +97,8 @@
             </div>
             <div class="ai-provider-field">
               <div class="ai-provider-field__head">
-                <h4>模型 Provider</h4>
-                <p class="section-note">默认跟随系统配置，也可临时切换当前会话模型。</p>
+                <h4>模型服务</h4>
+                <p class="section-note">默认跟随系统配置，也可临时切换当前会话使用的模型。</p>
               </div>
               <el-select
                 v-model="selectedProviderId"
@@ -106,7 +106,7 @@
                 clearable
                 :disabled="!bootstrap.providers.length"
                 :value-on-clear="null"
-                placeholder="跟随系统默认 Provider"
+                placeholder="跟随系统默认模型服务"
               >
                 <el-option
                   v-for="item in bootstrap.providers"
@@ -116,7 +116,7 @@
                 />
               </el-select>
               <p v-if="!bootstrap.providers.length" class="section-note">
-                当前未启用可用 Provider，将使用内置预览学伴。
+                当前未启用外部模型服务，将使用系统默认学伴。
               </p>
             </div>
             <div class="ai-provider-field">
@@ -445,6 +445,8 @@ type ChatMessage = {
 };
 
 const FAB_STORAGE_KEY = 'learnsite-ai-companion-fab-position';
+const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
+const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
 const IMAGE_INLINE_LIMIT = 1536 * 1024;
 const TEXT_INLINE_LIMIT = 128 * 1024;
 const MAX_ATTACHMENTS = 8;
@@ -531,21 +533,21 @@ const selectedProvider = computed(() => {
 });
 
 const activeProviderLabel = computed(() => {
-  const lastAssistant = [...activeMessages.value]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.providerName);
-  if (lastAssistant?.providerName) {
-    return lastAssistant.providerMode === 'preview'
-      ? `${lastAssistant.providerName} · 预览`
-      : lastAssistant.providerName;
-  }
   if (selectedProvider.value?.name) {
     return selectedProvider.value.name;
   }
   if (bootstrap.value?.active_provider?.name) {
     return bootstrap.value.active_provider.name;
   }
-  return '内置预览学伴';
+  const lastAssistant = [...activeMessages.value]
+    .reverse()
+    .find((message) => message.role === 'assistant' && message.providerName);
+  if (lastAssistant?.providerName) {
+    return lastAssistant.providerMode === 'preview'
+      ? `${lastAssistant.providerName} · 系统模式`
+      : lastAssistant.providerName;
+  }
+  return '系统默认学伴';
 });
 
 const drawerSize = computed(() => {
@@ -731,7 +733,7 @@ function assistantFootnote(message: ChatMessage) {
   if (message.providerName) {
     parts.push(
       message.providerMode === 'preview'
-        ? `${message.providerName} · 预览模式`
+        ? `${message.providerName} · 系统模式`
         : message.providerName
     );
   }
@@ -1148,8 +1150,8 @@ function applyBootstrap(payload: BootstrapPayload) {
     streamModeEnabled.value = false;
   }
   const providerIds = new Set(payload.providers.map((item) => item.id));
-  if (selectedProviderId.value === null || !providerIds.has(selectedProviderId.value)) {
-    selectedProviderId.value = payload.active_provider?.id ?? null;
+  if (selectedProviderId.value !== null && !providerIds.has(selectedProviderId.value)) {
+    selectedProviderId.value = null;
   }
   selectedKnowledgeBaseIds.general = normalizeKnowledgeBaseIds(
     selectedKnowledgeBaseIds.general.length
@@ -1186,6 +1188,13 @@ async function loadBootstrap() {
   } finally {
     bootstrapLoading.value = false;
   }
+}
+
+function handleProviderConfigUpdated() {
+  if (!authStore.token) {
+    return;
+  }
+  void loadBootstrap();
 }
 
 function applyContext(context: CompanionContext | null) {
@@ -1488,6 +1497,8 @@ onMounted(async () => {
   window.addEventListener('pointermove', handleWindowPointerMove);
   window.addEventListener('pointerup', handleWindowPointerUp);
   window.addEventListener('pointercancel', handleWindowPointerUp);
+  window.addEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
+  window.addEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
 
   if (authStore.token) {
     await loadBootstrap();
@@ -1523,9 +1534,7 @@ watch(drawerVisible, (visible) => {
     abortCurrentRequest(false);
     return;
   }
-  if (!bootstrap.value && !bootstrapLoading.value) {
-    void loadBootstrap();
-  }
+  void loadBootstrap();
   void loadContextForCurrentRoute();
   void scrollMessagesToBottom();
 });
@@ -1547,6 +1556,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handleWindowPointerMove);
   window.removeEventListener('pointerup', handleWindowPointerUp);
   window.removeEventListener('pointercancel', handleWindowPointerUp);
+  window.removeEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
+  window.removeEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
   clearComposerAttachments();
 });
 </script>

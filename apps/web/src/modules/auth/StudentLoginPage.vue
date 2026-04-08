@@ -16,7 +16,7 @@
         </div>
 
         <article class="auth-note-card student-note-card">
-          <p class="auth-note-card__kicker">Today in learnsite</p>
+          <p class="auth-note-card__kicker">登录后可继续</p>
           <ul class="auth-feature-list">
             <li>老师推送学案后，阅读、提交作品和编程任务会自动衔接到同一学习路径。</li>
             <li>登录完成后可以继续查看互评结果、班级共享资料和个人成长档案。</li>
@@ -27,14 +27,14 @@
       <el-card class="soft-card auth-form-panel">
         <div class="auth-form-panel__top">
           <span class="auth-form-panel__tag">主题可切换</span>
-          <p class="auth-form-panel__title">使用测试账号快速体验学生端流程</p>
+          <p class="auth-form-panel__title">输入学号和密码进入学习空间</p>
         </div>
 
         <el-alert
           :closable="false"
           class="student-login-page__alert"
           show-icon
-          title="测试账号：70101 / 12345，可切换 70101-70110、80901-80910 等学生账号"
+          title="请使用学校分配的学号和密码登录"
           type="info"
         />
 
@@ -84,8 +84,8 @@ const authStore = useAuthStore();
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const form = reactive({
-  username: '70101',
-  password: '12345',
+  username: '',
+  password: '',
 });
 
 async function handleLogin() {

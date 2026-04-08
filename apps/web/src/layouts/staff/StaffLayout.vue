@@ -1,30 +1,3 @@
-<template>
-  <div class="app-layout staff-layout">
-    <AppShellHeader title="教师工作台" kicker="教学与管理总览">
-      <template #actions>
-        <SessionActionMenu />
-      </template>
-    </AppShellHeader>
-    <div class="layout-shell">
-      <aside class="side-nav grouped-nav">
-        <section v-for="group in navGroups" :key="group.title" class="nav-group">
-          <p class="nav-group-title">{{ group.title }}</p>
-          <RouterLink v-for="item in group.items" :key="item.to" :to="item.to" class="nav-link">
-            <span class="nav-link__content">
-              <AppIcon :icon="item.icon" class="nav-link__icon" />
-              <span>{{ item.label }}</span>
-            </span>
-          </RouterLink>
-        </section>
-      </aside>
-      <main class="page-content">
-        <RouterView />
-      </main>
-    </div>
-    <FloatingAiCompanion />
-  </div>
-</template>
-
 <script setup lang="ts">
 import {
   BookCopy,
@@ -40,16 +13,25 @@ import {
   Settings2,
   Users2,
 } from 'lucide-vue-next';
+import type { LucideIcon } from 'lucide-vue-next';
 import { computed, markRaw } from 'vue';
-import { RouterLink, RouterView } from 'vue-router';
+import { RouterLink, RouterView, useRoute } from 'vue-router';
 
 import AppIcon from '@/components/AppIcon.vue';
 import AppShellHeader from '@/components/AppShellHeader.vue';
 import FloatingAiCompanion from '@/components/FloatingAiCompanion.vue';
 import SessionActionMenu from '@/components/SessionActionMenu.vue';
+import '@/styles/page-icon-chrome.css';
 import { useAuthStore } from '@/stores/auth';
 
+type StaffPageItem = {
+  label: string;
+  icon: LucideIcon;
+  matches: Array<(path: string) => boolean>;
+};
+
 const authStore = useAuthStore();
+const route = useRoute();
 
 const navGroups = computed(() => {
   const groups = [
@@ -90,7 +72,59 @@ const navGroups = computed(() => {
 
   return groups;
 });
+
+const staffPageItems: StaffPageItem[] = [
+  { label: '仪表盘', icon: markRaw(LayoutDashboard), matches: [(path) => path === '/staff/dashboard'] },
+  { label: '课堂控制', icon: markRaw(MonitorPlay), matches: [(path) => path.startsWith('/staff/classroom')] },
+  { label: '学案管理', icon: markRaw(NotebookPen), matches: [(path) => path.startsWith('/staff/lesson-plans')] },
+  { label: '课程内容', icon: markRaw(BookCopy), matches: [(path) => path.startsWith('/staff/curriculum')] },
+  { label: '测验题库', icon: markRaw(FileQuestion), matches: [(path) => path.startsWith('/staff/quizzes')] },
+  { label: '打字训练', icon: markRaw(Keyboard), matches: [(path) => path.startsWith('/staff/typing')] },
+  { label: '资源中心', icon: markRaw(FolderKanban), matches: [(path) => path.startsWith('/staff/resources')] },
+  { label: 'AI 助手', icon: markRaw(Bot), matches: [(path) => path.startsWith('/staff/assistants')] },
+  { label: '提交批改', icon: markRaw(ClipboardCheck), matches: [(path) => path.startsWith('/staff/submissions')] },
+  { label: '签到考勤', icon: markRaw(CalendarCheck2), matches: [(path) => path.startsWith('/staff/attendance')] },
+  { label: '学生名单', icon: markRaw(Users2), matches: [(path) => path.startsWith('/staff/students')] },
+  { label: '系统设置', icon: markRaw(Settings2), matches: [(path) => path.startsWith('/staff/admin')] },
+];
+
+const currentPage = computed(() => {
+  const matched = staffPageItems.find((item) => item.matches.some((matcher) => matcher(route.path)));
+  return matched || { label: '教师工作台', icon: markRaw(LayoutDashboard) };
+});
 </script>
+
+<template>
+  <div class="app-layout staff-layout">
+    <AppShellHeader
+      title="教师工作台"
+      kicker="教学与管理总览"
+      :current-page-icon="currentPage.icon"
+      :current-page-label="currentPage.label"
+    >
+      <template #actions>
+        <SessionActionMenu />
+      </template>
+    </AppShellHeader>
+    <div class="layout-shell">
+      <aside class="side-nav grouped-nav">
+        <section v-for="group in navGroups" :key="group.title" class="nav-group">
+          <p class="nav-group-title">{{ group.title }}</p>
+          <RouterLink v-for="item in group.items" :key="item.to" :to="item.to" class="nav-link">
+            <span class="nav-link__content">
+              <AppIcon :icon="item.icon" class="nav-link__icon" />
+              <span>{{ item.label }}</span>
+            </span>
+          </RouterLink>
+        </section>
+      </aside>
+      <main class="page-content">
+        <RouterView />
+      </main>
+    </div>
+    <FloatingAiCompanion />
+  </div>
+</template>
 
 <style scoped>
 .grouped-nav {

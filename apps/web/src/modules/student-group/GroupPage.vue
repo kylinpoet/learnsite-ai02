@@ -5,7 +5,7 @@
         <p class="eyebrow">小组协作</p>
         <h2>{{ pageTitle }}</h2>
         <p class="hero-copy">
-          对应旧站 `profile/mygroup.aspx`。当前已经接通真实小组数据，可查看分组成员、今日到课状态和小组共享网盘概览。
+          在这里查看小组成员、今日到课状态和共享网盘，便于分工协作、资料共享与共同完成任务。
         </p>
       </div>
       <div class="action-group">

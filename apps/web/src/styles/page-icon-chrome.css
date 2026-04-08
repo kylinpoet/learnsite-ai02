@@ -1,0 +1,145 @@
+.student-layout,
+.staff-layout {
+  --ls-page-icon-chip-border: rgba(255, 255, 255, 0.78);
+  --ls-page-icon-chip-shadow: 0 8px 18px rgba(29, 48, 92, 0.06);
+  --ls-page-icon-heading-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --ls-page-icon-card-size: 28px;
+  --ls-page-icon-card-radius: 10px;
+  --ls-page-icon-card-glyph-size: 15px;
+  --ls-page-icon-card-gap: 10px;
+  --ls-page-icon-title-size: 18px;
+  --ls-page-icon-title-radius: 7px;
+  --ls-page-icon-title-glyph-size: 10px;
+  --ls-page-icon-title-gap: 6px;
+}
+
+.student-layout {
+  --ls-page-icon-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M12 2l1.7 6.1L20 10l-6.3 1.9L12 18l-1.7-6.1L4 10l6.3-1.9L12 2zm6.4 10.7l.8 2.9 2.9.8-2.9.8-.8 2.9-.8-2.9-2.9-.8 2.9-.8.8-2.9z'/%3E%3C/svg%3E");
+  --ls-page-icon-chip-bg:
+    linear-gradient(135deg, rgba(43, 198, 138, 0.2), rgba(72, 124, 255, 0.24));
+}
+
+.staff-layout {
+  --ls-page-icon-url: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='white' d='M3 4h8v7H3V4zm10 0h8v4h-8V4zM3 13h8v7H3v-7zm10-2h8v9h-8v-9zm2-2h4v1.5h-4V9z'/%3E%3C/svg%3E");
+  --ls-page-icon-chip-bg:
+    linear-gradient(135deg, rgba(255, 151, 83, 0.22), rgba(255, 90, 126, 0.24));
+}
+
+.student-layout .page-content .soft-card > .el-card__header,
+.staff-layout .page-content .soft-card > .el-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--ls-page-icon-card-gap);
+}
+
+.student-layout .page-content .soft-card > .el-card__header > *,
+.staff-layout .page-content .soft-card > .el-card__header > * {
+  min-width: 0;
+}
+
+.student-layout .page-content .soft-card > .el-card__header:not(:has(svg))::before,
+.staff-layout .page-content .soft-card > .el-card__header:not(:has(svg))::before {
+  content: '';
+  width: var(--ls-page-icon-card-size);
+  height: var(--ls-page-icon-card-size);
+  flex: 0 0 var(--ls-page-icon-card-size);
+  align-self: flex-start;
+  margin-top: 2px;
+  border-radius: var(--ls-page-icon-card-radius);
+  border: 1px solid var(--ls-page-icon-chip-border);
+  background:
+    center / var(--ls-page-icon-card-glyph-size) var(--ls-page-icon-card-glyph-size) no-repeat var(--ls-page-icon-url),
+    var(--ls-page-icon-chip-bg);
+  box-shadow: var(--ls-page-icon-chip-shadow);
+  opacity: 0.94;
+}
+
+.student-layout .page-content :is(
+    .section-head h3,
+    .panel-head h3,
+    .panel-head h4,
+    .session-focus-head h4,
+    .content-block h3,
+    .showcase-files-head h3,
+    .pending-box__title,
+    .selected-files-title,
+    .group-summary-title,
+    .related-box__title,
+    .batch-title,
+    .template-panel-title,
+    .template-manager-title,
+    .template-card-title,
+    .dialog-task-head h3
+  ),
+.staff-layout .page-content :is(
+    .section-head h3,
+    .panel-head h3,
+    .panel-head h4,
+    .session-focus-head h4,
+    .content-block h3,
+    .showcase-files-head h3,
+    .pending-box__title,
+    .selected-files-title,
+    .group-summary-title,
+    .related-box__title,
+    .batch-title,
+    .template-panel-title,
+    .template-manager-title,
+    .template-card-title,
+    .dialog-task-head h3
+  ) {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ls-page-icon-title-gap);
+}
+
+.student-layout .page-content :is(
+    .section-head h3,
+    .panel-head h3,
+    .panel-head h4,
+    .session-focus-head h4,
+    .content-block h3,
+    .showcase-files-head h3,
+    .pending-box__title,
+    .selected-files-title,
+    .group-summary-title,
+    .related-box__title,
+    .batch-title,
+    .template-panel-title,
+    .template-manager-title,
+    .template-card-title,
+    .dialog-task-head h3
+  ):not(:has(svg))::before,
+.staff-layout .page-content :is(
+    .section-head h3,
+    .panel-head h3,
+    .panel-head h4,
+    .session-focus-head h4,
+    .content-block h3,
+    .showcase-files-head h3,
+    .pending-box__title,
+    .selected-files-title,
+    .group-summary-title,
+    .related-box__title,
+    .batch-title,
+    .template-panel-title,
+    .template-manager-title,
+    .template-card-title,
+    .dialog-task-head h3
+  ):not(:has(svg))::before {
+  content: '';
+  width: var(--ls-page-icon-title-size);
+  height: var(--ls-page-icon-title-size);
+  flex: 0 0 var(--ls-page-icon-title-size);
+  border-radius: var(--ls-page-icon-title-radius);
+  background:
+    center / var(--ls-page-icon-title-glyph-size) var(--ls-page-icon-title-glyph-size) no-repeat var(--ls-page-icon-url),
+    var(--ls-page-icon-chip-bg);
+  box-shadow: var(--ls-page-icon-heading-shadow);
+  opacity: 0.92;
+}
+
+.student-layout .page-content .soft-card > .el-card__header:has(.student-card-icon),
+.staff-layout .page-content .soft-card > .el-card__header:has(.student-card-icon) {
+  gap: 0;
+}

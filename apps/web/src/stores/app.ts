@@ -9,7 +9,7 @@ function applyTheme(theme: ThemeCode) {
 
 export const useAppStore = defineStore('app', {
   state: () => ({
-    title: import.meta.env.VITE_APP_TITLE || 'LearnSite 新平台',
+    title: import.meta.env.VITE_APP_TITLE || 'LearnSite',
     currentTheme: defaultTheme as ThemeCode,
     themeOptions,
     themeLockedBySystem: false,

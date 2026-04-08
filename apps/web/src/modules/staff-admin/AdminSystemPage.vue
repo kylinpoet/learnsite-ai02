@@ -420,7 +420,7 @@
                 </div>
               </section>
             </el-tab-pane>
-            <el-tab-pane label="AI Provider" name="ai-providers">
+            <el-tab-pane label="AI 模型服务" name="ai-providers">
               <section class="soft-card panel">
                 <div class="panel-head">
                   <div>
@@ -444,16 +444,93 @@
               <section class="soft-card panel">
                 <div class="panel-head">
                   <div>
-                    <h3>AI Provider</h3>
+                    <h3>AI 学伴运行参数</h3>
+                    <p class="section-note">基础参数用于稳定性与输出方式；高级参数默认留空即可，只有精调时再修改。</p>
+                  </div>
+                  <el-button :loading="isSavingAssistantRuntimeSettings" type="primary" @click="saveAssistantRuntimeSettings">
+                    保存运行参数
+                  </el-button>
+                </div>
+                <el-form label-position="top">
+                  <div class="admin-grid two-col">
+                    <el-form-item label="温度系数">
+                      <el-input-number
+                        v-model="assistantRuntimeForm.temperature"
+                        :min="0"
+                        :max="2"
+                        :step="0.1"
+                        :precision="1"
+                      />
+                      <p class="section-note">数值越低越稳定，数值越高越发散，推荐范围 0.2 - 0.8。</p>
+                    </el-form-item>
+                    <el-form-item label="流式输出">
+                      <el-switch v-model="assistantRuntimeForm.streaming_enabled" active-text="启用" inactive-text="关闭" />
+                      <p class="section-note">关闭后，AI 学伴将统一使用标准输出，不再逐段返回内容。</p>
+                    </el-form-item>
+                  </div>
+                  <el-divider content-position="left">高级参数（OpenAI Compatible）</el-divider>
+                  <p class="section-note">以下参数默认留空时，会交由模型服务使用默认策略。</p>
+                  <div class="admin-grid two-col">
+                    <el-form-item label="Top P（可选）">
+                      <el-input-number
+                        v-model="assistantRuntimeForm.top_p"
+                        :min="0"
+                        :max="1"
+                        :step="0.05"
+                        :precision="2"
+                        :value-on-clear="null"
+                      />
+                      <p class="section-note">用于控制采样范围，通常与温度系数二选一调节。</p>
+                    </el-form-item>
+                    <el-form-item label="Max Tokens（可选）">
+                      <el-input-number
+                        v-model="assistantRuntimeForm.max_tokens"
+                        :min="1"
+                        :max="8192"
+                        :step="64"
+                        :value-on-clear="null"
+                      />
+                      <p class="section-note">限制单次回复最大输出长度；留空表示不额外限制。</p>
+                    </el-form-item>
+                    <el-form-item label="Presence Penalty（可选）">
+                      <el-input-number
+                        v-model="assistantRuntimeForm.presence_penalty"
+                        :min="-2"
+                        :max="2"
+                        :step="0.1"
+                        :precision="1"
+                        :value-on-clear="null"
+                      />
+                      <p class="section-note">提高后更倾向引入新话题，降低重复主题。</p>
+                    </el-form-item>
+                    <el-form-item label="Frequency Penalty（可选）">
+                      <el-input-number
+                        v-model="assistantRuntimeForm.frequency_penalty"
+                        :min="-2"
+                        :max="2"
+                        :step="0.1"
+                        :precision="1"
+                        :value-on-clear="null"
+                      />
+                      <p class="section-note">提高后会抑制词语重复，适合减少啰嗦回复。</p>
+                    </el-form-item>
+                  </div>
+                </el-form>
+              </section>
+
+              <section class="soft-card panel">
+                <div class="panel-head">
+                  <div>
+                    <h3>AI 模型服务</h3>
                     <p class="section-note">统一维护智能体使用的模型接入地址、默认模型和启用状态。</p>
                   </div>
                   <div class="chip-row">
-                    <el-button plain @click="loadAIProviders">刷新 Provider</el-button>
-                    <el-button type="primary" @click="openProviderDialog()">新增 Provider</el-button>
+                    <el-button plain @click="loadAIProviders">刷新服务列表</el-button>
+                    <el-button type="primary" @click="openProviderDialog()">新增服务</el-button>
                   </div>
                 </div>
 
-                <el-empty v-if="!aiProviders.length" description="暂无 AI Provider 配置" />
+                <el-empty v-if="!aiProviders.length" description="暂无 AI 模型服务配置" />
                 <div v-else class="list-stack">
                   <article v-for="provider in aiProviders" :key="provider.id" class="list-card provider-card">
                     <div class="panel-head">
@@ -621,16 +698,53 @@
       </el-form>
       <template #footer><el-button @click="lessonDialogVisible = false">取消</el-button><el-button type="primary" @click="saveLesson">保存</el-button></template>
     </el-dialog>
-    <el-dialog v-model="providerDialogVisible" :title="editingProviderId ? '编辑 AI Provider' : '新增 AI Provider'" width="560px">
+    <el-dialog v-model="providerDialogVisible" :title="editingProviderId ? '编辑 AI 模型服务' : '新增 AI 模型服务'" width="620px">
       <el-form label-position="top">
-        <el-form-item label="Provider 名称"><el-input v-model="providerForm.name" /></el-form-item>
+        <el-form-item label="服务名称"><el-input v-model="providerForm.name" /></el-form-item>
         <div class="admin-grid two-col">
-          <el-form-item label="Provider 类型">
+          <el-form-item label="服务类型">
             <el-select v-model="providerForm.provider_type" class="full-width">
               <el-option v-for="item in providerTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="默认模型"><el-input v-model="providerForm.model_name" /></el-form-item>
+          <el-form-item label="默认模型" class="provider-model-field">
+            <el-select
+              v-model="providerForm.model_name"
+              allow-create
+              clearable
+              default-first-option
+              filterable
+              class="full-width"
+              placeholder="可自动获取，也可直接手动输入"
+            >
+              <el-option v-for="item in providerModelOptions" :key="item" :label="item" :value="item" />
+            </el-select>
+            <div class="provider-model-actions">
+              <el-button :loading="isFetchingProviderModels" link type="primary" @click="discoverProviderModels">
+                自动获取模型
+              </el-button>
+              <span class="section-note">
+                {{ providerModelResolvedUrl ? `已从 ${providerModelResolvedUrl} 读取模型列表` : '如果暂时取不到模型列表，也可以直接手动填写模型名' }}
+              </span>
+            </div>
+            <el-alert
+              v-if="providerModelFetchAlert"
+              class="provider-model-alert"
+              :closable="false"
+              show-icon
+              :title="providerModelFetchAlert.title"
+              type="warning"
+            >
+              <template #default>
+                <div class="provider-model-alert-body">
+                  <p class="provider-model-alert-text">{{ providerModelFetchAlert.description }}</p>
+                  <ul v-if="providerModelFetchAlert.suggestions.length" class="provider-model-alert-list">
+                    <li v-for="item in providerModelFetchAlert.suggestions" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+              </template>
+            </el-alert>
+          </el-form-item>
         </div>
         <el-form-item label="Base URL"><el-input v-model="providerForm.base_url" placeholder="https://api.openai.com/v1" /></el-form-item>
         <el-form-item :label="editingProviderId ? 'API Key（留空不更新）' : 'API Key'">
@@ -674,6 +788,14 @@ type BootstrapPayload = {
   };
   theme_presets: Array<{ code: string; name: string; description: string }>;
   assistant_prompts: { general_prompt: string; lesson_prompt: string };
+  assistant_runtime: {
+    temperature: number;
+    top_p: number | null;
+    max_tokens: number | null;
+    presence_penalty: number | null;
+    frequency_penalty: number | null;
+    streaming_enabled: boolean;
+  };
   classes: Array<{ id: number; grade_no: number; class_no: number; class_name: string; head_teacher_name: string | null; default_room_id: number | null; student_count: number }>;
   archived_classes: Array<{
     id: number;
@@ -697,6 +819,14 @@ type CurriculumImportResult = {
   updated_lesson_count: number;
 };
 type AssistantPromptSettings = { general_prompt: string; lesson_prompt: string };
+type AssistantRuntimeSettings = {
+  temperature: number;
+  top_p: number | null;
+  max_tokens: number | null;
+  presence_penalty: number | null;
+  frequency_penalty: number | null;
+  streaming_enabled: boolean;
+};
 type PromotionPreviewPayload = {
   grade_increment: number;
   items: Array<{
@@ -726,11 +856,22 @@ type AIProviderRecord = {
   masked_api_key: string;
   updated_at: string | null;
 };
+type AIProviderModelDiscoveryResult = {
+  items: string[];
+  resolved_url: string;
+};
+type ProviderModelFetchAlert = {
+  title: string;
+  description: string;
+  suggestions: string[];
+};
 type RoomSeat = BootstrapPayload['rooms'][number]['seats'][number];
 type RoomSeatDraftPayload = { row_count: number; col_count: number; seats: RoomSeat[] };
 type AdminTab = 'system' | 'accounts' | 'promotions' | 'rooms' | 'curriculum' | 'ai-providers';
 
 const ROOM_GRID_MAX = 50;
+const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
+const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
 const seatImportAccept = '.csv,.txt,.tsv,.xlsx';
 const studentImportAccept = '.csv,.txt,.tsv,.xlsx';
 const curriculumImportAccept = '.csv,.txt,.tsv,.xlsx';
@@ -800,6 +941,14 @@ const promotionForm = ref({
 });
 const promotionPreview = ref<PromotionPreviewPayload | null>(null);
 const assistantPromptForm = ref<AssistantPromptSettings>({ general_prompt: '', lesson_prompt: '' });
+const assistantRuntimeForm = ref<AssistantRuntimeSettings>({
+  temperature: 0.4,
+  top_p: null,
+  max_tokens: null,
+  presence_penalty: null,
+  frequency_penalty: null,
+  streaming_enabled: true,
+});
 const classDialogVisible = ref(false);
 const classBatchDialogVisible = ref(false);
 const studentImportDialogVisible = ref(false);
@@ -810,7 +959,9 @@ const unitDialogVisible = ref(false);
 const lessonDialogVisible = ref(false);
 const providerDialogVisible = ref(false);
 const isSavingProvider = ref(false);
+const isFetchingProviderModels = ref(false);
 const isSavingAssistantPrompts = ref(false);
+const isSavingAssistantRuntimeSettings = ref(false);
 const isSavingClassBatch = ref(false);
 
 const editingClassId = ref<number | null>(null);
@@ -832,6 +983,86 @@ const bookForm = ref({ name: '', subject: '信息科技', edition: '浙教版', 
 const unitForm = ref({ book_id: 0, term_no: 1, unit_no: 1, title: '' });
 const lessonForm = ref({ unit_id: 0, lesson_no: 1, title: '', summary: '' });
 const providerForm = ref({ name: '', provider_type: 'openai-compatible', base_url: '', api_key: '', model_name: '', is_default: false, is_enabled: true });
+const providerModelOptions = ref<string[]>([]);
+const providerModelResolvedUrl = ref('');
+const providerModelFetchError = ref('');
+
+function formatProviderModelBaseUrlExample(baseUrl: string) {
+  const normalized = baseUrl.trim().replace(/\/+$/, '');
+  if (!normalized) {
+    return 'https://your-host/v1';
+  }
+  if (normalized.endsWith('/models')) {
+    return normalized.replace(/\/models$/, '/v1');
+  }
+  if (normalized.endsWith('/chat/completions')) {
+    return normalized.replace(/\/chat\/completions$/, '/v1');
+  }
+  if (normalized.endsWith('/v1')) {
+    return normalized;
+  }
+  return `${normalized}/v1`;
+}
+
+function buildProviderModelFetchAlert(message: string, baseUrl: string): ProviderModelFetchAlert {
+  const description = message
+    .replace(/\s+已尝试：/g, '\n已尝试：')
+    .replace(/；(?=\d+\.\s)/g, '\n')
+    .trim() || '系统暂时未能读取模型列表。';
+  const suggestions = ['如果当前服务不支持标准 /v1/models，也可以先手动填写模型名称并保存。'];
+  let title = '自动获取失败';
+
+  if (
+    description.includes('访问被服务端拒绝')
+    || description.includes('白名单')
+    || description.includes('防火墙配置')
+    || description.includes('Cloudflare')
+  ) {
+    title = '模型服务拒绝了当前访问';
+    suggestions.unshift('请检查 Cloudflare / WAF / 白名单配置，确认当前服务器可以直接访问该模型接口。');
+  } else if (description.includes('鉴权失败') || description.includes('权限不足')) {
+    title = 'API Key 无法读取模型列表';
+    suggestions.unshift('请确认 API Key 填写正确，并且该密钥具备查看模型列表的权限。');
+  } else if (description.includes('未找到模型列表接口')) {
+    title = '没有找到模型列表地址';
+    suggestions.unshift(`请确认 Base URL 填写的是服务入口，例如 ${formatProviderModelBaseUrlExample(baseUrl)}。`);
+  } else if (
+    description.includes('连接超时')
+    || description.includes('请求超时')
+    || description.includes('无法连接')
+    || description.includes('连接被拒绝')
+    || description.includes('域名解析失败')
+    || description.includes('证书校验失败')
+  ) {
+    title = '当前无法连接模型服务';
+    suggestions.unshift('请确认当前服务器能访问该地址，且域名、端口、证书配置都正确。');
+  } else if (description.includes('限流') || description.includes('请求过于频繁')) {
+    title = '模型服务当前正在限流';
+    suggestions.unshift('稍后重试，或切换到负载较低的服务节点后再获取。');
+  } else if (
+    description.includes('不是合法 JSON')
+    || description.includes('返回结构不是标准模型列表格式')
+    || description.includes('返回格式不正确')
+    || description.includes('暂未读取到可用模型')
+  ) {
+    title = '返回内容不是标准模型列表';
+    suggestions.unshift('当前接口可能不是 OpenAI Compatible 的模型列表地址，请优先检查 /v1/models 是否可用。');
+  }
+
+  return {
+    title,
+    description,
+    suggestions: [...new Set(suggestions)],
+  };
+}
+
+const providerModelFetchAlert = computed<ProviderModelFetchAlert | null>(() => {
+  const message = providerModelFetchError.value.trim();
+  if (!message) {
+    return null;
+  }
+  return buildProviderModelFetchAlert(message, providerForm.value.base_url);
+});
 
 const selectedRoom = computed(() => bootstrap.value?.rooms.find((item) => item.id === selectedRoomId.value) ?? null);
 const selectedStudentImportFileName = ref('');
@@ -876,7 +1107,21 @@ function setRoomDraft(payload: RoomSeatDraftPayload) {
   dragOverCellKey.value = '';
 }
 
+function resetProviderModelDiscovery() {
+  providerModelOptions.value = [];
+  providerModelResolvedUrl.value = '';
+  providerModelFetchError.value = '';
+}
+
+function formatProviderModelFetchError(error: unknown) {
+  if (error instanceof Error) {
+    return error.message.trim() || '未能自动获取模型列表。请检查 Base URL、API Key 和服务兼容性。';
+  }
+  return '未能自动获取模型列表。请检查 Base URL、API Key 和服务兼容性；如果该服务不支持标准 /v1/models，也可以直接手动填写模型名称。';
+}
+
 function resetProviderForm() {
+  resetProviderModelDiscovery();
   providerForm.value = {
     name: '',
     provider_type: 'openai-compatible',
@@ -886,6 +1131,20 @@ function resetProviderForm() {
     is_default: false,
     is_enabled: true,
   };
+}
+
+function notifyAIProviderConfigUpdated() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(AI_PROVIDER_CONFIG_UPDATED_EVENT));
+}
+
+function notifyAssistantRuntimeConfigUpdated() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT));
 }
 
 function roomName(roomId: number | null) {
@@ -917,6 +1176,7 @@ async function loadBootstrap() {
   bootstrap.value = await apiGet<BootstrapPayload>('/settings/admin/bootstrap', authStore.token);
   systemForm.value = { ...bootstrap.value.system, active_grade_nos: [...bootstrap.value.system.active_grade_nos] };
   assistantPromptForm.value = { ...bootstrap.value.assistant_prompts };
+  assistantRuntimeForm.value = { ...bootstrap.value.assistant_runtime };
   const allClassIds = new Set(bootstrap.value.classes.map((item) => item.id));
   const sourceClassIds = promotionForm.value.source_class_ids.filter((item) => allClassIds.has(item));
   promotionForm.value.source_class_ids = sourceClassIds.length
@@ -1277,6 +1537,26 @@ async function saveAssistantPrompts() {
     ElMessage.success('AI 学伴提示词已更新');
   } finally {
     isSavingAssistantPrompts.value = false;
+  }
+}
+
+async function saveAssistantRuntimeSettings() {
+  if (!authStore.token) return;
+  isSavingAssistantRuntimeSettings.value = true;
+  try {
+    const payload = await apiPut<AssistantRuntimeSettings>(
+      '/settings/assistant-runtime',
+      assistantRuntimeForm.value,
+      authStore.token
+    );
+    assistantRuntimeForm.value = { ...payload };
+    if (bootstrap.value) {
+      bootstrap.value.assistant_runtime = { ...payload };
+    }
+    notifyAssistantRuntimeConfigUpdated();
+    ElMessage.success('AI 学伴运行参数已更新');
+  } finally {
+    isSavingAssistantRuntimeSettings.value = false;
   }
 }
 
@@ -1746,6 +2026,7 @@ async function deleteLesson(lessonId: number) {
 
 function openProviderDialog(provider?: AIProviderRecord) {
   editingProviderId.value = provider?.id ?? null;
+  resetProviderModelDiscovery();
   if (provider) {
     providerForm.value = {
       name: provider.name,
@@ -1756,10 +2037,52 @@ function openProviderDialog(provider?: AIProviderRecord) {
       is_default: provider.is_default,
       is_enabled: provider.is_enabled,
     };
+    providerModelOptions.value = provider.model_name ? [provider.model_name] : [];
   } else {
     resetProviderForm();
   }
   providerDialogVisible.value = true;
+}
+
+async function discoverProviderModels() {
+  if (!authStore.token) return;
+
+  const payload = {
+    provider_type: providerForm.value.provider_type.trim(),
+    base_url: providerForm.value.base_url.trim(),
+    api_key: providerForm.value.api_key.trim() || undefined,
+    provider_id: editingProviderId.value ?? undefined,
+  };
+
+  if (!payload.base_url) {
+    ElMessage.warning('请先填写 Base URL，再自动获取模型，例如 https://your-host/v1');
+    return;
+  }
+
+  isFetchingProviderModels.value = true;
+  providerModelFetchError.value = '';
+  providerModelResolvedUrl.value = '';
+
+  try {
+    const response = await apiPost<AIProviderModelDiscoveryResult>(
+      '/settings/ai-providers/discover-models',
+      payload,
+      authStore.token
+    );
+    providerModelOptions.value = [...response.items];
+    providerModelResolvedUrl.value = response.resolved_url;
+    if (!providerForm.value.model_name.trim() && response.items.length) {
+      providerForm.value.model_name = response.items[0];
+    }
+    ElMessage.success(`已获取 ${response.items.length} 个可用模型`);
+  } catch (error) {
+    providerModelOptions.value = [];
+    providerModelResolvedUrl.value = '';
+    providerModelFetchError.value = formatProviderModelFetchError(error);
+    ElMessage.warning('自动获取失败，请根据下方提示检查配置');
+  } finally {
+    isFetchingProviderModels.value = false;
+  }
 }
 
 async function saveProvider() {
@@ -1775,11 +2098,11 @@ async function saveProvider() {
   };
 
   if (!payload.name || !payload.base_url || !payload.model_name) {
-    ElMessage.warning('请填写完整的 Provider 名称、Base URL 和模型名称');
+    ElMessage.warning('请填写完整的服务名称、Base URL 和模型名称');
     return;
   }
   if (!editingProviderId.value && !payload.api_key) {
-    ElMessage.warning('新建 Provider 时必须提供 API Key');
+    ElMessage.warning('新建服务时必须提供 API Key');
     return;
   }
 
@@ -1789,8 +2112,9 @@ async function saveProvider() {
     const method = editingProviderId.value ? apiPut : apiPost;
     const response = await method<{ items: AIProviderRecord[] }>(path, payload, authStore.token);
     aiProviders.value = response.items;
+    notifyAIProviderConfigUpdated();
     providerDialogVisible.value = false;
-    ElMessage.success(editingProviderId.value ? 'AI Provider 已更新' : 'AI Provider 已创建');
+    ElMessage.success(editingProviderId.value ? 'AI 模型服务已更新' : 'AI 模型服务已创建');
   } finally {
     isSavingProvider.value = false;
   }
@@ -1798,11 +2122,29 @@ async function saveProvider() {
 
 async function deleteProvider(providerId: number) {
   if (!authStore.token) return;
-  await ElMessageBox.confirm('确认删除这个 AI Provider 吗？');
+  await ElMessageBox.confirm('确认删除这个 AI 模型服务吗？');
   const response = await apiDelete<{ items: AIProviderRecord[] }>(`/settings/ai-providers/${providerId}`, authStore.token);
   aiProviders.value = response.items;
-  ElMessage.success('AI Provider 已删除');
+  notifyAIProviderConfigUpdated();
+  ElMessage.success('AI 模型服务已删除');
 }
+
+watch(
+  () => [providerForm.value.provider_type, providerForm.value.base_url, providerForm.value.api_key],
+  (nextValues, previousValues) => {
+    if (!providerDialogVisible.value || !previousValues) {
+      return;
+    }
+    const changed = nextValues.some((value, index) => value !== previousValues[index]);
+    if (!changed) {
+      return;
+    }
+    resetProviderModelDiscovery();
+    if (providerForm.value.model_name.trim()) {
+      providerModelOptions.value = [providerForm.value.model_name.trim()];
+    }
+  }
+);
 
 onMounted(() => {
   void loadPage();
@@ -1836,6 +2178,15 @@ onMounted(() => {
 .provider-card{display:flex;flex-direction:column;gap:14px}
 .provider-meta{align-items:center;color:var(--ls-muted);font-size:13px}
 .provider-actions{justify-content:flex-end}
+.provider-model-field{grid-column:1 / -1}
+.provider-model-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
+.provider-model-alert{margin-top:10px;width:100%;overflow:hidden}
+.provider-model-alert :deep(.el-alert__content){min-width:0}
+.provider-model-alert :deep(.el-alert__title){display:block;line-height:1.45}
+.provider-model-alert-body{display:grid;gap:8px}
+.provider-model-alert-text{margin:0;white-space:pre-line;line-height:1.55;overflow-wrap:anywhere;word-break:break-word}
+.provider-model-alert-list{margin:0;padding-left:18px;display:grid;gap:4px;line-height:1.5}
+.provider-model-alert-list li{overflow-wrap:anywhere;word-break:break-word}
 .panel-stack-gap{margin-bottom:16px}
 @media (max-width: 1100px){.admin-grid,.two-col{grid-template-columns:1fr}}
 </style>

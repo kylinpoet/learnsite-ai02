@@ -2,10 +2,10 @@
   <section class="page-stack">
     <section class="hero-panel">
       <div>
-        <p class="eyebrow">Public Page</p>
+        <p class="eyebrow">课堂规则</p>
         <h2>课堂守则</h2>
         <p class="hero-copy">
-          这里会承接旧站 `student/myrule.aspx` 的公共内容，并在后台开放为可编辑富文本。
+          请在进入课程与任务前阅读课堂守则，保持专注、有序、友善的学习氛围。
         </p>
       </div>
       <RouterLink to="/login/student">

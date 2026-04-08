@@ -66,11 +66,11 @@
 
           <div class="task-html-generation-status__grid">
             <article class="task-html-generation-status__item">
-              <span>Provider</span>
+              <span>模型服务</span>
               <strong>{{ providerDisplayName }}</strong>
             </article>
             <article class="task-html-generation-status__item">
-              <span>Provider 模式</span>
+              <span>服务模式</span>
               <strong>{{ providerModeLabel }}</strong>
             </article>
             <article class="task-html-generation-status__item">
@@ -168,10 +168,10 @@ const showGenerationStatus = computed(
 const providerModeLabel = computed(() => {
   const normalized = props.generationStatus.provider_mode.trim().toLowerCase();
   if (normalized === 'live') {
-    return '实时 Provider';
+    return '实时服务';
   }
   if (normalized === 'preview') {
-    return '预览兜底';
+    return '系统兜底';
   }
   if (normalized === 'pending') {
     return '请求中';
@@ -179,7 +179,7 @@ const providerModeLabel = computed(() => {
   return '未返回';
 });
 
-const providerDisplayName = computed(() => props.generationStatus.provider_name.trim() || '当前 Provider');
+const providerDisplayName = computed(() => props.generationStatus.provider_name.trim() || '当前模型服务');
 
 const attemptDisplayLabel = computed(() => {
   const attempt = props.generationStatus.attempt;
@@ -204,12 +204,12 @@ const generationStatusSummary = computed(() => {
   if (props.generationStatus.state === 'loading') {
     return props.generationStatus.attempt > 1
       ? '上一次返回的内容不可直接渲染，系统正在自动重试。'
-      : '系统正在请求当前 Provider 返回可直接运行的 HTML 页面源码。';
+      : '系统正在请求当前模型服务返回可直接运行的 HTML 页面源码。';
   }
   if (props.generationStatus.state === 'error') {
     return '你可以调整提示词后再次尝试，或者直接点击下方重试按钮。';
   }
-  return '当前弹窗会显示最近一次网页生成的 Provider 反馈。';
+  return '当前弹窗会显示最近一次网页生成的服务反馈。';
 });
 
 const generationStatusTagLabel = computed(() => {

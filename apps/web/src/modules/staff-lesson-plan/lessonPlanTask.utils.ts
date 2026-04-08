@@ -140,9 +140,9 @@ export function buildWebTaskStarterHtml(title: string) {
   </head>
   <body>
     <main class="panel">
-      <span class="badge">网页任务模板</span>
+      <span class="badge">网页任务</span>
       <h1>${title}</h1>
-      <p>这里是网页任务的默认起步页。你可以继续补充交互、嵌入素材，或替换为自己上传的完整网页文件。</p>
+      <p>这里是网页任务页面。你可以继续补充交互、嵌入素材，或替换为自己上传的完整网页文件。</p>
       <ol>
         <li>在上方源码区域继续修改当前 HTML。</li>
         <li>如果页面需要多文件结构，可直接上传 ZIP、多文件或文件夹。</li>
@@ -158,8 +158,14 @@ export function buildWebTaskStarterHtml(title: string) {
       const context = window.__LEARNSITE_TASK_CONTEXT__ || {};
       document.getElementById('show-context')?.addEventListener('click', () => {
         const slot = context.slot || 'web';
+        const slotLabelMap = {
+          web: '任务正文',
+          data_submit_form: '学生提交页',
+          data_submit_visualization: '数据看板',
+        };
         const taskId = context.taskId || '未生成';
-        statusElement.textContent = '任务 ID: ' + taskId + '，当前预览槽位：' + slot + '。';
+        const slotLabel = slotLabelMap[slot] || slot;
+        statusElement.textContent = '任务 ID: ' + taskId + '，当前页面：' + slotLabel + '。';
       });
     <\/script>
   </body>
@@ -232,7 +238,7 @@ export function buildDataSubmitFormStarterHtml(title: string, submitApiUrl: stri
   <body>
     <main class="panel">
       <h1>${title}</h1>
-      <p>这是数据提交任务的默认提交页模板。当前页面已经直连真实提交接口，教师后台可直接预览并继续改造。</p>
+      <p>这里用于收集学生提交的数据结果。你可以根据课堂需要调整字段、说明和页面样式。</p>
       <div class="api-box">
         <strong>提交接口：</strong>
         <span>${submitApiUrl || '接口地址暂未生成'}</span>
@@ -252,7 +258,7 @@ export function buildDataSubmitFormStarterHtml(title: string, submitApiUrl: stri
         </label>
         <button type="submit">提交数据</button>
       </form>
-      <p id="status">保存学案并进入学生端后，可直接提交数据。</p>
+      <p id="status">保存学案后，学生进入任务即可在这里提交数据。</p>
     </main>
     <script>
       const formElement = document.getElementById('submit-form');

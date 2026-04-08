@@ -1464,30 +1464,30 @@ const dashboardMetricCards = computed(() => {
 
   return [
     {
-      label: 'Checked In',
+      label: '已签到',
       value: overview.checked_in_today,
-      note: `${overview.pending_signin_count} students still pending`,
+      note: `待签到 ${overview.pending_signin_count} 人`,
       icon: CheckCheck,
       tone: 'primary',
     },
     {
-      label: 'Active Sessions',
+      label: '进行中课堂',
       value: overview.active_session_count,
-      note: `${overview.active_class_count} classes currently in session`,
+      note: `涉及 ${overview.active_class_count} 个班级`,
       icon: MonitorPlay,
       tone: 'accent',
     },
     {
-      label: 'Pending Reviews',
+      label: '待评阅',
       value: overview.pending_review_count,
-      note: 'Submission review items that still need teacher attention',
+      note: '仍有作品等待教师查看与评阅',
       icon: ClipboardList,
       tone: 'warning',
     },
     {
-      label: 'Featured Work',
+      label: '推荐作品',
       value: overview.recommended_count,
-      note: 'Recommended items ready for showcase or class discussion',
+      note: '可用于课堂展示、点评或优秀作品推荐',
       icon: Sparkles,
       tone: 'success',
     },
@@ -1554,7 +1554,7 @@ const classAttendanceChartOption = computed(() => {
     },
     series: [
       {
-        name: 'Checked in',
+        name: '已签到',
         type: 'bar',
         stack: 'attendance',
         barMaxWidth: 28,
@@ -1564,7 +1564,7 @@ const classAttendanceChartOption = computed(() => {
         },
       },
       {
-        name: 'Pending',
+        name: '待签到',
         type: 'bar',
         stack: 'attendance',
         barMaxWidth: 28,
@@ -1626,10 +1626,10 @@ const teacherOpsChartOption = computed(() => {
           },
         },
         data: [
-          { value: overview?.checked_in_today || 0, name: 'Checked in', itemStyle: { color: accentColor } },
-          { value: overview?.pending_signin_count || 0, name: 'Pending sign-in', itemStyle: { color: primaryColor } },
-          { value: overview?.pending_review_count || 0, name: 'Pending review', itemStyle: { color: warningColor } },
-          { value: overview?.recommended_count || 0, name: 'Featured work', itemStyle: { color: neutralColor } },
+          { value: overview?.checked_in_today || 0, name: '已签到', itemStyle: { color: accentColor } },
+          { value: overview?.pending_signin_count || 0, name: '待签到', itemStyle: { color: primaryColor } },
+          { value: overview?.pending_review_count || 0, name: '待评阅', itemStyle: { color: warningColor } },
+          { value: overview?.recommended_count || 0, name: '推荐作品', itemStyle: { color: neutralColor } },
         ],
       },
     ],

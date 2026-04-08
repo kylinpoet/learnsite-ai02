@@ -33,14 +33,14 @@
       <el-card class="soft-card auth-form-panel">
         <div class="auth-form-panel__top">
           <span class="auth-form-panel__tag staff-login-page__tag">教师 / 管理员</span>
-          <p class="auth-form-panel__title">使用测试账号进入统一后台</p>
+          <p class="auth-form-panel__title">输入账号和密码进入教学后台</p>
         </div>
 
         <el-alert
           :closable="false"
           class="staff-login-page__alert"
           show-icon
-          title="测试账号：t1 / 222221、t2 / 222221、admin / 222221"
+          title="请使用教师或管理员账号登录"
           type="info"
         />
 
@@ -89,8 +89,8 @@ const authStore = useAuthStore();
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const form = reactive({
-  username: 't1',
-  password: '222221',
+  username: '',
+  password: '',
 });
 
 async function handleLogin() {

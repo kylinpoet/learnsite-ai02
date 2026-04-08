@@ -28,7 +28,11 @@ from app.models import (
     User,
 )
 from app.schemas.common import ApiResponse
-from app.services.assistant_settings import read_assistant_prompt_settings
+from app.services.remote_request_headers import build_remote_request_headers
+from app.services.assistant_settings import (
+    read_assistant_prompt_settings,
+    read_assistant_runtime_settings,
+)
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff, staff_can_access_class
 
 router = APIRouter()
@@ -934,6 +938,30 @@ def sse_event(event_name: str, data: dict[str, Any]) -> str:
     return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
+def build_runtime_generation_params(runtime_settings: dict[str, Any]) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "temperature": float(runtime_settings.get("temperature", 0.4)),
+    }
+
+    top_p = runtime_settings.get("top_p")
+    if isinstance(top_p, (int, float)):
+        payload["top_p"] = float(top_p)
+
+    max_tokens = runtime_settings.get("max_tokens")
+    if isinstance(max_tokens, int) and max_tokens > 0:
+        payload["max_tokens"] = max_tokens
+
+    presence_penalty = runtime_settings.get("presence_penalty")
+    if isinstance(presence_penalty, (int, float)):
+        payload["presence_penalty"] = float(presence_penalty)
+
+    frequency_penalty = runtime_settings.get("frequency_penalty")
+    if isinstance(frequency_penalty, (int, float)):
+        payload["frequency_penalty"] = float(frequency_penalty)
+
+    return payload
+
+
 def call_openai_compatible_provider(
     provider: AIProvider,
     *,
@@ -941,19 +969,20 @@ def call_openai_compatible_provider(
     user_prompt: str,
     history: list[CompanionConversationMessagePayload],
     attachments: list[CompanionAttachmentPayload],
+    runtime_settings: dict[str, Any],
 ) -> tuple[str | None, str | None]:
     payload = {
         "model": provider.model_name,
         "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
-        "temperature": 0.4,
+        **build_runtime_generation_params(runtime_settings),
     }
     request = urllib_request.Request(
         chat_completions_url(provider),
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {provider.api_key}",
-        },
+        headers=build_remote_request_headers(
+            provider.api_key,
+            content_type="application/json",
+        ),
         method="POST",
     )
 
@@ -988,20 +1017,22 @@ def call_openai_compatible_provider_stream(
     user_prompt: str,
     history: list[CompanionConversationMessagePayload],
     attachments: list[CompanionAttachmentPayload],
+    runtime_settings: dict[str, Any],
 ):
     payload = {
         "model": provider.model_name,
         "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
-        "temperature": 0.4,
+        **build_runtime_generation_params(runtime_settings),
         "stream": True,
     }
     request = urllib_request.Request(
         chat_completions_url(provider),
         data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {provider.api_key}",
-        },
+        headers=build_remote_request_headers(
+            provider.api_key,
+            accept="text/event-stream, application/json, text/plain, */*",
+            content_type="application/json",
+        ),
         method="POST",
     )
 
@@ -1110,6 +1141,7 @@ def companion_bootstrap(
 ) -> ApiResponse:
     providers = enabled_provider_rows(db)
     active_provider = providers[0] if providers else None
+    runtime_settings = read_assistant_runtime_settings(db)
     return ApiResponse(
         data={
             "enabled": read_assistant_enabled(db),
@@ -1144,7 +1176,7 @@ def companion_bootstrap(
                 "multimodal": True,
                 "course_context": True,
                 "knowledge_base_select": True,
-                "streaming": True,
+                "streaming": bool(runtime_settings["streaming_enabled"]),
             },
         }
     )
@@ -1219,6 +1251,7 @@ def companion_respond(
         ]
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
+    runtime_settings = read_assistant_runtime_settings(db)
     system_prompt = build_system_prompt(
         user,
         scope,
@@ -1240,6 +1273,7 @@ def companion_respond(
             user_prompt=user_prompt,
             history=payload.conversation,
             attachments=payload.attachments,
+            runtime_settings=runtime_settings,
         )
         if reply_text:
             provider_mode = "live"
@@ -1302,6 +1336,9 @@ def companion_respond_stream(
     provider = resolve_provider(db, payload.provider_id)
     if payload.provider_id is not None and provider is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected AI provider is unavailable")
+    runtime_settings = read_assistant_runtime_settings(db)
+    if not bool(runtime_settings["streaming_enabled"]):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI 学伴流式输出已关闭")
 
     preferred_kb_ids = list(payload.knowledge_base_ids)
     if (
@@ -1341,6 +1378,7 @@ def companion_respond_stream(
                 user_prompt=user_prompt,
                 history=payload.conversation,
                 attachments=payload.attachments,
+                runtime_settings=runtime_settings,
             )
             while True:
                 try:

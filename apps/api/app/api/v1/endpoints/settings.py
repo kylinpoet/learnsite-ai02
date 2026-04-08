@@ -5,6 +5,8 @@ import json
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
@@ -31,9 +33,12 @@ from app.models import (
     User,
 )
 from app.schemas.common import ApiResponse
+from app.services.remote_request_headers import build_remote_request_headers
 from app.services.assistant_settings import (
     read_assistant_prompt_settings,
+    read_assistant_runtime_settings,
     write_assistant_prompt_settings,
+    write_assistant_runtime_settings,
 )
 from app.services.system_settings import (
     normalize_theme_code,
@@ -111,6 +116,15 @@ class AssistantPromptSettingsPayload(BaseModel):
     lesson_prompt: str = Field(default="", max_length=12000)
 
 
+class AssistantRuntimeSettingsPayload(BaseModel):
+    temperature: float = Field(default=0.4, ge=0, le=2)
+    top_p: float | None = Field(default=None, ge=0, le=1)
+    max_tokens: int | None = Field(default=None, ge=1, le=8192)
+    presence_penalty: float | None = Field(default=None, ge=-2, le=2)
+    frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
+    streaming_enabled: bool = True
+
+
 class AdminClassPayload(BaseModel):
     grade_no: int = Field(ge=1, le=12)
     class_no: int = Field(ge=1, le=99)
@@ -186,6 +200,13 @@ class AdminAIProviderPayload(BaseModel):
     model_name: str = Field(min_length=1, max_length=120)
     is_default: bool = False
     is_enabled: bool = True
+
+
+class AdminAIProviderModelDiscoveryPayload(BaseModel):
+    provider_type: str = Field(default="openai-compatible", min_length=1, max_length=40)
+    base_url: str = Field(min_length=1, max_length=255)
+    api_key: str | None = Field(default=None, max_length=255)
+    provider_id: int | None = Field(default=None, ge=1)
 
 
 def normalize_import_header(value: str) -> str:
@@ -814,6 +835,194 @@ def ai_provider_items_payload(db: Session) -> dict:
     return {"items": [serialize_ai_provider(item) for item in providers]}
 
 
+def candidate_ai_provider_model_urls(base_url: str) -> list[str]:
+    normalized = base_url.rstrip("/")
+    if not normalized:
+        return []
+
+    candidates: list[str] = []
+
+    def append(url: str) -> None:
+        cleaned = url.rstrip("/")
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+
+    if normalized.endswith("/models"):
+        append(normalized)
+    elif normalized.endswith("/chat/completions"):
+        append(f"{normalized.rsplit('/chat/completions', maxsplit=1)[0]}/models")
+    elif normalized.endswith("/v1"):
+        append(f"{normalized}/models")
+    else:
+        append(f"{normalized}/models")
+        append(f"{normalized}/v1/models")
+
+    return candidates
+
+
+def parse_ai_provider_models_payload(raw_payload: object) -> list[str]:
+    if not isinstance(raw_payload, dict):
+        raise ValueError("模型服务返回格式不正确")
+
+    data = raw_payload.get("data")
+    if not isinstance(data, list):
+        raise ValueError("模型服务未返回 data 列表")
+
+    models: list[str] = []
+    seen: set[str] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        model_id = str(item.get("id") or "").strip()
+        if not model_id or model_id in seen:
+            continue
+        seen.add(model_id)
+        models.append(model_id)
+
+    if not models:
+        raise ValueError("模型服务返回成功，但未解析到可用模型")
+    return sorted(models, key=str.lower)
+
+
+def extract_ai_provider_error_message(body: str) -> str:
+    text = body.strip()
+    if not text:
+        return ""
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = str(error.get("message") or "").strip()
+            if message:
+                return message
+        message = str(payload.get("message") or "").strip()
+        if message:
+            return message
+    return text
+
+
+def build_ai_provider_request_headers(api_key: str | None) -> dict[str, str]:
+    return build_remote_request_headers(api_key)
+
+
+def summarize_ai_provider_http_error(status_code: int, provider_message: str) -> str:
+    lowered = provider_message.lower()
+    if status_code == 401:
+        return "鉴权失败，请检查 API Key 是否正确，或当前密钥是否具备读取模型列表的权限"
+    if status_code == 403:
+        if any(
+            token in lowered
+            for token in ("cloudflare", "access denied", "blocked access", "browser signature", "owner has blocked")
+        ):
+            return "访问被服务端拒绝，请检查服务端的安全策略、白名单或防火墙配置"
+        return "权限不足，请检查 API Key 是否正确，或当前密钥是否具备读取模型列表的权限"
+    if status_code == 404:
+        return "未找到模型列表接口，请检查 Base URL 是否正确，或服务是否支持标准 /v1/models"
+    if status_code == 408:
+        return "请求超时，请稍后重试，或检查服务端响应速度"
+    if status_code == 429:
+        return "请求过于频繁，当前服务正在限流，请稍后再试"
+    if 500 <= status_code < 600:
+        return "模型服务暂时不可用，请稍后重试"
+    if provider_message:
+        return provider_message
+    return f"请求失败（HTTP {status_code}）"
+
+
+def summarize_ai_provider_network_error(error: Exception) -> str:
+    text = str(error).strip()
+    lowered = text.lower()
+    if "timed out" in lowered or "timeout" in lowered:
+        return "连接超时，请检查网络连通性，或确认服务地址可从当前服务器访问"
+    if "connection refused" in lowered or "actively refused" in lowered:
+        return "连接被拒绝，请确认服务地址、端口正确，并且服务已经启动"
+    if "getaddrinfo failed" in lowered or "name or service not known" in lowered:
+        return "域名解析失败，请检查 Base URL 是否填写正确"
+    if "certificate" in lowered or "ssl" in lowered:
+        return "HTTPS 证书校验失败，请检查证书配置"
+    if text:
+        return f"网络请求失败：{text}"
+    return "无法连接到模型服务，请检查网络与服务地址"
+
+
+def summarize_ai_provider_payload_error(message: str) -> str:
+    text = message.strip()
+    if not text:
+        return "接口返回格式不符合预期"
+    if "未返回 data 列表" in text:
+        return "接口已响应，但返回结构不是标准模型列表格式"
+    if "未解析到可用模型" in text:
+        return "接口已响应，但暂未读取到可用模型"
+    if "返回格式不正确" in text:
+        return "接口已响应，但返回格式不正确"
+    return text
+
+
+def build_ai_provider_lookup_detail(attempts: list[str]) -> str:
+    if not attempts:
+        return (
+            "未能自动获取模型列表。"
+            "请检查 Base URL、API Key 和服务兼容性；如果该服务不提供标准 /v1/models，"
+            "也可以直接手动填写模型名称。"
+        )
+
+    summary = "；".join(f"{index + 1}. {item}" for index, item in enumerate(attempts[:2]))
+    return (
+        "未能自动获取模型列表。"
+        "请检查 Base URL 是否正确、API Key 是否具备列出模型的权限，"
+        "如果该服务不提供标准 /v1/models，也可以直接手动填写模型名称。"
+        f" 已尝试：{summary}"
+    )
+
+
+def fetch_ai_provider_models(
+    *,
+    provider_type: str,
+    base_url: str,
+    api_key: str | None,
+) -> tuple[list[str], str]:
+    if provider_type != "openai-compatible":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前仅支持 OpenAI Compatible 服务自动获取模型")
+
+    urls = candidate_ai_provider_model_urls(base_url)
+    if not urls:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先填写有效的 Base URL")
+
+    headers = build_ai_provider_request_headers(api_key)
+
+    errors: list[str] = []
+    for url in urls:
+        request = urllib_request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib_request.urlopen(request, timeout=15) as response:
+                raw_payload = json.loads(response.read().decode("utf-8"))
+            return parse_ai_provider_models_payload(raw_payload), url
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            provider_message = extract_ai_provider_error_message(body)
+            reason = summarize_ai_provider_http_error(exc.code, provider_message)
+            if provider_message and provider_message != reason:
+                reason = f"{reason}（服务返回：{provider_message}）"
+            errors.append(f"{url} -> {reason}")
+        except urllib_error.URLError as exc:
+            errors.append(f"{url} -> {summarize_ai_provider_network_error(exc)}")
+        except TimeoutError as exc:
+            errors.append(f"{url} -> {summarize_ai_provider_network_error(exc)}")
+        except json.JSONDecodeError:
+            errors.append(f"{url} -> 接口已响应，但返回内容不是合法 JSON，可能不是标准模型列表地址")
+        except ValueError as exc:
+            errors.append(f"{url} -> {summarize_ai_provider_payload_error(str(exc))}")
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=build_ai_provider_lookup_detail(errors),
+    )
+
+
 def serialize_class(school_class: SchoolClass) -> dict:
     return {
         "id": school_class.id,
@@ -1042,6 +1251,7 @@ def bootstrap_payload(db: Session) -> dict:
         "system": read_system_settings(db),
         "theme_presets": theme_presets_payload(),
         "assistant_prompts": read_assistant_prompt_settings(db),
+        "assistant_runtime": read_assistant_runtime_settings(db),
         "classes": [serialize_class(item) for item in active_classes],
         "archived_classes": [
             serialize_archived_class(item, archive_record_by_class_id.get(item.id))
@@ -1120,6 +1330,28 @@ def update_assistant_prompt_settings(
     )
 
 
+@router.get("/assistant-runtime", response_model=ApiResponse)
+def assistant_runtime_settings(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    return ApiResponse(data=read_assistant_runtime_settings(db))
+
+
+@router.put("/assistant-runtime", response_model=ApiResponse)
+def update_assistant_runtime_settings(
+    payload: AssistantRuntimeSettingsPayload,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    write_assistant_runtime_settings(payload.model_dump(), db)
+    db.commit()
+    return ApiResponse(
+        message="AI 学伴运行参数已更新",
+        data=read_assistant_runtime_settings(db),
+    )
+
+
 @router.get("/admin/bootstrap", response_model=ApiResponse)
 def admin_bootstrap(
     _: User = Depends(require_admin),
@@ -1134,6 +1366,34 @@ def list_ai_providers(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     return ApiResponse(data=ai_provider_items_payload(db))
+
+
+@router.post("/ai-providers/discover-models", response_model=ApiResponse)
+def discover_ai_provider_models(
+    payload: AdminAIProviderModelDiscoveryPayload,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    provider_type = normalize_ai_provider_value(payload.provider_type) or "openai-compatible"
+    base_url = normalize_ai_provider_value(payload.base_url).rstrip("/")
+    api_key = normalize_ai_provider_value(payload.api_key)
+
+    provider: AIProvider | None = None
+    if payload.provider_id is not None:
+        provider = db.get(AIProvider, payload.provider_id)
+        if provider is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI Provider 不存在")
+
+    effective_api_key = api_key or (provider.api_key if provider is not None else "")
+    items, resolved_url = fetch_ai_provider_models(
+        provider_type=provider_type,
+        base_url=base_url,
+        api_key=effective_api_key or None,
+    )
+    return ApiResponse(
+        message=f"已获取 {len(items)} 个模型",
+        data={"items": items, "resolved_url": resolved_url},
+    )
 
 
 @router.post("/ai-providers", response_model=ApiResponse)

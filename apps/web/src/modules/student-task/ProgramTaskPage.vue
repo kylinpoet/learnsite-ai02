@@ -50,7 +50,7 @@
       v-if="taskDetail"
       :closable="false"
       class="mode-alert"
-      title="当前为代码任务基础版：支持真实任务加载、本地草稿、代码文件提交和推荐作品展示；在线运行沙箱后续接入。"
+      title="可在本页完成代码编写、保存草稿、上传附件并提交作品。"
       type="info"
     />
 
@@ -102,7 +102,7 @@
                   <div class="info-row">
                     <span>代码编辑区</span>
                     <div class="editor-tag-row">
-                      <el-tag round type="warning">Python 基础版</el-tag>
+                      <el-tag round type="warning">Python 任务</el-tag>
                       <el-tag round type="success">{{ draftStatusLabel }}</el-tag>
                     </div>
                   </div>
@@ -116,7 +116,7 @@
                     </p>
                   </div>
                   <div v-if="taskDetail.can_submit" class="action-group">
-                    <el-button plain @click="restoreStarterCode">示例代码</el-button>
+                    <el-button plain @click="restoreStarterCode">恢复起始代码</el-button>
                     <el-button v-if="hasSubmittedCode" plain @click="restoreSubmittedWork">恢复最近提交</el-button>
                     <el-button v-if="hasLocalDraft" plain @click="clearLocalDraftManually">清除本地草稿</el-button>
                   </div>
@@ -180,7 +180,7 @@
 
                   <div class="tip-panel">
                     <p class="tip-title">本页规则</p>
-                    <p>1. 当前版本不提供在线运行沙箱，重点先打通代码编写、保存草稿和作品提交闭环。</p>
+                    <p>1. 完成代码后可直接提交，系统会自动整理主代码文件。</p>
                     <p>2. 每次提交都会生成新的主代码文件，其他已保存附件默认保留，也可以手动排除。</p>
                     <p>3. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
                     <p v-if="taskDetail.submission_scope === 'group'">
@@ -572,7 +572,7 @@ const draftStatusLabel = computed(() => {
   if (editorOrigin.value === 'group') {
     return '小组草稿';
   }
-  return '示例代码';
+  return '起始代码';
 });
 const draftFootnote = computed(() => {
   if (editorOrigin.value === 'local' && localDraftUpdatedAt.value) {
@@ -584,7 +584,7 @@ const draftFootnote = computed(() => {
   if (editorOrigin.value === 'submission') {
     return '已载入最近一次提交的代码与说明。';
   }
-  return '示例代码仅作为起点，可直接覆盖修改。';
+  return '已载入任务起始代码，可在此基础上继续完成。';
 });
 const submitButtonText = computed(() => {
   if (!taskDetail.value) {
@@ -627,11 +627,11 @@ function buildGeneratedCodeFileName(taskId: number) {
 function buildStarterCode(payload: ProgrammingTaskPayload) {
   return [
     `# ${payload.title}`,
-    '# 在这里编写你的 Python 代码',
-    '# 提交时会自动生成 .py 附件',
+    '# 在这里编写你的 Python 程序',
+    '# 提交时系统会自动生成 .py 附件',
     '',
     'def main():',
-    '    print("Hello LearnSite")',
+    '    print("请在这里完成任务")',
     '',
     '',
     'if __name__ == "__main__":',
@@ -758,7 +758,7 @@ function restoreStarterCode() {
   }
   clearDraftStorage();
   applyEditorState(buildStarterCode(taskDetail.value), reflectionNote.value, 'starter');
-  ElMessage.success('已恢复为示例代码');
+  ElMessage.success('已恢复起始代码');
 }
 
 function restoreSubmittedWork() {

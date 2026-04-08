@@ -18,13 +18,15 @@ os.environ["LEARNSITE_DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
 os.environ["LEARNSITE_STORAGE_ROOT"] = str(TEST_STORAGE_ROOT)
 
 from app.main import app
+from app.api.v1.endpoints import assistants as assistants_endpoints
+from app.api.v1.endpoints import settings as settings_endpoints
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.api.deps.auth import TASK_RUNTIME_COOKIE_NAME
 from app.db.demo_seed import seed_demo_data
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
-from app.models import StudentLessonPlanProgress, User
+from app.models import AIProvider, StudentLessonPlanProgress, User
 
 API_PREFIX = "/api/v1"
 DB_PATH = TEST_DB_PATH
@@ -3917,6 +3919,78 @@ def test_admin_can_read_and_update_assistant_prompt_settings():
         assert read_response.json()["data"] == update_payload
 
 
+def test_admin_can_read_and_update_assistant_runtime_settings():
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+
+        bootstrap_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
+        assert bootstrap_response.status_code == 200
+        bootstrap_payload = bootstrap_response.json()["data"]
+        assert bootstrap_payload["assistant_runtime"]["temperature"] >= 0
+        assert "top_p" in bootstrap_payload["assistant_runtime"]
+        assert "max_tokens" in bootstrap_payload["assistant_runtime"]
+        assert "presence_penalty" in bootstrap_payload["assistant_runtime"]
+        assert "frequency_penalty" in bootstrap_payload["assistant_runtime"]
+        assert isinstance(bootstrap_payload["assistant_runtime"]["streaming_enabled"], bool)
+
+        update_response = client.put(
+            f"{API_PREFIX}/settings/assistant-runtime",
+            headers=admin,
+            json={
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "max_tokens": 1200,
+                "presence_penalty": 0.3,
+                "frequency_penalty": 0.2,
+                "streaming_enabled": False,
+            },
+        )
+        assert update_response.status_code == 200
+        update_payload = update_response.json()["data"]
+        assert update_payload["temperature"] == 0.7
+        assert update_payload["top_p"] == 0.9
+        assert update_payload["max_tokens"] == 1200
+        assert update_payload["presence_penalty"] == 0.3
+        assert update_payload["frequency_penalty"] == 0.2
+        assert update_payload["streaming_enabled"] is False
+
+        read_response = client.get(f"{API_PREFIX}/settings/assistant-runtime", headers=admin)
+        assert read_response.status_code == 200
+        assert read_response.json()["data"] == update_payload
+
+        student = student_headers(client, "70101")
+        companion_bootstrap = client.get(f"{API_PREFIX}/assistants/companion/bootstrap", headers=student)
+        assert companion_bootstrap.status_code == 200
+        assert companion_bootstrap.json()["data"]["capabilities"]["streaming"] is False
+
+        stream_response = client.post(
+            f"{API_PREFIX}/assistants/companion/respond/stream",
+            headers=student,
+            json={
+                "scope": "general",
+                "message": "请给我一个学习建议",
+                "conversation": [],
+                "stream": True,
+            },
+        )
+        assert stream_response.status_code == 409
+        assert "流式" in stream_response.json()["detail"]
+
+        restore_response = client.put(
+            f"{API_PREFIX}/settings/assistant-runtime",
+            headers=admin,
+            json={
+                "temperature": 0.4,
+                "top_p": None,
+                "max_tokens": None,
+                "presence_penalty": None,
+                "frequency_penalty": None,
+                "streaming_enabled": True,
+            },
+        )
+        assert restore_response.status_code == 200
+
+
 def test_ai_companion_bootstrap_context_and_preview_reply():
     with TestClient(app) as client:
         student = student_headers(client, "70101", extra_headers={"x-learnsite-device-ip": "127.0.0.1"})
@@ -3996,6 +4070,36 @@ def test_ai_companion_bootstrap_context_and_preview_reply():
         )
         assert invalid_provider_response.status_code == 400
         assert "provider" in invalid_provider_response.json()["detail"].lower()
+
+
+def test_ai_companion_bootstrap_reflects_latest_default_provider():
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+        student = student_headers(client, "70101")
+
+        create_response = client.post(
+            f"{API_PREFIX}/settings/ai-providers",
+            headers=admin,
+            json={
+                "name": "同步默认模型服务",
+                "provider_type": "openai-compatible",
+                "base_url": "https://sync-provider.example.com/v1",
+                "api_key": "demo-key",
+                "model_name": "gpt-sync-default",
+                "is_default": True,
+                "is_enabled": True,
+            },
+        )
+        assert create_response.status_code == 200
+
+        bootstrap_response = client.get(f"{API_PREFIX}/assistants/companion/bootstrap", headers=student)
+        assert bootstrap_response.status_code == 200
+        bootstrap_payload = bootstrap_response.json()["data"]
+
+        assert bootstrap_payload["active_provider"]["name"] == "同步默认模型服务"
+        assert bootstrap_payload["active_provider"]["model_name"] == "gpt-sync-default"
+        assert bootstrap_payload["active_provider"]["is_default"] is True
+        assert bootstrap_payload["providers"][0]["name"] == "同步默认模型服务"
 
 
 def test_staff_attendance_api_and_export():
@@ -4531,6 +4635,249 @@ def test_admin_can_batch_create_classes_and_import_students():
             json={"username": "90201", "password": "abc123"},
         )
         assert student_login.status_code == 200
+
+
+def test_admin_can_discover_ai_provider_models(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, str | None] = {}
+
+    def fake_fetch_ai_provider_models(*, provider_type: str, base_url: str, api_key: str | None):
+        captured["provider_type"] = provider_type
+        captured["base_url"] = base_url
+        captured["api_key"] = api_key
+        return ["gpt-4.1-mini", "gpt-4o-mini"], "https://api.example.com/v1/models"
+
+    monkeypatch.setattr(settings_endpoints, "fetch_ai_provider_models", fake_fetch_ai_provider_models)
+
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+        response = client.post(
+            f"{API_PREFIX}/settings/ai-providers/discover-models",
+            headers=admin,
+            json={
+                "provider_type": "openai-compatible",
+                "base_url": "https://api.example.com/v1",
+                "api_key": "demo-secret-key",
+            },
+        )
+
+    assert response.status_code == 200
+    payload = response.json()["data"]
+    assert payload["items"] == ["gpt-4.1-mini", "gpt-4o-mini"]
+    assert payload["resolved_url"] == "https://api.example.com/v1/models"
+    assert captured == {
+        "provider_type": "openai-compatible",
+        "base_url": "https://api.example.com/v1",
+        "api_key": "demo-secret-key",
+    }
+
+
+def test_admin_discover_ai_provider_models_returns_error_when_lookup_fails(monkeypatch: pytest.MonkeyPatch):
+    def fake_fetch_ai_provider_models(*, provider_type: str, base_url: str, api_key: str | None):
+        raise settings_endpoints.HTTPException(
+            status_code=400,
+            detail="manual fallback required",
+        )
+
+    monkeypatch.setattr(settings_endpoints, "fetch_ai_provider_models", fake_fetch_ai_provider_models)
+
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+        response = client.post(
+            f"{API_PREFIX}/settings/ai-providers/discover-models",
+            headers=admin,
+            json={
+                "provider_type": "openai-compatible",
+                "base_url": "https://api.invalid/v1",
+                "api_key": "bad-key",
+            },
+        )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "manual fallback required"
+
+
+def test_ai_provider_payload_error_is_humanized():
+    assert settings_endpoints.summarize_ai_provider_payload_error("模型服务未返回 data 列表") == (
+        "接口已响应，但返回结构不是标准模型列表格式"
+    )
+    assert settings_endpoints.summarize_ai_provider_payload_error("模型服务返回成功，但未解析到可用模型") == (
+        "接口已响应，但暂未读取到可用模型"
+    )
+    assert settings_endpoints.summarize_ai_provider_payload_error("模型服务返回格式不正确") == (
+        "接口已响应，但返回格式不正确"
+    )
+
+
+def test_ai_provider_request_headers_include_browser_compatible_user_agent():
+    headers = settings_endpoints.build_ai_provider_request_headers("demo-secret-key")
+
+    assert headers["Accept"] == "application/json, text/plain, */*"
+    assert headers["Accept-Language"] == "zh-CN,zh;q=0.9,en;q=0.8"
+    assert "Mozilla/5.0" in headers["User-Agent"]
+    assert headers["Authorization"] == "Bearer demo-secret-key"
+
+
+def test_ai_provider_request_headers_omit_authorization_without_key():
+    headers = settings_endpoints.build_ai_provider_request_headers(None)
+
+    assert "Authorization" not in headers
+
+
+def test_ai_companion_provider_request_uses_browser_compatible_headers(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, str | None] = {}
+
+    class DummyResponse:
+        headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return b'{"choices":[{"message":{"content":"hello from provider"}}]}'
+
+    def fake_urlopen(request, timeout=0):
+        captured["url"] = request.full_url
+        captured["accept"] = request.get_header("Accept")
+        captured["accept_language"] = request.get_header("Accept-language")
+        captured["user_agent"] = request.get_header("User-agent")
+        captured["authorization"] = request.get_header("Authorization")
+        captured["content_type"] = request.get_header("Content-type")
+        captured["body"] = request.data.decode("utf-8")
+        captured["timeout"] = str(timeout)
+        return DummyResponse()
+
+    monkeypatch.setattr(assistants_endpoints.urllib_request, "urlopen", fake_urlopen)
+
+    provider = AIProvider(
+        name="Header Test Provider",
+        provider_type="openai-compatible",
+        base_url="https://example.com/v1",
+        api_key="demo-secret-key",
+        model_name="gpt-4.1-mini",
+        is_default=True,
+        is_enabled=True,
+    )
+    reply, warning = assistants_endpoints.call_openai_compatible_provider(
+        provider,
+        system_prompt="system",
+        user_prompt="user",
+        history=[],
+        attachments=[],
+        runtime_settings={
+            "temperature": 0.8,
+            "top_p": 0.75,
+            "max_tokens": 1024,
+            "presence_penalty": 0.2,
+            "frequency_penalty": 0.1,
+        },
+    )
+
+    assert warning is None
+    assert reply == "hello from provider"
+    assert captured["url"] == "https://example.com/v1/chat/completions"
+    assert captured["accept"] == "application/json, text/plain, */*"
+    assert captured["accept_language"] == "zh-CN,zh;q=0.9,en;q=0.8"
+    assert captured["user_agent"] is not None and "Mozilla/5.0" in captured["user_agent"]
+    assert captured["authorization"] == "Bearer demo-secret-key"
+    assert captured["content_type"] == "application/json"
+    assert '"temperature": 0.8' in captured["body"]
+    assert '"top_p": 0.75' in captured["body"]
+    assert '"max_tokens": 1024' in captured["body"]
+    assert '"presence_penalty": 0.2' in captured["body"]
+    assert '"frequency_penalty": 0.1' in captured["body"]
+    assert captured["timeout"] == "20"
+
+
+def test_ai_companion_provider_stream_request_uses_browser_compatible_headers(monkeypatch: pytest.MonkeyPatch):
+    captured: dict[str, str | None] = {}
+
+    class DummyStreamResponse:
+        headers = {"Content-Type": "text/event-stream"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def __iter__(self):
+            return iter(
+                [
+                    b'data: {"choices":[{"delta":{"content":"hello "}}]}\n\n',
+                    b'data: {"choices":[{"delta":{"content":"stream"}}]}\n\n',
+                    b"data: [DONE]\n\n",
+                ]
+            )
+
+    def fake_urlopen(request, timeout=0):
+        captured["url"] = request.full_url
+        captured["accept"] = request.get_header("Accept")
+        captured["accept_language"] = request.get_header("Accept-language")
+        captured["user_agent"] = request.get_header("User-agent")
+        captured["authorization"] = request.get_header("Authorization")
+        captured["content_type"] = request.get_header("Content-type")
+        captured["body"] = request.data.decode("utf-8")
+        captured["timeout"] = str(timeout)
+        return DummyStreamResponse()
+
+    monkeypatch.setattr(assistants_endpoints.urllib_request, "urlopen", fake_urlopen)
+
+    provider = AIProvider(
+        name="Header Stream Provider",
+        provider_type="openai-compatible",
+        base_url="https://example.com/v1",
+        api_key="demo-secret-key",
+        model_name="gpt-4.1-mini",
+        is_default=True,
+        is_enabled=True,
+    )
+    iterator = assistants_endpoints.call_openai_compatible_provider_stream(
+        provider,
+        system_prompt="system",
+        user_prompt="user",
+        history=[],
+        attachments=[],
+        runtime_settings={
+            "temperature": 0.6,
+            "top_p": 0.8,
+            "max_tokens": 512,
+        },
+    )
+    chunks = []
+    try:
+        while True:
+            chunks.append(next(iterator))
+    except StopIteration as stop:
+        result = stop.value
+
+    assert chunks == [("chunk", "hello "), ("chunk", "stream")]
+    assert result == ("hello stream", None)
+    assert captured["url"] == "https://example.com/v1/chat/completions"
+    assert captured["accept"] == "text/event-stream, application/json, text/plain, */*"
+    assert captured["accept_language"] == "zh-CN,zh;q=0.9,en;q=0.8"
+    assert captured["user_agent"] is not None and "Mozilla/5.0" in captured["user_agent"]
+    assert captured["authorization"] == "Bearer demo-secret-key"
+    assert captured["content_type"] == "application/json"
+    assert '"temperature": 0.6' in captured["body"]
+    assert '"top_p": 0.8' in captured["body"]
+    assert '"max_tokens": 512' in captured["body"]
+    assert '"stream": true' in captured["body"]
+    assert captured["timeout"] == "35"
+
+
+def test_ai_provider_http_403_keeps_full_service_response():
+    payload = (
+        '{"type":"https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/",'
+        '"title":"Error 1010: Access denied","status":403,"detail":"The site owner has blocked access based on your browser\'s signature."}'
+    )
+    provider_message = settings_endpoints.extract_ai_provider_error_message(payload)
+    reason = settings_endpoints.summarize_ai_provider_http_error(403, provider_message)
+
+    assert reason == "访问被服务端拒绝，请检查服务端的安全策略、白名单或防火墙配置"
+    assert provider_message == payload
 
 
 def test_system_theme_can_be_configured_and_is_shared_to_staff_and_student():

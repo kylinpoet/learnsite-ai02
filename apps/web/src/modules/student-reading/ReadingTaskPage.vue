@@ -73,7 +73,7 @@
                 <template #header>
                   <div class="info-row">
                     <span>阅读内容</span>
-                    <el-tag round type="success">description.aspx 实页</el-tag>
+                    <el-tag round type="success">课程阅读</el-tag>
                   </div>
                 </template>
                 <RichTextContent :html="taskDetail.description" empty-text="当前阅读任务还没有补充内容。" />
@@ -134,9 +134,9 @@
                 </el-descriptions>
 
                 <div class="tip-panel">
-                  <p class="tip-title">本页说明</p>
-                  <p>1. 本页承接旧站 `description.aspx` 的阅读和导读说明。</p>
-                  <p>2. 阅读确认只记录“已读时间”，不会生成作品提交记录。</p>
+                  <p class="tip-title">阅读提示</p>
+                  <p>1. 本页用于阅读任务正文与学案导读内容。</p>
+                  <p>2. 阅读确认会记录“已读时间”，不会生成作品提交记录。</p>
                   <p>3. 阅读完成后，可以直接进入下一任务继续学习。</p>
                 </div>
 
