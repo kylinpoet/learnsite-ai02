@@ -2,7 +2,7 @@
   <section class="page-stack auth-login-page student-login-page">
     <div class="auth-stage">
       <div class="auth-copy-column">
-        <p class="eyebrow">初中信息科技学习平台</p>
+        <p class="eyebrow">{{ appStore.title }}</p>
         <h1>学生登录</h1>
         <p class="hero-copy">
           从这里进入学习中心、课程任务、作品互评、网盘和个人资料页。一次登录后，学习、提交和回看进度都会保持在同一个入口里。
@@ -65,6 +65,7 @@ import { RouterLink, useRouter } from 'vue-router';
 
 import { apiPost } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
+import { useAppStore } from '@/stores/app';
 
 type LoginResponse = {
   access_token: string;
@@ -81,6 +82,7 @@ type LoginResponse = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const appStore = useAppStore();
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const form = reactive({

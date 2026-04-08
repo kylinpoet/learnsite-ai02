@@ -149,7 +149,7 @@ def build_demo_docx_bytes(text: str) -> bytes:
 
 def build_seed_file_bytes(submission_file: SubmissionFile) -> bytes:
     ext = submission_file.file_ext.lower()
-    title = f"LearnSite demo file: {submission_file.original_name}"
+    title = f"OW³教学评AI平台 demo file: {submission_file.original_name}"
 
     if ext == "pdf":
         return build_demo_pdf_bytes(title)
@@ -160,9 +160,9 @@ def build_seed_file_bytes(submission_file: SubmissionFile) -> bytes:
     if ext == "docx":
         return build_demo_docx_bytes(title)
     if ext in {"md", "txt"}:
-        return f"# LearnSite Demo\n\n{title}\n".encode("utf-8")
+        return f"# OW³教学评AI平台 Demo\n\n{title}\n".encode("utf-8")
 
-    return f"LearnSite demo attachment\n{title}\n".encode("utf-8")
+    return f"OW³教学评AI平台 demo attachment\n{title}\n".encode("utf-8")
 
 
 def ensure_seed_submission_storage(session) -> None:

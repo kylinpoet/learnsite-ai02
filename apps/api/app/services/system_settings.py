@@ -19,6 +19,14 @@ DEFAULT_THEME_CODE = "mango-splash"
 
 ARCHIVED_CLASS_IDS_KEY = "archived_class_ids"
 CLASS_ARCHIVE_RECORDS_KEY = "class_archive_records"
+STUDENT_PROFILE_EDIT_PERMISSIONS_BY_CLASS_KEY = "student_profile_edit_permissions_by_class"
+
+DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS: dict[str, bool] = {
+    "can_edit_name": True,
+    "can_edit_gender": True,
+    "can_edit_photo": True,
+    "can_edit_class": True,
+}
 
 DEFAULT_GROUP_DRIVE_ALLOWED_EXTENSIONS = [
     "txt",
@@ -70,6 +78,7 @@ DEFAULT_CLASS_TRANSFER_UNREVIEW_REASON_PRESETS_TEXT = "\n".join(
 )
 
 SYSTEM_SETTING_DEFAULTS: dict[str, object] = {
+    "platform_name": "OW³教学评AI平台",
     "school_name": "信息科技学习平台测试校",
     "active_grade_nos": [7, 8],
     "theme_code": DEFAULT_THEME_CODE,
@@ -190,6 +199,9 @@ def read_system_settings(db: Session) -> dict:
 def build_system_setting_write_values(payload: Mapping[str, object]) -> dict[str, str]:
     values: dict[str, str] = {}
 
+    if "platform_name" in payload:
+        platform_name = str(payload.get("platform_name") or "").strip() or str(SYSTEM_SETTING_DEFAULTS["platform_name"])
+        values["platform_name"] = platform_name
     if "school_name" in payload:
         school_name = str(payload.get("school_name") or "").strip() or str(SYSTEM_SETTING_DEFAULTS["school_name"])
         values["school_name"] = school_name
@@ -292,6 +304,76 @@ def write_class_archive_records(records: list[dict], db: Session) -> None:
         db.add(SystemSetting(setting_key=CLASS_ARCHIVE_RECORDS_KEY, setting_value=payload))
     else:
         row.setting_value = payload
+
+
+def normalize_student_profile_edit_permissions(payload: Mapping[str, object] | None) -> dict[str, bool]:
+    data = payload if isinstance(payload, Mapping) else {}
+    return {
+        key: bool(data.get(key, default_value))
+        for key, default_value in DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS.items()
+    }
+
+
+def read_student_profile_edit_permissions_by_class(db: Session) -> dict[int, dict[str, bool]]:
+    raw = load_setting_value(STUDENT_PROFILE_EDIT_PERMISSIONS_BY_CLASS_KEY, db)
+    if not raw:
+        return {}
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+
+    normalized: dict[int, dict[str, bool]] = {}
+    for raw_class_id, raw_permissions in payload.items():
+        try:
+            class_id = int(raw_class_id)
+        except (TypeError, ValueError):
+            continue
+        if class_id <= 0:
+            continue
+        normalized[class_id] = normalize_student_profile_edit_permissions(raw_permissions)
+    return normalized
+
+
+def resolve_student_profile_edit_permissions(class_id: int | None, db: Session) -> dict[str, bool]:
+    if class_id is None or class_id <= 0:
+        return dict(DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS)
+    permission_by_class = read_student_profile_edit_permissions_by_class(db)
+    return dict(
+        permission_by_class.get(
+            class_id,
+            DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS,
+        )
+    )
+
+
+def write_student_profile_edit_permissions_by_class(
+    permissions_by_class: Mapping[int, Mapping[str, object]],
+    db: Session,
+) -> None:
+    normalized_payload: dict[str, dict[str, bool]] = {}
+    for raw_class_id, raw_permissions in permissions_by_class.items():
+        try:
+            class_id = int(raw_class_id)
+        except (TypeError, ValueError):
+            continue
+        if class_id <= 0:
+            continue
+        normalized_payload[str(class_id)] = normalize_student_profile_edit_permissions(raw_permissions)
+
+    serialized = json.dumps(normalized_payload, ensure_ascii=False)
+    row = db.scalar(select(SystemSetting).where(SystemSetting.setting_key == STUDENT_PROFILE_EDIT_PERMISSIONS_BY_CLASS_KEY))
+    if row is None:
+        db.add(
+            SystemSetting(
+                setting_key=STUDENT_PROFILE_EDIT_PERMISSIONS_BY_CLASS_KEY,
+                setting_value=serialized,
+            )
+        )
+    else:
+        row.setting_value = serialized
 
 
 def theme_presets_payload() -> list[dict[str, str]]:

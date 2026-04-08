@@ -23,6 +23,7 @@ import FloatingAiCompanion from '@/components/FloatingAiCompanion.vue';
 import SessionActionMenu from '@/components/SessionActionMenu.vue';
 import '@/styles/page-icon-chrome.css';
 import { useAuthStore } from '@/stores/auth';
+import { useAppStore } from '@/stores/app';
 
 type StaffPageItem = {
   label: string;
@@ -31,6 +32,7 @@ type StaffPageItem = {
 };
 
 const authStore = useAuthStore();
+const appStore = useAppStore();
 const route = useRoute();
 
 const navGroups = computed(() => {
@@ -97,7 +99,7 @@ const currentPage = computed(() => {
 <template>
   <div class="app-layout staff-layout">
     <AppShellHeader
-      title="教师工作台"
+      :title="appStore.title"
       kicker="教学与管理总览"
       :current-page-icon="currentPage.icon"
       :current-page-label="currentPage.label"

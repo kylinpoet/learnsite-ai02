@@ -3,7 +3,7 @@
     <div class="auth-stage">
       <div class="auth-copy-column">
         <div class="staff-login-page__heading">
-          <p class="eyebrow">Teacher & Admin</p>
+          <p class="eyebrow">{{ appStore.title }}</p>
           <el-tag effect="dark" round type="success">统一后台</el-tag>
         </div>
         <h1>教职工登录</h1>
@@ -70,6 +70,7 @@ import { RouterLink, useRouter } from 'vue-router';
 
 import { apiPost } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
+import { useAppStore } from '@/stores/app';
 
 type LoginResponse = {
   access_token: string;
@@ -86,6 +87,7 @@ type LoginResponse = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const appStore = useAppStore();
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 const form = reactive({

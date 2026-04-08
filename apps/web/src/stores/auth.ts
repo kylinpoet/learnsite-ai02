@@ -16,6 +16,7 @@ type SessionUser = {
   role: string;
   roles: string[];
   theme?: string | null;
+  platform_name?: string | null;
 };
 
 type AuthMeResponse = {
@@ -24,6 +25,7 @@ type AuthMeResponse = {
   display_name: string;
   roles: string[];
   theme?: string | null;
+  platform_name?: string | null;
   expires_at?: string | null;
 };
 const sessionSyncTtlMs = 30_000;
@@ -42,6 +44,7 @@ function normalizeSessionUser(user: SessionUser | AuthMeResponse): SessionUser {
     role: 'role' in user ? user.role : inferRole(user.roles),
     roles: [...user.roles],
     theme: 'theme' in user ? user.theme ?? null : null,
+    platform_name: 'platform_name' in user ? user.platform_name ?? null : null,
   };
 }
 
@@ -101,7 +104,9 @@ export const useAuthStore = defineStore('auth', {
           this.sessionExpiresAt = payload.expires_at ?? this.sessionExpiresAt;
           this.lastSyncedAt = Date.now();
           persistSession(this.token, nextUser, this.sessionExpiresAt);
-          useAppStore().applySystemTheme(nextUser.theme);
+          const appStore = useAppStore();
+          appStore.applySystemTheme(nextUser.theme);
+          appStore.applyPlatformTitle(nextUser.platform_name);
           return nextUser;
         })
         .finally(() => {

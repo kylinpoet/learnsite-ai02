@@ -22,6 +22,7 @@ import AppShellHeader from '@/components/AppShellHeader.vue';
 import FloatingAiCompanion from '@/components/FloatingAiCompanion.vue';
 import SessionActionMenu from '@/components/SessionActionMenu.vue';
 import '@/styles/page-icon-chrome.css';
+import { useAppStore } from '@/stores/app';
 
 type StudentPageItem = {
   label: string;
@@ -30,6 +31,7 @@ type StudentPageItem = {
 };
 
 const route = useRoute();
+const appStore = useAppStore();
 
 const navItems = [
   { label: '学习首页', to: '/student/home', icon: markRaw(House) },
@@ -124,7 +126,7 @@ const currentPage = computed(() => {
 <template>
   <div class="app-layout student-layout">
     <AppShellHeader
-      title="学生学习中心"
+      :title="appStore.title"
       kicker="成长与任务总览"
       :current-page-icon="currentPage.icon"
       :current-page-label="currentPage.label"

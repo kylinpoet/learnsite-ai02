@@ -24,6 +24,13 @@
                 <section class="soft-card panel">
                   <div class="panel-head"><h3>系统参数</h3></div>
                   <el-form label-position="top">
+                    <el-form-item label="平台名称">
+                      <el-input
+                        v-model="systemForm.platform_name"
+                        placeholder="例如：瓯海区外国语学校信息科技OW³教学评AI平台 / 信息科技OW³教学评AI平台"
+                      />
+                      <p class="section-note">将显示在登录页、顶部标题和浏览器标签中。</p>
+                    </el-form-item>
                     <el-form-item label="学校名称">
                       <el-input v-model="systemForm.school_name" />
                     </el-form-item>
@@ -130,13 +137,89 @@
                       <template #default="{ row }">{{ roomName(row.default_room_id) }}</template>
                     </el-table-column>
                     <el-table-column label="学生数" min-width="90" prop="student_count" />
-                    <el-table-column label="操作" min-width="160">
+                    <el-table-column label="资料修改权限" min-width="240">
                       <template #default="{ row }">
+                        <el-space wrap>
+                          <el-tag size="small" :type="classProfileEditPermissions(row).can_edit_name ? 'success' : 'info'" round>
+                            姓名
+                          </el-tag>
+                          <el-tag size="small" :type="classProfileEditPermissions(row).can_edit_gender ? 'success' : 'info'" round>
+                            性别
+                          </el-tag>
+                          <el-tag size="small" :type="classProfileEditPermissions(row).can_edit_photo ? 'success' : 'info'" round>
+                            相片
+                          </el-tag>
+                          <el-tag size="small" :type="classProfileEditPermissions(row).can_edit_class ? 'success' : 'info'" round>
+                            班级
+                          </el-tag>
+                        </el-space>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" min-width="220">
+                      <template #default="{ row }">
+                        <el-button link type="primary" @click="openClassProfilePermissionDialog(row)">权限设置</el-button>
                         <el-button link type="primary" @click="openClassDialog(row)">编辑</el-button>
                         <el-button link type="danger" @click="deleteClass(row.id)">删除</el-button>
                       </template>
                     </el-table-column>
                   </el-table>
+                  <div class="panel-stack-gap" style="margin-top: 12px;">
+                    <el-divider content-position="left">按班级保存资料修改权限</el-divider>
+                    <div class="admin-grid two-col">
+                      <div>
+                        <p class="section-note">选择班级</p>
+                        <el-select
+                          v-model="inlineClassProfilePermissionClassId"
+                          class="full-width"
+                          placeholder="请选择要设置权限的班级"
+                          @change="syncInlineClassProfilePermissionForm"
+                        >
+                          <el-option
+                            v-for="item in bootstrap.classes"
+                            :key="item.id"
+                            :label="item.class_name"
+                            :value="item.id"
+                          />
+                        </el-select>
+                      </div>
+                      <div>
+                        <p class="section-note">权限说明</p>
+                        <p class="section-note">切换开关后点击“保存当前班级权限”立即生效。</p>
+                      </div>
+                    </div>
+                    <el-space wrap>
+                      <el-switch
+                        v-model="inlineClassProfilePermissionForm.can_edit_name"
+                        active-text="允许修改姓名"
+                        inactive-text="禁止修改姓名"
+                      />
+                      <el-switch
+                        v-model="inlineClassProfilePermissionForm.can_edit_gender"
+                        active-text="允许修改性别"
+                        inactive-text="禁止修改性别"
+                      />
+                      <el-switch
+                        v-model="inlineClassProfilePermissionForm.can_edit_photo"
+                        active-text="允许修改相片"
+                        inactive-text="禁止修改相片"
+                      />
+                      <el-switch
+                        v-model="inlineClassProfilePermissionForm.can_edit_class"
+                        active-text="允许提交转班申请"
+                        inactive-text="禁止提交转班申请"
+                      />
+                    </el-space>
+                    <div class="chip-row" style="margin-top: 10px;">
+                      <el-button
+                        type="primary"
+                        :disabled="!inlineClassProfilePermissionClassId"
+                        :loading="isSavingInlineClassProfilePermission"
+                        @click="saveInlineClassProfilePermissions"
+                      >
+                        保存当前班级权限
+                      </el-button>
+                    </div>
+                  </div>
                 </section>
 
                 <section class="soft-card panel">
@@ -168,11 +251,91 @@
                     </el-table-column>
                     <el-table-column label="操作" min-width="160">
                       <template #default="{ row }">
+                        <el-button link type="primary" @click="openTeacherEditor(row)">页面编辑</el-button>
                         <el-button link type="primary" @click="openTeacherDialog(row)">编辑</el-button>
                         <el-button link type="danger" @click="deleteTeacher(row.id)">删除</el-button>
                       </template>
                     </el-table-column>
                   </el-table>
+                  <div ref="teacherEditorSectionRef" class="panel-stack-gap" style="margin-top: 12px;">
+                    <el-divider content-position="left">编辑教师信息</el-divider>
+                    <div class="admin-grid two-col">
+                      <div>
+                        <p class="section-note">选择教师</p>
+                        <el-select
+                          v-model="teacherEditorTeacherId"
+                          class="full-width"
+                          filterable
+                          placeholder="请选择需要编辑的教师"
+                          @change="syncTeacherEditorForm"
+                        >
+                          <el-option
+                            v-for="item in bootstrap.teachers"
+                            :key="item.id"
+                            :label="`${item.display_name}（${item.username}）`"
+                            :value="item.id"
+                          />
+                        </el-select>
+                      </div>
+                      <div>
+                        <p class="section-note">提示</p>
+                        <p class="section-note">修改后点击“保存教师信息”立即生效；密码留空表示不重置。</p>
+                      </div>
+                    </div>
+                    <el-form label-position="top">
+                      <div class="admin-grid two-col">
+                        <el-form-item label="账号">
+                          <el-input v-model="teacherEditorForm.username" :disabled="!teacherEditorTeacherId" />
+                        </el-form-item>
+                        <el-form-item label="姓名">
+                          <el-input v-model="teacherEditorForm.display_name" :disabled="!teacherEditorTeacherId" />
+                        </el-form-item>
+                      </div>
+                      <div class="admin-grid two-col">
+                        <el-form-item label="职务">
+                          <el-input v-model="teacherEditorForm.title" :disabled="!teacherEditorTeacherId" />
+                        </el-form-item>
+                        <el-form-item label="管理员权限">
+                          <el-switch v-model="teacherEditorForm.is_admin" :disabled="!teacherEditorTeacherId" />
+                        </el-form-item>
+                      </div>
+                      <el-form-item label="关联班级">
+                        <el-select
+                          v-model="teacherEditorForm.class_ids"
+                          class="full-width"
+                          filterable
+                          multiple
+                          :disabled="!teacherEditorTeacherId"
+                        >
+                          <el-option
+                            v-for="item in bootstrap.classes"
+                            :key="item.id"
+                            :label="item.class_name"
+                            :value="item.id"
+                          />
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item label="重置密码（留空不修改）">
+                        <el-input
+                          v-model="teacherEditorForm.password"
+                          show-password
+                          :disabled="!teacherEditorTeacherId"
+                          placeholder="不少于 6 位，留空表示不修改"
+                        />
+                      </el-form-item>
+                      <div class="chip-row" style="margin-top: 6px;">
+                        <el-button :disabled="!teacherEditorTeacherId" @click="syncTeacherEditorForm()">重置为当前值</el-button>
+                        <el-button
+                          type="primary"
+                          :disabled="!teacherEditorTeacherId"
+                          :loading="isSavingTeacherEditor"
+                          @click="saveTeacherEditor"
+                        >
+                          保存教师信息
+                        </el-button>
+                      </div>
+                    </el-form>
+                  </div>
                 </section>
               </div>
             </el-tab-pane>
@@ -580,6 +743,47 @@
       </el-form>
       <template #footer><el-button @click="classDialogVisible = false">取消</el-button><el-button type="primary" @click="saveClass">保存</el-button></template>
     </el-dialog>
+    <el-dialog v-model="classProfilePermissionDialogVisible" title="班级资料修改权限" width="520px">
+      <el-form label-position="top">
+        <el-form-item label="当前班级">
+          <el-tag round type="info">{{ editingClassProfilePermissionName || '--' }}</el-tag>
+        </el-form-item>
+        <el-form-item label="姓名修改权限">
+          <el-switch
+            v-model="classProfilePermissionForm.can_edit_name"
+            active-text="允许学生修改"
+            inactive-text="禁止学生修改"
+          />
+        </el-form-item>
+        <el-form-item label="性别修改权限">
+          <el-switch
+            v-model="classProfilePermissionForm.can_edit_gender"
+            active-text="允许学生修改"
+            inactive-text="禁止学生修改"
+          />
+        </el-form-item>
+        <el-form-item label="相片修改权限">
+          <el-switch
+            v-model="classProfilePermissionForm.can_edit_photo"
+            active-text="允许学生修改"
+            inactive-text="禁止学生修改"
+          />
+        </el-form-item>
+        <el-form-item label="班级修改权限">
+          <el-switch
+            v-model="classProfilePermissionForm.can_edit_class"
+            active-text="允许提交转班申请"
+            inactive-text="禁止提交转班申请"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="classProfilePermissionDialogVisible = false">取消</el-button>
+        <el-button :loading="isSavingClassProfilePermission" type="primary" @click="saveClassProfilePermissions">
+          保存权限
+        </el-button>
+      </template>
+    </el-dialog>
     <el-dialog v-model="classBatchDialogVisible" title="批量添加班级" width="620px">
       <el-form label-position="top">
         <el-form-item label="批量输入（每行一个班级）">
@@ -764,7 +968,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -772,8 +976,16 @@ import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '@/api/http';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 
+type ClassProfileEditPermissions = {
+  can_edit_name: boolean;
+  can_edit_gender: boolean;
+  can_edit_photo: boolean;
+  can_edit_class: boolean;
+};
+
 type BootstrapPayload = {
   system: {
+    platform_name: string;
     school_name: string;
     active_grade_nos: number[];
     theme_code: string;
@@ -796,7 +1008,16 @@ type BootstrapPayload = {
     frequency_penalty: number | null;
     streaming_enabled: boolean;
   };
-  classes: Array<{ id: number; grade_no: number; class_no: number; class_name: string; head_teacher_name: string | null; default_room_id: number | null; student_count: number }>;
+  classes: Array<{
+    id: number;
+    grade_no: number;
+    class_no: number;
+    class_name: string;
+    head_teacher_name: string | null;
+    default_room_id: number | null;
+    student_count: number;
+    profile_edit_permissions: ClassProfileEditPermissions;
+  }>;
   archived_classes: Array<{
     id: number;
     class_name: string;
@@ -865,6 +1086,14 @@ type ProviderModelFetchAlert = {
   description: string;
   suggestions: string[];
 };
+type TeacherEditorForm = {
+  username: string;
+  display_name: string;
+  title: string;
+  password: string;
+  is_admin: boolean;
+  class_ids: number[];
+};
 type RoomSeat = BootstrapPayload['rooms'][number]['seats'][number];
 type RoomSeatDraftPayload = { row_count: number; col_count: number; seats: RoomSeat[] };
 type AdminTab = 'system' | 'accounts' | 'promotions' | 'rooms' | 'curriculum' | 'ai-providers';
@@ -878,6 +1107,12 @@ const curriculumImportAccept = '.csv,.txt,.tsv,.xlsx';
 const providerTypeOptions = [
   { label: 'OpenAI Compatible', value: 'openai-compatible' },
 ];
+const defaultClassProfileEditPermissions: ClassProfileEditPermissions = {
+  can_edit_name: true,
+  can_edit_gender: true,
+  can_edit_photo: true,
+  can_edit_class: true,
+};
 const adminQueryTabs: AdminTab[] = ['system', 'accounts', 'promotions', 'rooms', 'curriculum'];
 const curriculumGradeScopeOptions = [
   '一年级上册',
@@ -911,6 +1146,7 @@ const dragOverCellKey = ref('');
 const seatImportInputRef = ref<HTMLInputElement | null>(null);
 const studentImportInputRef = ref<HTMLInputElement | null>(null);
 const curriculumImportInputRef = ref<HTMLInputElement | null>(null);
+const teacherEditorSectionRef = ref<HTMLElement | null>(null);
 const isLoading = ref(true);
 const isSavingSystem = ref(false);
 const isImportingSeats = ref(false);
@@ -921,6 +1157,7 @@ const isExecutingPromotion = ref(false);
 const errorMessage = ref('');
 
 const systemForm = ref({
+  platform_name: 'OW³教学评AI平台',
   school_name: '',
   active_grade_nos: [] as number[],
   theme_code: 'mango-splash',
@@ -950,6 +1187,7 @@ const assistantRuntimeForm = ref<AssistantRuntimeSettings>({
   streaming_enabled: true,
 });
 const classDialogVisible = ref(false);
+const classProfilePermissionDialogVisible = ref(false);
 const classBatchDialogVisible = ref(false);
 const studentImportDialogVisible = ref(false);
 const teacherDialogVisible = ref(false);
@@ -963,8 +1201,12 @@ const isFetchingProviderModels = ref(false);
 const isSavingAssistantPrompts = ref(false);
 const isSavingAssistantRuntimeSettings = ref(false);
 const isSavingClassBatch = ref(false);
+const isSavingClassProfilePermission = ref(false);
+const isSavingInlineClassProfilePermission = ref(false);
+const isSavingTeacherEditor = ref(false);
 
 const editingClassId = ref<number | null>(null);
+const editingClassProfilePermissionId = ref<number | null>(null);
 const editingTeacherId = ref<number | null>(null);
 const editingRoomId = ref<number | null>(null);
 const editingBookId = ref<number | null>(null);
@@ -975,9 +1217,21 @@ const editingBookParentId = ref<number | null>(null);
 const editingUnitParentId = ref<number | null>(null);
 
 const classForm = ref({ grade_no: 7, class_no: 1, head_teacher_name: '', default_room_id: null as number | null });
+const classProfilePermissionForm = ref<ClassProfileEditPermissions>({ ...defaultClassProfileEditPermissions });
+const inlineClassProfilePermissionClassId = ref<number | null>(null);
+const inlineClassProfilePermissionForm = ref<ClassProfileEditPermissions>({ ...defaultClassProfileEditPermissions });
 const classBatchForm = ref({ lines: '', overwrite_existing: false });
 const studentImportForm = ref({ update_existing: false, default_password: '123456' });
 const teacherForm = ref({ username: '', display_name: '', title: '', password: '', is_admin: false, class_ids: [] as number[] });
+const teacherEditorTeacherId = ref<number | null>(null);
+const teacherEditorForm = ref<TeacherEditorForm>({
+  username: '',
+  display_name: '',
+  title: '',
+  password: '',
+  is_admin: false,
+  class_ids: [],
+});
 const roomForm = ref({ name: '', row_count: 2, col_count: 6, description: '', ip_prefix: '', ip_start: 11 });
 const bookForm = ref({ name: '', subject: '信息科技', edition: '浙教版', grade_scope: '' });
 const unitForm = ref({ book_id: 0, term_no: 1, unit_no: 1, title: '' });
@@ -1065,6 +1319,13 @@ const providerModelFetchAlert = computed<ProviderModelFetchAlert | null>(() => {
 });
 
 const selectedRoom = computed(() => bootstrap.value?.rooms.find((item) => item.id === selectedRoomId.value) ?? null);
+const editingClassProfilePermissionName = computed(() => {
+  const classId = editingClassProfilePermissionId.value;
+  if (!classId) {
+    return '';
+  }
+  return bootstrap.value?.classes.find((item) => item.id === classId)?.class_name || '';
+});
 const selectedStudentImportFileName = ref('');
 const selectedCurriculumImportFileName = ref('');
 const maxSeatRow = computed(() => roomSeatDraft.value.reduce((max, seat) => Math.max(max, seat.row_no), 1));
@@ -1155,6 +1416,96 @@ function teacherClassNames(classIds: number[]) {
   return classIds.map((id) => bootstrap.value?.classes.find((item) => item.id === id)?.class_name || '').filter(Boolean);
 }
 
+function buildTeacherFormFromItem(item?: BootstrapPayload['teachers'][number]): TeacherEditorForm {
+  if (!item) {
+    return { username: '', display_name: '', title: '', password: '', is_admin: false, class_ids: [] };
+  }
+  return {
+    username: item.username,
+    display_name: item.display_name,
+    title: item.title || '',
+    password: '',
+    is_admin: item.is_admin,
+    class_ids: [...item.class_ids],
+  };
+}
+
+function syncTeacherEditorForm(teacherIdValue?: number | null) {
+  const teacherId = typeof teacherIdValue === 'number'
+    ? teacherIdValue
+    : teacherEditorTeacherId.value;
+  if (!teacherId) {
+    teacherEditorForm.value = buildTeacherFormFromItem();
+    return;
+  }
+  const teacherItem = bootstrap.value?.teachers.find((item) => item.id === teacherId);
+  teacherEditorForm.value = buildTeacherFormFromItem(teacherItem);
+}
+
+function ensureTeacherEditorTeacherId(preferredTeacherId?: number | null) {
+  const teacherItems = bootstrap.value?.teachers ?? [];
+  if (!teacherItems.length) {
+    teacherEditorTeacherId.value = null;
+    teacherEditorForm.value = buildTeacherFormFromItem();
+    return;
+  }
+  const candidateTeacherId = preferredTeacherId ?? teacherEditorTeacherId.value;
+  const resolvedTeacherId = (
+    candidateTeacherId !== null
+    && candidateTeacherId !== undefined
+    && teacherItems.some((item) => item.id === candidateTeacherId)
+  )
+    ? candidateTeacherId
+    : teacherItems[0].id;
+  teacherEditorTeacherId.value = resolvedTeacherId;
+  syncTeacherEditorForm(resolvedTeacherId);
+}
+
+function openTeacherEditor(item: BootstrapPayload['teachers'][number]) {
+  ensureTeacherEditorTeacherId(item.id);
+  void nextTick(() => {
+    teacherEditorSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+}
+
+function classProfileEditPermissions(item: BootstrapPayload['classes'][number]): ClassProfileEditPermissions {
+  return {
+    ...defaultClassProfileEditPermissions,
+    ...(item.profile_edit_permissions || {}),
+  };
+}
+
+function syncInlineClassProfilePermissionForm(classIdValue?: number | null) {
+  const classId = classIdValue ?? inlineClassProfilePermissionClassId.value;
+  if (!classId) {
+    inlineClassProfilePermissionForm.value = { ...defaultClassProfileEditPermissions };
+    return;
+  }
+  const classItem = bootstrap.value?.classes.find((item) => item.id === classId);
+  inlineClassProfilePermissionForm.value = classItem
+    ? classProfileEditPermissions(classItem)
+    : { ...defaultClassProfileEditPermissions };
+}
+
+function ensureInlineClassProfilePermissionClassId(preferredClassId?: number | null) {
+  const classItems = bootstrap.value?.classes ?? [];
+  if (!classItems.length) {
+    inlineClassProfilePermissionClassId.value = null;
+    inlineClassProfilePermissionForm.value = { ...defaultClassProfileEditPermissions };
+    return;
+  }
+  const candidateClassId = preferredClassId ?? inlineClassProfilePermissionClassId.value;
+  const resolvedClassId = (
+    candidateClassId !== null
+    && candidateClassId !== undefined
+    && classItems.some((item) => item.id === candidateClassId)
+  )
+    ? candidateClassId
+    : classItems[0].id;
+  inlineClassProfilePermissionClassId.value = resolvedClassId;
+  syncInlineClassProfilePermissionForm(resolvedClassId);
+}
+
 function isDialogCancelled(error: unknown) {
   return error === 'cancel' || error === 'close';
 }
@@ -1185,6 +1536,8 @@ async function loadBootstrap() {
   if (!promotionForm.value.source_class_ids.length) {
     promotionPreview.value = null;
   }
+  ensureInlineClassProfilePermissionClassId();
+  ensureTeacherEditorTeacherId();
   selectedRoomId.value = selectedRoomId.value && bootstrap.value.rooms.some((room) => room.id === selectedRoomId.value) ? selectedRoomId.value : bootstrap.value.rooms[0]?.id ?? null;
 }
 
@@ -1291,6 +1644,20 @@ watch(() => [route.path, route.query.tab], () => {
     activeTab.value = nextTab;
   }
 }, { immediate: true });
+
+watch(
+  () => bootstrap.value?.classes,
+  () => {
+    ensureInlineClassProfilePermissionClassId();
+  }
+);
+
+watch(
+  () => bootstrap.value?.teachers,
+  () => {
+    ensureTeacherEditorTeacherId();
+  }
+);
 
 watch(activeTab, (tab) => {
   if (tab === resolveTabFromRoute()) {
@@ -1514,6 +1881,7 @@ async function saveSystemSettings() {
     const payload = await apiPut<BootstrapPayload['system']>('/settings/system', systemForm.value, authStore.token);
     systemForm.value = { ...payload, active_grade_nos: [...payload.active_grade_nos] };
     appStore.applySystemTheme(payload.theme_code);
+    appStore.applyPlatformTitle(payload.platform_name);
     ElMessage.success('系统参数已更新');
     await loadBootstrap();
   } finally {
@@ -1640,6 +2008,12 @@ function openClassDialog(item?: BootstrapPayload['classes'][number]) {
   classDialogVisible.value = true;
 }
 
+function openClassProfilePermissionDialog(item: BootstrapPayload['classes'][number]) {
+  editingClassProfilePermissionId.value = item.id;
+  classProfilePermissionForm.value = classProfileEditPermissions(item);
+  classProfilePermissionDialogVisible.value = true;
+}
+
 function openClassBatchDialog() {
   classBatchForm.value = { lines: '', overwrite_existing: false };
   classBatchDialogVisible.value = true;
@@ -1691,6 +2065,50 @@ async function saveClass() {
   bootstrap.value = payload;
   classDialogVisible.value = false;
   ElMessage.success(editingClassId.value ? '班级已更新' : '班级已创建');
+}
+
+async function saveClassProfilePermissions() {
+  if (!authStore.token || !editingClassProfilePermissionId.value) return;
+  isSavingClassProfilePermission.value = true;
+  try {
+    const payload = await apiPut<BootstrapPayload>(
+      `/settings/admin/classes/${editingClassProfilePermissionId.value}/profile-edit-permissions`,
+      classProfilePermissionForm.value,
+      authStore.token
+    );
+    bootstrap.value = payload;
+    ensureInlineClassProfilePermissionClassId(editingClassProfilePermissionId.value);
+    classProfilePermissionDialogVisible.value = false;
+    ElMessage.success('班级资料修改权限已更新');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存班级资料修改权限失败');
+  } finally {
+    isSavingClassProfilePermission.value = false;
+  }
+}
+
+async function saveInlineClassProfilePermissions() {
+  if (!authStore.token) return;
+  const classId = inlineClassProfilePermissionClassId.value;
+  if (!classId) {
+    ElMessage.warning('请先选择班级');
+    return;
+  }
+  isSavingInlineClassProfilePermission.value = true;
+  try {
+    const payload = await apiPut<BootstrapPayload>(
+      `/settings/admin/classes/${classId}/profile-edit-permissions`,
+      inlineClassProfilePermissionForm.value,
+      authStore.token
+    );
+    bootstrap.value = payload;
+    ensureInlineClassProfilePermissionClassId(classId);
+    ElMessage.success('当前班级资料修改权限已保存');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存班级资料修改权限失败');
+  } finally {
+    isSavingInlineClassProfilePermission.value = false;
+  }
 }
 
 async function saveClassBatch() {
@@ -1806,7 +2224,7 @@ async function submitStudentImport() {
 
 function openTeacherDialog(item?: BootstrapPayload['teachers'][number]) {
   editingTeacherId.value = item?.id ?? null;
-  teacherForm.value = item ? { username: item.username, display_name: item.display_name, title: item.title || '', password: '', is_admin: item.is_admin, class_ids: [...item.class_ids] } : { username: '', display_name: '', title: '', password: '', is_admin: false, class_ids: [] };
+  teacherForm.value = buildTeacherFormFromItem(item);
   teacherDialogVisible.value = true;
 }
 
@@ -1825,6 +2243,7 @@ async function saveTeacher() {
 
   try {
     bootstrap.value = await method<BootstrapPayload>(path, payload, authStore.token);
+    ensureTeacherEditorTeacherId(editingTeacherId.value);
     teacherDialogVisible.value = false;
 
     if (editingTeacherId.value && Number(authStore.user?.id) === editingTeacherId.value) {
@@ -1840,10 +2259,57 @@ async function saveTeacher() {
   }
 }
 
+async function saveTeacherEditor() {
+  if (!authStore.token) return;
+  const teacherId = teacherEditorTeacherId.value;
+  if (!teacherId) {
+    ElMessage.warning('请先选择需要编辑的教师');
+    return;
+  }
+  const payload = {
+    username: teacherEditorForm.value.username.trim(),
+    display_name: teacherEditorForm.value.display_name.trim(),
+    title: teacherEditorForm.value.title.trim() || null,
+    password: teacherEditorForm.value.password.trim() || null,
+    is_admin: teacherEditorForm.value.is_admin,
+    class_ids: [...teacherEditorForm.value.class_ids],
+  };
+
+  if (!payload.username || !payload.display_name) {
+    ElMessage.warning('账号和姓名不能为空');
+    return;
+  }
+
+  isSavingTeacherEditor.value = true;
+  try {
+    bootstrap.value = await apiPut<BootstrapPayload>(
+      `/settings/admin/teachers/${teacherId}`,
+      payload,
+      authStore.token
+    );
+    ensureTeacherEditorTeacherId(teacherId);
+    teacherEditorForm.value.password = '';
+
+    if (Number(authStore.user?.id) === teacherId) {
+      await authStore.syncSessionUser(true);
+      if (!authStore.isAdmin) {
+        await router.replace('/staff/dashboard');
+      }
+    }
+
+    ElMessage.success('教师信息已更新');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存教师信息失败');
+  } finally {
+    isSavingTeacherEditor.value = false;
+  }
+}
+
 async function deleteTeacher(teacherId: number) {
   if (!authStore.token) return;
   await ElMessageBox.confirm('确认删除这个教师账号吗？');
   bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/teachers/${teacherId}`, authStore.token);
+  ensureTeacherEditorTeacherId();
   ElMessage.success('教师已删除');
 }
 

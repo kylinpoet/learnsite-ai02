@@ -91,13 +91,15 @@ def current_user(
         roles = build_staff_roles(user)
     elif is_admin_staff(user):
         roles.append("admin")
+    system_settings = read_system_settings(db)
     return ApiResponse(
         data={
             "id": str(user.id),
             "username": user.username,
             "display_name": user.display_name,
             "roles": roles,
-            "theme": read_system_settings(db).get("theme_code", "mango-splash"),
+            "theme": system_settings.get("theme_code", "mango-splash"),
+            "platform_name": system_settings.get("platform_name", "OW³教学评AI平台"),
             "expires_at": token_data["expires_at"].isoformat() if token_data else None,
         }
     )

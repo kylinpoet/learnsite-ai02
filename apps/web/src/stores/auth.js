@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { apiGet } from '@/api/http';
 import { clearPersistedSession, isSessionExpired, persistSession, readPersistedSession } from '@/stores/authSession';
+import { useAppStore } from '@/stores/app';
 const sessionSyncTtlMs = 30000;
 let syncPromise = null;
 function inferRole(roles) {
@@ -13,6 +14,8 @@ function normalizeSessionUser(user) {
         display_name: user.display_name,
         role: 'role' in user ? user.role : inferRole(user.roles),
         roles: [...user.roles],
+        theme: 'theme' in user ? user.theme ?? null : null,
+        platform_name: 'platform_name' in user ? user.platform_name ?? null : null,
     };
 }
 export const useAuthStore = defineStore('auth', {
@@ -68,6 +71,9 @@ export const useAuthStore = defineStore('auth', {
                 this.sessionExpiresAt = payload.expires_at ?? this.sessionExpiresAt;
                 this.lastSyncedAt = Date.now();
                 persistSession(this.token, nextUser, this.sessionExpiresAt);
+                const appStore = useAppStore();
+                appStore.applySystemTheme(nextUser.theme);
+                appStore.applyPlatformTitle(nextUser.platform_name);
                 return nextUser;
             })
                 .finally(() => {
@@ -81,6 +87,7 @@ export const useAuthStore = defineStore('auth', {
             this.sessionExpiresAt = null;
             this.lastSyncedAt = 0;
             clearPersistedSession();
+            useAppStore().unlockTheme();
         },
     },
 });

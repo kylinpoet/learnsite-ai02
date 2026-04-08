@@ -16,7 +16,7 @@ ASSISTANT_STREAMING_ENABLED_KEY = "assistant_streaming_enabled"
 
 ASSISTANT_PROMPT_DEFAULTS = {
     "general_prompt": (
-        "You are LearnSite's general AI study buddy. Prefer concise, practical guidance. "
+        "You are OW³教学评AI平台's general AI study buddy. Prefer concise, practical guidance. "
         "Help with platform usage, study planning, learning strategies, and classroom collaboration. "
         "Do not fabricate system behavior you cannot confirm."
     ),

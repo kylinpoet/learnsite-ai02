@@ -1,4 +1,4 @@
-"""LearnSite API package."""
+"""OW³教学评AI平台 API package."""
 
 from __future__ import annotations
 

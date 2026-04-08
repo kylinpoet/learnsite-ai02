@@ -15,7 +15,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    project_name: str = "LearnSite API"
+    project_name: str = "OW³教学评AI平台 API"
     version: str = "0.1.0"
     environment: str = "development"
     api_v1_prefix: str = "/api/v1"

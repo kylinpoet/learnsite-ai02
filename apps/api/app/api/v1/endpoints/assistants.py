@@ -34,6 +34,7 @@ from app.services.assistant_settings import (
     read_assistant_runtime_settings,
 )
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff, staff_can_access_class
+from app.services.system_settings import read_system_settings
 
 router = APIRouter()
 
@@ -785,12 +786,13 @@ def build_system_prompt(
     knowledge_bases: list[dict],
     context: dict | None,
     prompt_settings: dict[str, str],
+    platform_name: str,
     lesson_binding_prompt: str | None = None,
 ) -> str:
     role_label = "学生" if user.user_type == "student" else "教师"
     kb_names = "、".join(item["name"] for item in knowledge_bases) or "未指定知识库"
     prompt_parts = [
-        f"你是 LearnSite 的 AI 学伴，服务对象是 {role_label}。",
+        f"你是 {platform_name} 的 AI 学伴，服务对象是 {role_label}。",
         f"当前模式是 {'当前课程学案学伴' if scope == 'lesson' else '通用学伴'}。",
         f"优先参考这些知识库：{kb_names}。",
     ]
@@ -1252,13 +1254,15 @@ def companion_respond(
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
     runtime_settings = read_assistant_runtime_settings(db)
+    platform_name = str(read_system_settings(db).get("platform_name") or "OW³教学评AI平台")
     system_prompt = build_system_prompt(
         user,
         scope,
         selected_kbs,
         context,
         read_assistant_prompt_settings(db),
-        binding.get("prompt_template") if binding else None,
+        platform_name=platform_name,
+        lesson_binding_prompt=binding.get("prompt_template") if binding else None,
     )
     user_prompt = build_user_prompt(user, message, selected_kbs, context, payload.attachments)
 
@@ -1354,13 +1358,15 @@ def companion_respond_stream(
         ]
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
+    platform_name = str(read_system_settings(db).get("platform_name") or "OW³教学评AI平台")
     system_prompt = build_system_prompt(
         user,
         scope,
         selected_kbs,
         context,
         read_assistant_prompt_settings(db),
-        binding.get("prompt_template") if binding else None,
+        platform_name=platform_name,
+        lesson_binding_prompt=binding.get("prompt_template") if binding else None,
     )
     user_prompt = build_user_prompt(user, message, selected_kbs, context, payload.attachments)
     provider_name = provider.name if provider is not None else "内置预览学伴"

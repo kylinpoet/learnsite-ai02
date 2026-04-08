@@ -41,13 +41,17 @@ from app.services.assistant_settings import (
     write_assistant_runtime_settings,
 )
 from app.services.system_settings import (
+    DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS,
+    normalize_student_profile_edit_permissions,
     normalize_theme_code,
     read_archived_class_ids,
     read_class_archive_records,
+    read_student_profile_edit_permissions_by_class,
     read_system_settings as load_system_settings_payload,
     theme_presets_payload,
     write_archived_class_ids,
     write_class_archive_records,
+    write_student_profile_edit_permissions_by_class,
     write_system_settings as persist_system_settings,
 )
 
@@ -98,6 +102,7 @@ STUDENT_IMPORT_HEADER_ALIASES = {
 
 
 class SystemSettingsPayload(BaseModel):
+    platform_name: str = Field(default="OW³教学评AI平台", min_length=1, max_length=160)
     school_name: str = Field(min_length=1, max_length=120)
     active_grade_nos: list[int] = Field(min_length=1)
     theme_code: str = Field(default="mango-splash", min_length=1, max_length=30)
@@ -130,6 +135,13 @@ class AdminClassPayload(BaseModel):
     class_no: int = Field(ge=1, le=99)
     head_teacher_name: str | None = Field(default=None, max_length=100)
     default_room_id: int | None = Field(default=None, ge=1)
+
+
+class ClassProfileEditPermissionsPayload(BaseModel):
+    can_edit_name: bool = True
+    can_edit_gender: bool = True
+    can_edit_photo: bool = True
+    can_edit_class: bool = True
 
 
 class AdminClassBatchItemPayload(AdminClassPayload):
@@ -1023,7 +1035,23 @@ def fetch_ai_provider_models(
     )
 
 
-def serialize_class(school_class: SchoolClass) -> dict:
+def resolve_class_profile_edit_permissions(
+    class_id: int,
+    profile_edit_permissions_by_class: dict[int, dict[str, bool]],
+) -> dict[str, bool]:
+    return dict(
+        profile_edit_permissions_by_class.get(
+            class_id,
+            DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS,
+        )
+    )
+
+
+def serialize_class(
+    school_class: SchoolClass,
+    *,
+    profile_edit_permissions_by_class: dict[int, dict[str, bool]],
+) -> dict:
     return {
         "id": school_class.id,
         "grade_no": school_class.grade_no,
@@ -1032,10 +1060,19 @@ def serialize_class(school_class: SchoolClass) -> dict:
         "head_teacher_name": school_class.head_teacher_name,
         "default_room_id": school_class.default_room_id,
         "student_count": len(school_class.students),
+        "profile_edit_permissions": resolve_class_profile_edit_permissions(
+            school_class.id,
+            profile_edit_permissions_by_class,
+        ),
     }
 
 
-def serialize_archived_class(school_class: SchoolClass, archive_record: dict | None = None) -> dict:
+def serialize_archived_class(
+    school_class: SchoolClass,
+    archive_record: dict | None = None,
+    *,
+    profile_edit_permissions_by_class: dict[int, dict[str, bool]],
+) -> dict:
     return {
         "id": school_class.id,
         "grade_no": school_class.grade_no,
@@ -1044,6 +1081,10 @@ def serialize_archived_class(school_class: SchoolClass, archive_record: dict | N
         "head_teacher_name": school_class.head_teacher_name,
         "default_room_id": school_class.default_room_id,
         "student_count": len(school_class.students),
+        "profile_edit_permissions": resolve_class_profile_edit_permissions(
+            school_class.id,
+            profile_edit_permissions_by_class,
+        ),
         "original_class_name": str(archive_record.get("source_class_name") or "") if archive_record else "",
         "promoted_to_class_id": (
             int(archive_record["target_class_id"])
@@ -1213,6 +1254,7 @@ def build_promotion_preview(
 def bootstrap_payload(db: Session) -> dict:
     archived_class_ids = read_archived_class_ids(db)
     archive_records = read_class_archive_records(db)
+    profile_edit_permissions_by_class = read_student_profile_edit_permissions_by_class(db)
     archive_record_by_class_id = {
         int(item["source_class_id"]): item
         for item in archive_records
@@ -1252,9 +1294,19 @@ def bootstrap_payload(db: Session) -> dict:
         "theme_presets": theme_presets_payload(),
         "assistant_prompts": read_assistant_prompt_settings(db),
         "assistant_runtime": read_assistant_runtime_settings(db),
-        "classes": [serialize_class(item) for item in active_classes],
+        "classes": [
+            serialize_class(
+                item,
+                profile_edit_permissions_by_class=profile_edit_permissions_by_class,
+            )
+            for item in active_classes
+        ],
         "archived_classes": [
-            serialize_archived_class(item, archive_record_by_class_id.get(item.id))
+            serialize_archived_class(
+                item,
+                archive_record_by_class_id.get(item.id),
+                profile_edit_permissions_by_class=profile_edit_permissions_by_class,
+            )
             for item in archived_classes
         ],
         "teachers": [serialize_teacher(item, active_class_ids=active_class_id_set) for item in teachers],
@@ -1879,6 +1931,27 @@ def update_class(
     return ApiResponse(message="班级已更新", data=bootstrap_payload(db))
 
 
+@router.put("/admin/classes/{class_id}/profile-edit-permissions", response_model=ApiResponse)
+def update_class_profile_edit_permissions(
+    class_id: int,
+    payload: ClassProfileEditPermissionsPayload,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    archived_class_ids = read_archived_class_ids(db)
+    school_class = db.get(SchoolClass, class_id)
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+    if class_is_archived(class_id, archived_class_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档班级不可编辑")
+
+    permissions_by_class = read_student_profile_edit_permissions_by_class(db)
+    permissions_by_class[class_id] = normalize_student_profile_edit_permissions(payload.model_dump())
+    write_student_profile_edit_permissions_by_class(permissions_by_class, db)
+    db.commit()
+    return ApiResponse(message=f"{school_class.class_name} 资料修改权限已更新", data=bootstrap_payload(db))
+
+
 @router.delete("/admin/classes/{class_id}", response_model=ApiResponse)
 def delete_class(
     class_id: int,
@@ -1914,6 +1987,11 @@ def delete_class(
 
     if school_class.students or school_class.classroom_sessions:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="班级下已有学生或课堂记录，不能直接删除")
+
+    permissions_by_class = read_student_profile_edit_permissions_by_class(db)
+    if class_id in permissions_by_class:
+        permissions_by_class.pop(class_id, None)
+        write_student_profile_edit_permissions_by_class(permissions_by_class, db)
 
     db.delete(school_class)
     db.commit()

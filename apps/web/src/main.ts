@@ -14,7 +14,8 @@ const app = createApp(App);
 const pinia = createPinia();
 
 app.use(pinia);
-useAppStore(pinia).initialize();
+const appStore = useAppStore(pinia);
+appStore.initialize();
 
 const authStore = useAuthStore(pinia);
 authStore.initialize();
@@ -36,6 +37,8 @@ if (typeof window !== 'undefined') {
 app.use(router);
 
 async function bootstrap() {
+  await appStore.syncPlatformTitle();
+
   if (authStore.token) {
     try {
       await authStore.syncSessionUser(true);

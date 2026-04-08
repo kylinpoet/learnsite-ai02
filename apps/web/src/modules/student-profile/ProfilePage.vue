@@ -62,10 +62,10 @@
                         {{ profileData.profile.photo_available ? '已上传头像' : '未上传头像' }}
                       </el-tag>
                       <el-space wrap>
-                        <el-button plain @click="switchToSection('photo')">上传相片</el-button>
-                        <el-button plain @click="switchToSection('name')">修改姓名</el-button>
-                        <el-button plain @click="switchToSection('gender')">修改性别</el-button>
-                        <el-button plain @click="switchToSection('class-transfer')">修改班级</el-button>
+                        <el-button :disabled="!canEditPhoto" plain @click="switchToSection('photo')">上传相片</el-button>
+                        <el-button :disabled="!canEditName" plain @click="switchToSection('name')">修改姓名</el-button>
+                        <el-button :disabled="!canEditGender" plain @click="switchToSection('gender')">修改性别</el-button>
+                        <el-button :disabled="!canEditClass" plain @click="switchToSection('class-transfer')">修改班级</el-button>
                       </el-space>
                     </div>
                   </div>
@@ -87,7 +87,7 @@
                   <div class="stack-list">
                     <article class="tip-card">
                       <h3>资料维护提示</h3>
-                      <p>姓名、性别和相片可自行修改；班级变更需提交申请并等待教师或管理员审核。</p>
+                      <p>姓名、性别、相片和班级修改权限由班级统一配置；如当前不可修改，请联系教师或管理员。</p>
                     </article>
                     <article class="tip-card">
                       <h3>课堂相关</h3>
@@ -181,13 +181,15 @@
                   <el-form-item label="姓名">
                     <el-input
                       v-model="nameForm.name"
+                      :disabled="!canEditName"
                       maxlength="50"
                       placeholder="请输入真实姓名"
                     />
                   </el-form-item>
                   <div class="action-group">
-                    <el-button :loading="isSavingName" type="primary" @click="submitNameUpdate">保存姓名</el-button>
+                    <el-button :disabled="!canEditName" :loading="isSavingName" type="primary" @click="submitNameUpdate">保存姓名</el-button>
                   </div>
+                  <p v-if="!canEditName" class="section-note">当前班级暂未开放姓名修改权限，请联系教师或管理员。</p>
                 </el-form>
               </el-card>
             </el-tab-pane>
@@ -197,15 +199,16 @@
                 <template #header>性别维护</template>
                 <el-form label-position="top" @submit.prevent>
                   <el-form-item label="性别">
-                    <el-radio-group v-model="genderForm.gender">
+                    <el-radio-group v-model="genderForm.gender" :disabled="!canEditGender">
                       <el-radio-button label="男">男</el-radio-button>
                       <el-radio-button label="女">女</el-radio-button>
                       <el-radio-button label="未知">未知</el-radio-button>
                     </el-radio-group>
                   </el-form-item>
                   <div class="action-group">
-                    <el-button :loading="isSavingGender" type="primary" @click="submitGenderUpdate">保存性别</el-button>
+                    <el-button :disabled="!canEditGender" :loading="isSavingGender" type="primary" @click="submitGenderUpdate">保存性别</el-button>
                   </div>
+                  <p v-if="!canEditGender" class="section-note">当前班级暂未开放性别修改权限，请联系教师或管理员。</p>
                 </el-form>
               </el-card>
             </el-tab-pane>
@@ -224,6 +227,7 @@
                       <input
                         accept="image/*"
                         class="upload-input"
+                        :disabled="!canEditPhoto"
                         type="file"
                         @change="handlePhotoFileChange"
                       />
@@ -232,11 +236,12 @@
                       {{ selectedPhotoFileName || '尚未选择新图片' }}
                     </p>
                     <div class="action-group">
-                      <el-button :loading="isSavingPhoto" type="primary" @click="submitPhotoUpload">上传相片</el-button>
-                      <el-button :disabled="!profileData?.profile.photo_available" plain type="danger" @click="deletePhoto">
+                      <el-button :disabled="!canEditPhoto" :loading="isSavingPhoto" type="primary" @click="submitPhotoUpload">上传相片</el-button>
+                      <el-button :disabled="!canEditPhoto || !profileData?.profile.photo_available" plain type="danger" @click="deletePhoto">
                         删除相片
                       </el-button>
                     </div>
+                    <p v-if="!canEditPhoto" class="section-note">当前班级暂未开放相片修改权限，请联系教师或管理员。</p>
                   </div>
                 </el-card>
 
@@ -267,6 +272,7 @@
                     <el-form-item label="目标班级">
                       <el-select
                         v-model="classTransferForm.target_class_id"
+                        :disabled="!canEditClass"
                         class="full-width"
                         filterable
                         placeholder="请选择目标班级"
@@ -282,6 +288,7 @@
                     <el-form-item label="申请说明（可选）">
                       <el-input
                         v-model="classTransferForm.reason"
+                        :disabled="!canEditClass"
                         :rows="4"
                         maxlength="300"
                         show-word-limit
@@ -291,7 +298,7 @@
                     </el-form-item>
                     <div class="action-group">
                       <el-button
-                        :disabled="hasPendingClassTransfer"
+                        :disabled="hasPendingClassTransfer || !canEditClass"
                         :loading="isSavingClassTransfer"
                         type="primary"
                         @click="submitClassTransferRequest"
@@ -300,7 +307,13 @@
                       </el-button>
                     </div>
                     <p class="section-note">
-                      {{ hasPendingClassTransfer ? '你已有待审核申请，请先等待审核结果。' : '提交后需教师或管理员审核通过才会生效。' }}
+                      {{
+                        !canEditClass
+                          ? '当前班级暂未开放班级修改权限，请联系教师或管理员。'
+                          : hasPendingClassTransfer
+                            ? '你已有待审核申请，请先等待审核结果。'
+                            : '提交后需教师或管理员审核通过才会生效。'
+                      }}
                     </p>
                   </el-form>
                 </el-card>
@@ -356,6 +369,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
+type ProfileEditPermissions = {
+  can_edit_name: boolean;
+  can_edit_gender: boolean;
+  can_edit_photo: boolean;
+  can_edit_class: boolean;
+};
+
 type ProfilePayload = {
   profile: {
     name: string;
@@ -386,6 +406,7 @@ type ProfilePayload = {
     client_ip: string | null;
     signin_source: string;
   }>;
+  profile_edit_permissions: ProfileEditPermissions;
 };
 
 type ClassTransferOptionItem = {
@@ -399,6 +420,7 @@ type ClassTransferOptionsPayload = {
   current_class_name: string;
   grade_no: number;
   has_pending_request: boolean;
+  class_edit_enabled?: boolean;
   classes: ClassTransferOptionItem[];
 };
 
@@ -430,6 +452,12 @@ type ClassTransferRequestItem = {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const defaultProfileEditPermissions: ProfileEditPermissions = {
+  can_edit_name: true,
+  can_edit_gender: true,
+  can_edit_photo: true,
+  can_edit_class: true,
+};
 
 const profileData = ref<ProfilePayload | null>(null);
 const classTransferOptions = ref<ClassTransferOptionsPayload>({
@@ -437,6 +465,7 @@ const classTransferOptions = ref<ClassTransferOptionsPayload>({
   current_class_name: '',
   grade_no: 0,
   has_pending_request: false,
+  class_edit_enabled: true,
   classes: [],
 });
 const classTransferRequests = ref<ClassTransferRequestItem[]>([]);
@@ -494,6 +523,16 @@ const attendanceTabLabel = computed(() => {
   return `签到记录 (${total})`;
 });
 const selectedPhotoFileName = computed(() => selectedPhotoFile.value?.name || '');
+const profileEditPermissions = computed<ProfileEditPermissions>(() => ({
+  ...defaultProfileEditPermissions,
+  ...(profileData.value?.profile_edit_permissions || {}),
+}));
+const canEditName = computed(() => profileEditPermissions.value.can_edit_name);
+const canEditGender = computed(() => profileEditPermissions.value.can_edit_gender);
+const canEditPhoto = computed(() => profileEditPermissions.value.can_edit_photo);
+const canEditClass = computed(
+  () => profileEditPermissions.value.can_edit_class && (classTransferOptions.value.class_edit_enabled ?? true)
+);
 const hasPendingClassTransfer = computed(
   () =>
     classTransferOptions.value.has_pending_request ||
@@ -660,6 +699,10 @@ async function submitNameUpdate() {
   if (!authStore.token) {
     return;
   }
+  if (!canEditName.value) {
+    ElMessage.warning('当前班级暂未开放姓名修改权限');
+    return;
+  }
   const normalizedName = nameForm.value.name.trim();
   if (!normalizedName) {
     ElMessage.warning('请先输入姓名');
@@ -682,6 +725,10 @@ async function submitGenderUpdate() {
   if (!authStore.token) {
     return;
   }
+  if (!canEditGender.value) {
+    ElMessage.warning('当前班级暂未开放性别修改权限');
+    return;
+  }
   isSavingGender.value = true;
   try {
     await apiPut('/profiles/student/gender', { gender: genderForm.value.gender }, authStore.token);
@@ -695,6 +742,10 @@ async function submitGenderUpdate() {
 }
 
 function handlePhotoFileChange(event: Event) {
+  if (!canEditPhoto.value) {
+    selectedPhotoFile.value = null;
+    return;
+  }
   const input = event.target as HTMLInputElement;
   const selected = input.files?.[0] || null;
   selectedPhotoFile.value = selected;
@@ -702,6 +753,10 @@ function handlePhotoFileChange(event: Event) {
 
 async function submitPhotoUpload() {
   if (!authStore.token) {
+    return;
+  }
+  if (!canEditPhoto.value) {
+    ElMessage.warning('当前班级暂未开放相片修改权限');
     return;
   }
   if (!selectedPhotoFile.value) {
@@ -728,6 +783,10 @@ async function deletePhoto() {
   if (!authStore.token) {
     return;
   }
+  if (!canEditPhoto.value) {
+    ElMessage.warning('当前班级暂未开放相片修改权限');
+    return;
+  }
   isSavingPhoto.value = true;
   try {
     await apiDelete('/profiles/student/photo', authStore.token);
@@ -743,6 +802,10 @@ async function deletePhoto() {
 
 async function submitClassTransferRequest() {
   if (!authStore.token) {
+    return;
+  }
+  if (!canEditClass.value) {
+    ElMessage.warning('当前班级暂未开放班级修改权限');
     return;
   }
   if (!classTransferForm.value.target_class_id) {

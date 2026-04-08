@@ -25,7 +25,7 @@ def seed_demo_data() -> bool:
 def main() -> None:
     seeded = seed_demo_data()
     if seeded:
-        print("LearnSite demo data seeded.")
+        print("OW³教学评AI平台 demo data seeded.")
         print("Student: 70101 / 12345")
         print("Students: 70101-70110, 70201-70210, 70301-70310, 80901-80910, 81201-81210 / 12345")
         print("Teacher: t1 / 222221")

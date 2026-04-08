@@ -32,7 +32,7 @@ from app.models import (
 )
 from app.schemas.common import ApiResponse
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff
-from app.services.system_settings import read_archived_class_ids
+from app.services.system_settings import read_archived_class_ids, resolve_student_profile_edit_permissions
 
 router = APIRouter()
 
@@ -49,6 +49,18 @@ PROFILE_CHANGE_AUDIT_EVENT_LABELS = {
     "class_transfer_requested": "提交转班申请",
     "class_transfer_reviewed": "审核转班申请",
     "class_transfer_unreviewed": "撤销转班审核",
+}
+PROFILE_EDIT_PERMISSION_KEY_BY_FIELD = {
+    "name": "can_edit_name",
+    "gender": "can_edit_gender",
+    "photo": "can_edit_photo",
+    "class": "can_edit_class",
+}
+PROFILE_EDIT_PERMISSION_DENIED_MESSAGE = {
+    "name": "当前班级不允许学生修改姓名，请联系任课教师或管理员",
+    "gender": "当前班级不允许学生修改性别，请联系任课教师或管理员",
+    "photo": "当前班级不允许学生修改相片，请联系任课教师或管理员",
+    "class": "当前班级不允许学生提交转班申请，请联系任课教师或管理员",
 }
 
 
@@ -122,6 +134,22 @@ def normalize_optional_text(raw_value: str | None) -> str | None:
         return None
     cleaned = raw_value.strip()
     return cleaned or None
+
+
+def ensure_student_profile_edit_permission(
+    profile: StudentProfile,
+    *,
+    field: Literal["name", "gender", "photo", "class"],
+    db: Session,
+) -> dict[str, bool]:
+    permissions = resolve_student_profile_edit_permissions(profile.class_id, db)
+    permission_key = PROFILE_EDIT_PERMISSION_KEY_BY_FIELD[field]
+    if permissions.get(permission_key, True):
+        return permissions
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=PROFILE_EDIT_PERMISSION_DENIED_MESSAGE[field],
+    )
 
 
 def build_content_disposition(filename: str, disposition: str = "attachment") -> str:
@@ -657,6 +685,7 @@ def build_profile_payload(student: User, db: Session) -> dict:
 
     latest_seat = latest_attendance.seat if latest_attendance and latest_attendance.seat else latest_assignment.seat if latest_assignment else None
     checked_in_today = bool(latest_attendance and latest_attendance.attendance_date == date.today())
+    profile_edit_permissions = resolve_student_profile_edit_permissions(profile.class_id, db)
 
     return {
         "profile": {
@@ -672,6 +701,7 @@ def build_profile_payload(student: User, db: Session) -> dict:
             "room_name": latest_seat.room.name if latest_seat and latest_seat.room else None,
             "photo_available": bool(profile.photo_path),
         },
+        "profile_edit_permissions": profile_edit_permissions,
         "attendance_summary": {
             "total_count": int(attendance_count),
             "checked_in_today": checked_in_today,
@@ -745,10 +775,14 @@ def update_student_name(
     db: Session = Depends(get_db),
 ) -> ApiResponse:
     student_with_profile = load_student_with_profile(student.id, db)
+    profile = student_with_profile.student_profile
+    if profile is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
+    ensure_student_profile_edit_permission(profile, field="name", db=db)
+
     previous_name = student_with_profile.display_name
     next_name = normalize_student_name(payload.name)
     student_with_profile.display_name = next_name
-    profile = student_with_profile.student_profile
     class_name = profile.school_class.class_name if profile and profile.school_class else None
     log_profile_change_audit(
         db,
@@ -780,6 +814,7 @@ def update_student_gender(
     profile = student_with_profile.student_profile
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
+    ensure_student_profile_edit_permission(profile, field="gender", db=db)
     previous_gender = profile.gender
     next_gender = normalize_gender(payload.gender)
     profile.gender = next_gender
@@ -830,6 +865,7 @@ async def upload_student_photo(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
 
+    ensure_student_profile_edit_permission(profile, field="photo", db=db)
     old_file_path = resolve_photo_path(profile)
     target_dir = settings.storage_root / "profile_photos" / str(student.id)
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -889,6 +925,7 @@ def delete_student_photo(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
 
+    ensure_student_profile_edit_permission(profile, field="photo", db=db)
     photo_path = resolve_photo_path(profile)
     profile.photo_path = None
     log_profile_change_audit(
@@ -922,6 +959,7 @@ def student_class_transfer_options(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
 
+    profile_edit_permissions = resolve_student_profile_edit_permissions(profile.class_id, db)
     archived_class_ids = read_archived_class_ids(db)
     class_options = db.scalars(
         select(SchoolClass)
@@ -951,6 +989,7 @@ def student_class_transfer_options(
             "current_class_name": profile.school_class.class_name,
             "grade_no": profile.grade_no,
             "has_pending_request": bool(has_pending_request),
+            "class_edit_enabled": bool(profile_edit_permissions.get("can_edit_class", True)),
             "classes": visible_options,
         }
     )
@@ -987,6 +1026,7 @@ def create_student_class_transfer_request(
     if profile is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学生资料不存在")
 
+    ensure_student_profile_edit_permission(profile, field="class", db=db)
     archived_class_ids = read_archived_class_ids(db)
     if payload.target_class_id in archived_class_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="目标班级已归档，无法申请")

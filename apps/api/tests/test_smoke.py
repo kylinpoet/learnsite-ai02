@@ -152,7 +152,7 @@ def start_classroom_session_for_plan(
 
 
 def test_application_title_and_health():
-    assert app.title == "LearnSite API"
+    assert app.title == "OW³教学评AI平台 API"
     with TestClient(app) as client:
         response = client.get(f"{API_PREFIX}/health")
     assert response.status_code == 200
@@ -1381,6 +1381,12 @@ def test_student_profile_center_and_password_change():
         profile_response = client.get(f"{API_PREFIX}/profiles/student/me", headers=headers)
         assert profile_response.status_code == 200
         profile_payload = profile_response.json()["data"]
+        assert profile_payload["profile_edit_permissions"] == {
+            "can_edit_name": True,
+            "can_edit_gender": True,
+            "can_edit_photo": True,
+            "can_edit_class": True,
+        }
         assert profile_payload["profile"]["student_no"] == "70105"
         assert profile_payload["profile"]["name"]
         assert profile_payload["profile"]["class_name"] == "701班"
@@ -1420,6 +1426,7 @@ def test_student_profile_center_and_password_change():
         )
         assert options_response.status_code == 200
         options_payload = options_response.json()["data"]
+        assert options_payload["class_edit_enabled"] is True
         target_class = next(item for item in options_payload["classes"] if item["class_name"] == "702班")
 
         create_transfer_response = client.post(
@@ -1518,6 +1525,101 @@ def test_student_profile_center_and_password_change():
             json={"username": "70105", "password": "1234567"},
         )
         assert new_login_response.status_code == 200
+
+
+def test_admin_can_configure_class_profile_edit_permissions():
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+        student = student_headers(client, username="70106")
+
+        profile_before = client.get(f"{API_PREFIX}/profiles/student/me", headers=student)
+        assert profile_before.status_code == 200
+        profile_before_payload = profile_before.json()["data"]
+        class_id = profile_before_payload["profile"]["class_id"]
+
+        bootstrap_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
+        assert bootstrap_response.status_code == 200
+        class_item = next(
+            item for item in bootstrap_response.json()["data"]["classes"]
+            if item["id"] == class_id
+        )
+        original_permissions = class_item.get("profile_edit_permissions") or {
+            "can_edit_name": True,
+            "can_edit_gender": True,
+            "can_edit_photo": True,
+            "can_edit_class": True,
+        }
+
+        disabled_permissions = {
+            "can_edit_name": False,
+            "can_edit_gender": False,
+            "can_edit_photo": False,
+            "can_edit_class": False,
+        }
+
+        update_response = client.put(
+            f"{API_PREFIX}/settings/admin/classes/{class_id}/profile-edit-permissions",
+            headers=admin,
+            json=disabled_permissions,
+        )
+        assert update_response.status_code == 200
+        updated_class_item = next(
+            item for item in update_response.json()["data"]["classes"]
+            if item["id"] == class_id
+        )
+        assert updated_class_item["profile_edit_permissions"] == disabled_permissions
+
+        profile_after = client.get(f"{API_PREFIX}/profiles/student/me", headers=student)
+        assert profile_after.status_code == 200
+        assert profile_after.json()["data"]["profile_edit_permissions"] == disabled_permissions
+
+        name_update_response = client.put(
+            f"{API_PREFIX}/profiles/student/name",
+            headers=student,
+            json={"name": "权限测试姓名"},
+        )
+        assert name_update_response.status_code == 403
+
+        gender_update_response = client.put(
+            f"{API_PREFIX}/profiles/student/gender",
+            headers=student,
+            json={"gender": "男"},
+        )
+        assert gender_update_response.status_code == 403
+
+        photo_upload_response = client.post(
+            f"{API_PREFIX}/profiles/student/photo",
+            headers=student,
+            files={"file": ("avatar.png", b"\x89PNG\r\n\x1a\npermission-photo", "image/png")},
+        )
+        assert photo_upload_response.status_code == 403
+
+        photo_delete_response = client.delete(
+            f"{API_PREFIX}/profiles/student/photo",
+            headers=student,
+        )
+        assert photo_delete_response.status_code == 403
+
+        transfer_options_response = client.get(
+            f"{API_PREFIX}/profiles/student/class-transfer/options",
+            headers=student,
+        )
+        assert transfer_options_response.status_code == 200
+        assert transfer_options_response.json()["data"]["class_edit_enabled"] is False
+
+        create_transfer_response = client.post(
+            f"{API_PREFIX}/profiles/student/class-transfer/requests",
+            headers=student,
+            json={"target_class_id": class_id, "reason": "权限关闭时不应成功"},
+        )
+        assert create_transfer_response.status_code == 403
+
+        restore_response = client.put(
+            f"{API_PREFIX}/settings/admin/classes/{class_id}/profile-edit-permissions",
+            headers=admin,
+            json=original_permissions,
+        )
+        assert restore_response.status_code == 200
 
 
 def test_staff_can_batch_review_class_transfer_requests():
@@ -3746,6 +3848,7 @@ def test_admin_can_update_system_settings_and_teacher_admin_role():
             f"{API_PREFIX}/settings/system",
             headers=admin,
             json={
+                "platform_name": "信息科技OW³教学评AI平台",
                 "school_name": "系统设置测试学校",
                 "active_grade_nos": [7, 8, 9],
                 "student_register_enabled": True,
@@ -3757,6 +3860,7 @@ def test_admin_can_update_system_settings_and_teacher_admin_role():
         )
         assert system_update.status_code == 200
         system_payload = system_update.json()["data"]
+        assert system_payload["platform_name"] == "信息科技OW³教学评AI平台"
         assert system_payload["school_name"] == "系统设置测试学校"
         assert system_payload["active_grade_nos"] == [7, 8, 9]
         assert system_payload["student_register_enabled"] is True
@@ -4914,6 +5018,8 @@ def test_system_theme_can_be_configured_and_is_shared_to_staff_and_student():
         assert student_me.status_code == 200
         assert teacher_me.json()["data"]["theme"] == "neon-pulse"
         assert student_me.json()["data"]["theme"] == "neon-pulse"
+        assert teacher_me.json()["data"]["platform_name"]
+        assert student_me.json()["data"]["platform_name"]
 
         restore_response = client.put(
             f"{API_PREFIX}/settings/system",

@@ -37,7 +37,7 @@ def create_application() -> FastAPI:
     def read_root():
         return {
             "code": "OK",
-            "message": "LearnSite API is running",
+            "message": "OW³教学评AI平台 API is running",
             "data": {
                 "project": settings.project_name,
                 "docs": "/docs",
