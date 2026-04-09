@@ -52,17 +52,18 @@ export const useAppStore = defineStore('app', {
       }
     },
     setTheme(theme: ThemeCode) {
-      if (this.themeLockedBySystem) {
-        return;
-      }
       this.currentTheme = theme;
       localStorage.setItem(storageKey, theme);
       applyTheme(theme);
     },
     applySystemTheme(themeCode: string | null | undefined) {
-      this.themeLockedBySystem = true;
-      this.currentTheme = isThemeCode(themeCode) ? themeCode : defaultTheme;
-      applyTheme(this.currentTheme);
+      if (!isThemeCode(themeCode)) {
+        return;
+      }
+      this.themeLockedBySystem = false;
+      this.currentTheme = themeCode;
+      localStorage.setItem(storageKey, themeCode);
+      applyTheme(themeCode);
     },
     unlockTheme() {
       this.themeLockedBySystem = false;
