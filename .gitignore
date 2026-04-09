@@ -14,6 +14,7 @@ venv/
 apps/api/.env
 apps/api/learnsite.db
 apps/api/*.db
+apps/api/storage/submissions/
 coverage/
 *.vue.js
 *.log
