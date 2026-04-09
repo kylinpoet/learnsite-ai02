@@ -57,6 +57,12 @@
                         <el-switch v-model="systemForm.auto_attendance_on_login" active-text="登录自动签到" />
                       </div>
                     </el-form-item>
+                    <el-form-item label="远程请求代理地址（可选）">
+                      <el-input
+                        v-model="systemForm.remote_proxy_url"
+                        placeholder="例如：http://127.0.0.1:7890（留空默认直连 no_proxy）"
+                      />
+                    </el-form-item>
                     <el-form-item label="小组网盘文件上限">
                       <el-input-number v-model="systemForm.group_drive_file_max_count" :min="1" :max="500" />
                     </el-form-item>
@@ -587,6 +593,25 @@
               <section class="soft-card panel">
                 <div class="panel-head">
                   <div>
+                    <h3>远程请求代理</h3>
+                    <p class="section-note">用于模型列表获取与 AI 学伴访问外部模型服务。</p>
+                  </div>
+                  <el-button :loading="isSavingSystem" type="primary" @click="saveSystemSettings">保存代理配置</el-button>
+                </div>
+                <el-form label-position="top">
+                  <el-form-item label="远程请求代理地址（可选）">
+                    <el-input
+                      v-model="systemForm.remote_proxy_url"
+                      placeholder="例如：http://127.0.0.1:7890（留空默认直连 no_proxy）"
+                    />
+                    <p class="section-note">留空即为 no_proxy 直连，不使用环境变量代理。</p>
+                  </el-form-item>
+                </el-form>
+              </section>
+
+              <section class="soft-card panel">
+                <div class="panel-head">
+                  <div>
                     <h3>AI 学伴提示词</h3>
                     <p class="section-note">分别设置通用学伴与当前课程学案学伴的系统提示词。</p>
                   </div>
@@ -629,6 +654,10 @@
                     <el-form-item label="流式输出">
                       <el-switch v-model="assistantRuntimeForm.streaming_enabled" active-text="启用" inactive-text="关闭" />
                       <p class="section-note">关闭后，AI 学伴将统一使用标准输出，不再逐段返回内容。</p>
+                    </el-form-item>
+                    <el-form-item label="Thinking 模式">
+                      <el-switch v-model="assistantRuntimeForm.thinking_enabled" active-text="启用" inactive-text="关闭" />
+                      <p class="section-note">仅对支持 thinking 参数的模型生效；关闭时不附带 thinking 参数。</p>
                     </el-form-item>
                   </div>
                   <el-divider content-position="left">高级参数（OpenAI Compatible）</el-divider>
@@ -932,20 +961,15 @@
               </span>
             </div>
             <el-alert
-              v-if="providerModelFetchAlert"
+              v-if="providerModelFetchError"
               class="provider-model-alert"
               :closable="false"
               show-icon
-              :title="providerModelFetchAlert.title"
+              title="自动获取失败"
               type="warning"
             >
               <template #default>
-                <div class="provider-model-alert-body">
-                  <p class="provider-model-alert-text">{{ providerModelFetchAlert.description }}</p>
-                  <ul v-if="providerModelFetchAlert.suggestions.length" class="provider-model-alert-list">
-                    <li v-for="item in providerModelFetchAlert.suggestions" :key="item">{{ item }}</li>
-                  </ul>
-                </div>
+                <p class="provider-model-alert-text">{{ providerModelFetchError }}</p>
               </template>
             </el-alert>
           </el-form-item>
@@ -991,6 +1015,7 @@ type BootstrapPayload = {
     theme_code: string;
     student_register_enabled: boolean;
     assistant_enabled: boolean;
+    remote_proxy_url: string;
     auto_attendance_on_login: boolean;
     group_drive_file_max_count: number;
     group_drive_single_file_max_mb: number;
@@ -1007,6 +1032,7 @@ type BootstrapPayload = {
     presence_penalty: number | null;
     frequency_penalty: number | null;
     streaming_enabled: boolean;
+    thinking_enabled: boolean;
   };
   classes: Array<{
     id: number;
@@ -1047,6 +1073,7 @@ type AssistantRuntimeSettings = {
   presence_penalty: number | null;
   frequency_penalty: number | null;
   streaming_enabled: boolean;
+  thinking_enabled: boolean;
 };
 type PromotionPreviewPayload = {
   grade_increment: number;
@@ -1080,11 +1107,6 @@ type AIProviderRecord = {
 type AIProviderModelDiscoveryResult = {
   items: string[];
   resolved_url: string;
-};
-type ProviderModelFetchAlert = {
-  title: string;
-  description: string;
-  suggestions: string[];
 };
 type TeacherEditorForm = {
   username: string;
@@ -1163,6 +1185,7 @@ const systemForm = ref({
   theme_code: 'mango-splash',
   student_register_enabled: false,
   assistant_enabled: false,
+  remote_proxy_url: '',
   auto_attendance_on_login: true,
   group_drive_file_max_count: 50,
   group_drive_single_file_max_mb: 20,
@@ -1185,6 +1208,7 @@ const assistantRuntimeForm = ref<AssistantRuntimeSettings>({
   presence_penalty: null,
   frequency_penalty: null,
   streaming_enabled: true,
+  thinking_enabled: false,
 });
 const classDialogVisible = ref(false);
 const classProfilePermissionDialogVisible = ref(false);
@@ -1240,83 +1264,6 @@ const providerForm = ref({ name: '', provider_type: 'openai-compatible', base_ur
 const providerModelOptions = ref<string[]>([]);
 const providerModelResolvedUrl = ref('');
 const providerModelFetchError = ref('');
-
-function formatProviderModelBaseUrlExample(baseUrl: string) {
-  const normalized = baseUrl.trim().replace(/\/+$/, '');
-  if (!normalized) {
-    return 'https://your-host/v1';
-  }
-  if (normalized.endsWith('/models')) {
-    return normalized.replace(/\/models$/, '/v1');
-  }
-  if (normalized.endsWith('/chat/completions')) {
-    return normalized.replace(/\/chat\/completions$/, '/v1');
-  }
-  if (normalized.endsWith('/v1')) {
-    return normalized;
-  }
-  return `${normalized}/v1`;
-}
-
-function buildProviderModelFetchAlert(message: string, baseUrl: string): ProviderModelFetchAlert {
-  const description = message
-    .replace(/\s+已尝试：/g, '\n已尝试：')
-    .replace(/；(?=\d+\.\s)/g, '\n')
-    .trim() || '系统暂时未能读取模型列表。';
-  const suggestions = ['如果当前服务不支持标准 /v1/models，也可以先手动填写模型名称并保存。'];
-  let title = '自动获取失败';
-
-  if (
-    description.includes('访问被服务端拒绝')
-    || description.includes('白名单')
-    || description.includes('防火墙配置')
-    || description.includes('Cloudflare')
-  ) {
-    title = '模型服务拒绝了当前访问';
-    suggestions.unshift('请检查 Cloudflare / WAF / 白名单配置，确认当前服务器可以直接访问该模型接口。');
-  } else if (description.includes('鉴权失败') || description.includes('权限不足')) {
-    title = 'API Key 无法读取模型列表';
-    suggestions.unshift('请确认 API Key 填写正确，并且该密钥具备查看模型列表的权限。');
-  } else if (description.includes('未找到模型列表接口')) {
-    title = '没有找到模型列表地址';
-    suggestions.unshift(`请确认 Base URL 填写的是服务入口，例如 ${formatProviderModelBaseUrlExample(baseUrl)}。`);
-  } else if (
-    description.includes('连接超时')
-    || description.includes('请求超时')
-    || description.includes('无法连接')
-    || description.includes('连接被拒绝')
-    || description.includes('域名解析失败')
-    || description.includes('证书校验失败')
-  ) {
-    title = '当前无法连接模型服务';
-    suggestions.unshift('请确认当前服务器能访问该地址，且域名、端口、证书配置都正确。');
-  } else if (description.includes('限流') || description.includes('请求过于频繁')) {
-    title = '模型服务当前正在限流';
-    suggestions.unshift('稍后重试，或切换到负载较低的服务节点后再获取。');
-  } else if (
-    description.includes('不是合法 JSON')
-    || description.includes('返回结构不是标准模型列表格式')
-    || description.includes('返回格式不正确')
-    || description.includes('暂未读取到可用模型')
-  ) {
-    title = '返回内容不是标准模型列表';
-    suggestions.unshift('当前接口可能不是 OpenAI Compatible 的模型列表地址，请优先检查 /v1/models 是否可用。');
-  }
-
-  return {
-    title,
-    description,
-    suggestions: [...new Set(suggestions)],
-  };
-}
-
-const providerModelFetchAlert = computed<ProviderModelFetchAlert | null>(() => {
-  const message = providerModelFetchError.value.trim();
-  if (!message) {
-    return null;
-  }
-  return buildProviderModelFetchAlert(message, providerForm.value.base_url);
-});
 
 const selectedRoom = computed(() => bootstrap.value?.rooms.find((item) => item.id === selectedRoomId.value) ?? null);
 const editingClassProfilePermissionName = computed(() => {
@@ -1376,9 +1323,9 @@ function resetProviderModelDiscovery() {
 
 function formatProviderModelFetchError(error: unknown) {
   if (error instanceof Error) {
-    return error.message.trim() || '未能自动获取模型列表。请检查 Base URL、API Key 和服务兼容性。';
+    return error.message.trim() || String(error);
   }
-  return '未能自动获取模型列表。请检查 Base URL、API Key 和服务兼容性；如果该服务不支持标准 /v1/models，也可以直接手动填写模型名称。';
+  return String(error ?? '');
 }
 
 function resetProviderForm() {

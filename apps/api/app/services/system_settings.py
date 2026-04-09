@@ -84,6 +84,7 @@ SYSTEM_SETTING_DEFAULTS: dict[str, object] = {
     "theme_code": DEFAULT_THEME_CODE,
     "student_register_enabled": False,
     "assistant_enabled": True,
+    "remote_proxy_url": "",
     "auto_attendance_on_login": True,
     "student_drive_quota_mb": 128,
     "group_drive_quota_mb": 256,
@@ -211,6 +212,8 @@ def build_system_setting_write_values(payload: Mapping[str, object]) -> dict[str
         values["active_grade_nos"] = json.dumps(grade_nos, ensure_ascii=False)
     if "theme_code" in payload:
         values["theme_code"] = normalize_theme_code(str(payload.get("theme_code") or ""))
+    if "remote_proxy_url" in payload:
+        values["remote_proxy_url"] = str(payload.get("remote_proxy_url") or "").strip()
     for setting_key in BOOL_SETTING_KEYS:
         if setting_key in payload:
             values[setting_key] = str(bool(payload.get(setting_key))).lower()

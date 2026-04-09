@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import json
+import logging
 import re
 from typing import Any
 from urllib import error as urllib_error
@@ -37,6 +38,7 @@ from app.services.staff_access import get_accessible_class_ids, is_admin_staff, 
 from app.services.system_settings import read_system_settings
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 MAX_HISTORY_MESSAGES = 8
 MAX_CONVERSATION_CHARS = 4000
@@ -896,6 +898,43 @@ def chat_completions_url(provider: AIProvider) -> str:
     return f"{base_url}/chat/completions"
 
 
+def build_remote_request_opener(proxy_url: str | None) -> tuple[Any, str]:
+    normalized_proxy = (proxy_url or "").strip()
+    if normalized_proxy:
+        return (
+            urllib_request.build_opener(
+                urllib_request.ProxyHandler({"http": normalized_proxy, "https": normalized_proxy})
+            ),
+            "configured_proxy",
+        )
+    return urllib_request.build_opener(urllib_request.ProxyHandler({})), "no_proxy"
+
+
+def extract_provider_error_message(body: str, *, status_code: int | None = None) -> str:
+    text = body.strip()
+    if not text:
+        return f"Provider request failed with status {status_code}" if status_code else "Provider request failed"
+
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+
+    if isinstance(payload, dict):
+        error_item = payload.get("error")
+        if isinstance(error_item, dict):
+            message = str(error_item.get("message") or "").strip()
+            if message:
+                return message
+        if isinstance(error_item, str) and error_item.strip():
+            return error_item.strip()
+        message = payload.get("message")
+        if isinstance(message, str) and message.strip():
+            return message.strip()
+
+    return text
+
+
 def extract_provider_text(content: Any) -> str:
     if isinstance(content, str):
         return content.strip()
@@ -961,6 +1000,9 @@ def build_runtime_generation_params(runtime_settings: dict[str, Any]) -> dict[st
     if isinstance(frequency_penalty, (int, float)):
         payload["frequency_penalty"] = float(frequency_penalty)
 
+    if bool(runtime_settings.get("thinking_enabled", False)):
+        payload["thinking"] = True
+
     return payload
 
 
@@ -972,33 +1014,59 @@ def call_openai_compatible_provider(
     history: list[CompanionConversationMessagePayload],
     attachments: list[CompanionAttachmentPayload],
     runtime_settings: dict[str, Any],
+    remote_proxy_url: str | None = None,
 ) -> tuple[str | None, str | None]:
     payload = {
         "model": provider.model_name,
         "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
         **build_runtime_generation_params(runtime_settings),
     }
-    request = urllib_request.Request(
-        chat_completions_url(provider),
-        data=json.dumps(payload).encode("utf-8"),
-        headers=build_remote_request_headers(
-            provider.api_key,
-            content_type="application/json",
-        ),
-        method="POST",
+    request_url = chat_completions_url(provider)
+    request_data = json.dumps(payload).encode("utf-8")
+    request_headers = build_remote_request_headers(
+        provider.api_key,
+        content_type="application/json",
     )
+    opener, request_mode = build_remote_request_opener(remote_proxy_url)
 
     try:
-        with urllib_request.urlopen(request, timeout=20) as response:
+        request = urllib_request.Request(
+            request_url,
+            data=request_data,
+            headers=request_headers,
+            method="POST",
+        )
+        with opener.open(request, timeout=20) as response:
             raw_payload = json.loads(response.read().decode("utf-8"))
+        logger.warning(
+            "[AI_PROVIDER_REQUEST] completion_success provider_id=%s provider_name=%s mode=%s url=%s",
+            provider.id,
+            provider.name,
+            request_mode,
+            request_url,
+        )
     except urllib_error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
-        try:
-            payload = json.loads(body)
-            return None, payload.get("error", {}).get("message") or payload.get("message") or body
-        except json.JSONDecodeError:
-            return None, body or f"Provider request failed with status {exc.code}"
+        logger.warning(
+            "[AI_PROVIDER_REQUEST] completion_http_error provider_id=%s provider_name=%s status=%s url=%s body=%s",
+            provider.id,
+            provider.name,
+            exc.code,
+            request_url,
+            body,
+        )
+        reason = extract_provider_error_message(body, status_code=exc.code)
+        if not reason:
+            reason = str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
+        return None, reason
     except (urllib_error.URLError, TimeoutError, ValueError) as exc:
+        logger.warning(
+            "[AI_PROVIDER_REQUEST] completion_transport_error provider_id=%s provider_name=%s url=%s error=%s",
+            provider.id,
+            provider.name,
+            request_url,
+            str(exc),
+        )
         return None, str(exc)
 
     choices = raw_payload.get("choices") or []
@@ -1020,6 +1088,7 @@ def call_openai_compatible_provider_stream(
     history: list[CompanionConversationMessagePayload],
     attachments: list[CompanionAttachmentPayload],
     runtime_settings: dict[str, Any],
+    remote_proxy_url: str | None = None,
 ):
     payload = {
         "model": provider.model_name,
@@ -1027,19 +1096,23 @@ def call_openai_compatible_provider_stream(
         **build_runtime_generation_params(runtime_settings),
         "stream": True,
     }
-    request = urllib_request.Request(
-        chat_completions_url(provider),
-        data=json.dumps(payload).encode("utf-8"),
-        headers=build_remote_request_headers(
-            provider.api_key,
-            accept="text/event-stream, application/json, text/plain, */*",
-            content_type="application/json",
-        ),
-        method="POST",
+    request_url = chat_completions_url(provider)
+    request_data = json.dumps(payload).encode("utf-8")
+    request_headers = build_remote_request_headers(
+        provider.api_key,
+        accept="text/event-stream, application/json, text/plain, */*",
+        content_type="application/json",
     )
+    opener, request_mode = build_remote_request_opener(remote_proxy_url)
 
     try:
-        with urllib_request.urlopen(request, timeout=35) as response:
+        request = urllib_request.Request(
+            request_url,
+            data=request_data,
+            headers=request_headers,
+            method="POST",
+        )
+        with opener.open(request, timeout=35) as response:
             content_type = (response.headers.get("Content-Type") or "").lower()
             if "text/event-stream" not in content_type:
                 raw_payload = json.loads(response.read().decode("utf-8"))
@@ -1050,6 +1123,13 @@ def call_openai_compatible_provider_stream(
                 content = extract_provider_text(message.get("content"))
                 if not content:
                     return None, "Provider returned an empty message"
+                logger.warning(
+                    "[AI_PROVIDER_REQUEST] stream_fallback_to_json provider_id=%s provider_name=%s mode=%s url=%s",
+                    provider.id,
+                    provider.name,
+                    request_mode,
+                    request_url,
+                )
                 return content, None
 
             chunks: list[str] = []
@@ -1079,16 +1159,37 @@ def call_openai_compatible_provider_stream(
             full_text = "".join(chunks).strip()
             if not full_text:
                 return None, "Provider returned an empty stream completion result"
+            logger.warning(
+                "[AI_PROVIDER_REQUEST] stream_success provider_id=%s provider_name=%s mode=%s url=%s chunk_count=%s",
+                provider.id,
+                provider.name,
+                request_mode,
+                request_url,
+                len(chunks),
+            )
             return full_text, None
     except urllib_error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
-        try:
-            payload = json.loads(body)
-            warning = payload.get("error", {}).get("message") or payload.get("message") or body
-        except json.JSONDecodeError:
-            warning = body or f"Provider request failed with status {exc.code}"
+        logger.warning(
+            "[AI_PROVIDER_REQUEST] stream_http_error provider_id=%s provider_name=%s status=%s url=%s body=%s",
+            provider.id,
+            provider.name,
+            exc.code,
+            request_url,
+            body,
+        )
+        warning = extract_provider_error_message(body, status_code=exc.code)
+        if not warning:
+            warning = body or str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
         return None, warning
     except (urllib_error.URLError, TimeoutError, ValueError) as exc:
+        logger.warning(
+            "[AI_PROVIDER_REQUEST] stream_transport_error provider_id=%s provider_name=%s url=%s error=%s",
+            provider.id,
+            provider.name,
+            request_url,
+            str(exc),
+        )
         return None, str(exc)
 
 
@@ -1179,6 +1280,7 @@ def companion_bootstrap(
                 "course_context": True,
                 "knowledge_base_select": True,
                 "streaming": bool(runtime_settings["streaming_enabled"]),
+                "thinking": bool(runtime_settings.get("thinking_enabled", False)),
             },
         }
     )
@@ -1254,7 +1356,9 @@ def companion_respond(
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
     runtime_settings = read_assistant_runtime_settings(db)
-    platform_name = str(read_system_settings(db).get("platform_name") or "OW³教学评AI平台")
+    system_settings = read_system_settings(db)
+    platform_name = str(system_settings.get("platform_name") or "OW³教学评AI平台")
+    remote_proxy_url = str(system_settings.get("remote_proxy_url") or "").strip() or None
     system_prompt = build_system_prompt(
         user,
         scope,
@@ -1278,6 +1382,7 @@ def companion_respond(
             history=payload.conversation,
             attachments=payload.attachments,
             runtime_settings=runtime_settings,
+            remote_proxy_url=remote_proxy_url,
         )
         if reply_text:
             provider_mode = "live"
@@ -1358,7 +1463,9 @@ def companion_respond_stream(
         ]
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
-    platform_name = str(read_system_settings(db).get("platform_name") or "OW³教学评AI平台")
+    system_settings = read_system_settings(db)
+    platform_name = str(system_settings.get("platform_name") or "OW³教学评AI平台")
+    remote_proxy_url = str(system_settings.get("remote_proxy_url") or "").strip() or None
     system_prompt = build_system_prompt(
         user,
         scope,
@@ -1385,6 +1492,7 @@ def companion_respond_stream(
                 history=payload.conversation,
                 attachments=payload.attachments,
                 runtime_settings=runtime_settings,
+                remote_proxy_url=remote_proxy_url,
             )
             while True:
                 try:

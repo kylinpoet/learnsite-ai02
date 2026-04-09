@@ -13,6 +13,7 @@ ASSISTANT_MAX_TOKENS_KEY = "assistant_max_tokens"
 ASSISTANT_PRESENCE_PENALTY_KEY = "assistant_presence_penalty"
 ASSISTANT_FREQUENCY_PENALTY_KEY = "assistant_frequency_penalty"
 ASSISTANT_STREAMING_ENABLED_KEY = "assistant_streaming_enabled"
+ASSISTANT_THINKING_ENABLED_KEY = "assistant_thinking_enabled"
 
 ASSISTANT_PROMPT_DEFAULTS = {
     "general_prompt": (
@@ -35,6 +36,7 @@ ASSISTANT_RUNTIME_DEFAULTS = {
     "presence_penalty": None,
     "frequency_penalty": None,
     "streaming_enabled": True,
+    "thinking_enabled": False,
 }
 
 
@@ -157,6 +159,7 @@ def read_assistant_runtime_settings(db: Session) -> dict[str, float | int | bool
                     ASSISTANT_PRESENCE_PENALTY_KEY,
                     ASSISTANT_FREQUENCY_PENALTY_KEY,
                     ASSISTANT_STREAMING_ENABLED_KEY,
+                    ASSISTANT_THINKING_ENABLED_KEY,
                 )
             )
         )
@@ -203,6 +206,11 @@ def read_assistant_runtime_settings(db: Session) -> dict[str, float | int | bool
                 row.setting_value,
                 ASSISTANT_RUNTIME_DEFAULTS["streaming_enabled"],
             )
+        elif row.setting_key == ASSISTANT_THINKING_ENABLED_KEY:
+            payload["thinking_enabled"] = _parse_bool(
+                row.setting_value,
+                ASSISTANT_RUNTIME_DEFAULTS["thinking_enabled"],
+            )
 
     return payload
 
@@ -245,6 +253,7 @@ def write_assistant_runtime_settings(payload: dict[str, float | int | bool | Non
         ASSISTANT_PRESENCE_PENALTY_KEY: "" if presence_penalty is None else str(round(presence_penalty, 2)),
         ASSISTANT_FREQUENCY_PENALTY_KEY: "" if frequency_penalty is None else str(round(frequency_penalty, 2)),
         ASSISTANT_STREAMING_ENABLED_KEY: "true" if bool(payload.get("streaming_enabled", True)) else "false",
+        ASSISTANT_THINKING_ENABLED_KEY: "true" if bool(payload.get("thinking_enabled", False)) else "false",
     }
 
     existing = {
@@ -259,6 +268,7 @@ def write_assistant_runtime_settings(payload: dict[str, float | int | bool | Non
                         ASSISTANT_PRESENCE_PENALTY_KEY,
                         ASSISTANT_FREQUENCY_PENALTY_KEY,
                         ASSISTANT_STREAMING_ENABLED_KEY,
+                        ASSISTANT_THINKING_ENABLED_KEY,
                     )
                 )
             )

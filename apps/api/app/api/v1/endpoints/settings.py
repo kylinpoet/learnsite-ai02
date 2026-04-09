@@ -2,6 +2,8 @@
 
 import csv
 import json
+import logging
+import time
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -56,6 +58,7 @@ from app.services.system_settings import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 ROOM_GRID_MAX = 50
 SEAT_IMPORT_REQUIRED_FIELDS = ("row_no", "col_no", "seat_label", "ip_address")
 SEAT_IMPORT_HEADER_LABELS = {
@@ -108,6 +111,7 @@ class SystemSettingsPayload(BaseModel):
     theme_code: str = Field(default="mango-splash", min_length=1, max_length=30)
     student_register_enabled: bool = False
     assistant_enabled: bool = True
+    remote_proxy_url: str = Field(default="", max_length=255)
     auto_attendance_on_login: bool = True
     group_drive_file_max_count: int = Field(default=50, ge=1, le=500)
     group_drive_single_file_max_mb: int = Field(default=20, ge=1, le=1024)
@@ -128,6 +132,7 @@ class AssistantRuntimeSettingsPayload(BaseModel):
     presence_penalty: float | None = Field(default=None, ge=-2, le=2)
     frequency_penalty: float | None = Field(default=None, ge=-2, le=2)
     streaming_enabled: bool = True
+    thinking_enabled: bool = False
 
 
 class AdminClassPayload(BaseModel):
@@ -921,6 +926,18 @@ def build_ai_provider_request_headers(api_key: str | None) -> dict[str, str]:
     return build_remote_request_headers(api_key)
 
 
+def build_remote_request_opener(proxy_url: str | None) -> tuple[object, str]:
+    normalized_proxy = (proxy_url or "").strip()
+    if normalized_proxy:
+        return (
+            urllib_request.build_opener(
+                urllib_request.ProxyHandler({"http": normalized_proxy, "https": normalized_proxy})
+            ),
+            "configured_proxy",
+        )
+    return urllib_request.build_opener(urllib_request.ProxyHandler({})), "no_proxy"
+
+
 def summarize_ai_provider_http_error(status_code: int, provider_message: str) -> str:
     lowered = provider_message.lower()
     if status_code == 401:
@@ -976,19 +993,8 @@ def summarize_ai_provider_payload_error(message: str) -> str:
 
 def build_ai_provider_lookup_detail(attempts: list[str]) -> str:
     if not attempts:
-        return (
-            "未能自动获取模型列表。"
-            "请检查 Base URL、API Key 和服务兼容性；如果该服务不提供标准 /v1/models，"
-            "也可以直接手动填写模型名称。"
-        )
-
-    summary = "；".join(f"{index + 1}. {item}" for index, item in enumerate(attempts[:2]))
-    return (
-        "未能自动获取模型列表。"
-        "请检查 Base URL 是否正确、API Key 是否具备列出模型的权限，"
-        "如果该服务不提供标准 /v1/models，也可以直接手动填写模型名称。"
-        f" 已尝试：{summary}"
-    )
+        return "未能自动获取模型列表"
+    return "\n".join(attempts)
 
 
 def fetch_ai_provider_models(
@@ -996,6 +1002,7 @@ def fetch_ai_provider_models(
     provider_type: str,
     base_url: str,
     api_key: str | None,
+    remote_proxy_url: str | None = None,
 ) -> tuple[list[str], str]:
     if provider_type != "openai-compatible":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前仅支持 OpenAI Compatible 服务自动获取模型")
@@ -1005,30 +1012,102 @@ def fetch_ai_provider_models(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先填写有效的 Base URL")
 
     headers = build_ai_provider_request_headers(api_key)
+    request_started_at = time.perf_counter()
+    opener, request_mode = build_remote_request_opener(remote_proxy_url)
+    logger.warning(
+        "[AI_PROVIDER_DISCOVERY] start provider_type=%s base_url=%s has_api_key=%s mode=%s candidates=%s",
+        provider_type,
+        base_url,
+        bool(api_key),
+        request_mode,
+        urls,
+    )
 
     errors: list[str] = []
     for url in urls:
+        attempt_started_at = time.perf_counter()
         request = urllib_request.Request(url, headers=headers, method="GET")
         try:
-            with urllib_request.urlopen(request, timeout=15) as response:
-                raw_payload = json.loads(response.read().decode("utf-8"))
-            return parse_ai_provider_models_payload(raw_payload), url
+            with opener.open(request, timeout=15) as response:
+                raw_text = response.read().decode("utf-8", errors="ignore")
+                raw_payload = json.loads(raw_text)
+                models = parse_ai_provider_models_payload(raw_payload)
+                response_status = getattr(response, "status", "unknown")
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            total_elapsed_ms = int((time.perf_counter() - request_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] success url=%s mode=%s status=%s elapsed_ms=%s total_elapsed_ms=%s model_count=%s",
+                url,
+                request_mode,
+                response_status,
+                elapsed_ms,
+                total_elapsed_ms,
+                len(models),
+            )
+            return models, url
         except urllib_error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="ignore")
-            provider_message = extract_ai_provider_error_message(body)
-            reason = summarize_ai_provider_http_error(exc.code, provider_message)
-            if provider_message and provider_message != reason:
-                reason = f"{reason}（服务返回：{provider_message}）"
-            errors.append(f"{url} -> {reason}")
+            details = body.strip() or str(exc.reason or "").strip() or str(exc).strip()
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] http_error url=%s mode=%s status=%s elapsed_ms=%s error=%s",
+                url,
+                request_mode,
+                exc.code,
+                elapsed_ms,
+                details,
+            )
+            errors.append(f"{url} -> HTTP {exc.code}: {details}")
         except urllib_error.URLError as exc:
-            errors.append(f"{url} -> {summarize_ai_provider_network_error(exc)}")
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] url_error url=%s mode=%s elapsed_ms=%s error=%s",
+                url,
+                request_mode,
+                elapsed_ms,
+                str(exc),
+            )
+            errors.append(f"{url} -> {str(exc)}")
         except TimeoutError as exc:
-            errors.append(f"{url} -> {summarize_ai_provider_network_error(exc)}")
-        except json.JSONDecodeError:
-            errors.append(f"{url} -> 接口已响应，但返回内容不是合法 JSON，可能不是标准模型列表地址")
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] timeout_error url=%s mode=%s elapsed_ms=%s error=%s",
+                url,
+                request_mode,
+                elapsed_ms,
+                str(exc),
+            )
+            errors.append(f"{url} -> {str(exc)}")
+        except json.JSONDecodeError as exc:
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] json_decode_error url=%s mode=%s elapsed_ms=%s error=%s",
+                url,
+                request_mode,
+                elapsed_ms,
+                str(exc),
+            )
+            errors.append(f"{url} -> {str(exc)}")
         except ValueError as exc:
-            errors.append(f"{url} -> {summarize_ai_provider_payload_error(str(exc))}")
+            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            logger.warning(
+                "[AI_PROVIDER_DISCOVERY] payload_error url=%s mode=%s elapsed_ms=%s error=%s",
+                url,
+                request_mode,
+                elapsed_ms,
+                str(exc),
+            )
+            errors.append(f"{url} -> {str(exc)}")
 
+    total_elapsed_ms = int((time.perf_counter() - request_started_at) * 1000)
+    logger.warning(
+        "[AI_PROVIDER_DISCOVERY] failed provider_type=%s base_url=%s mode=%s total_elapsed_ms=%s errors=%s",
+        provider_type,
+        base_url,
+        request_mode,
+        total_elapsed_ms,
+        errors,
+    )
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=build_ai_provider_lookup_detail(errors),
@@ -1437,10 +1516,12 @@ def discover_ai_provider_models(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="AI Provider 不存在")
 
     effective_api_key = api_key or (provider.api_key if provider is not None else "")
+    remote_proxy_url = str(read_system_settings(db).get("remote_proxy_url") or "").strip()
     items, resolved_url = fetch_ai_provider_models(
         provider_type=provider_type,
         base_url=base_url,
         api_key=effective_api_key or None,
+        remote_proxy_url=remote_proxy_url or None,
     )
     return ApiResponse(
         message=f"已获取 {len(items)} 个模型",
