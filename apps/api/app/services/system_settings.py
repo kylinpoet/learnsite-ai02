@@ -200,9 +200,6 @@ def read_system_settings(db: Session) -> dict:
 def build_system_setting_write_values(payload: Mapping[str, object]) -> dict[str, str]:
     values: dict[str, str] = {}
 
-    if "platform_name" in payload:
-        platform_name = str(payload.get("platform_name") or "").strip() or str(SYSTEM_SETTING_DEFAULTS["platform_name"])
-        values["platform_name"] = platform_name
     if "school_name" in payload:
         school_name = str(payload.get("school_name") or "").strip() or str(SYSTEM_SETTING_DEFAULTS["school_name"])
         values["school_name"] = school_name

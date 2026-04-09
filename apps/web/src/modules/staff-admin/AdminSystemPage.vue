@@ -27,9 +27,10 @@
                     <el-form-item label="平台名称">
                       <el-input
                         v-model="systemForm.platform_name"
+                        disabled
                         placeholder="例如：瓯海区外国语学校信息科技OW³教学评AI平台 / 信息科技OW³教学评AI平台"
                       />
-                      <p class="section-note">将显示在登录页、顶部标题和浏览器标签中。</p>
+                      <p class="section-note">平台名称为系统固定项，暂不支持在此页面修改。</p>
                     </el-form-item>
                     <el-form-item label="学校名称">
                       <el-input v-model="systemForm.school_name" />
@@ -1825,7 +1826,12 @@ async function saveSystemSettings() {
   if (!authStore.token) return;
   isSavingSystem.value = true;
   try {
-    const payload = await apiPut<BootstrapPayload['system']>('/settings/system', systemForm.value, authStore.token);
+    const {
+      platform_name: _platformName,
+      ...systemSettingsPayload
+    } = systemForm.value;
+    void _platformName;
+    const payload = await apiPut<BootstrapPayload['system']>('/settings/system', systemSettingsPayload, authStore.token);
     systemForm.value = { ...payload, active_grade_nos: [...payload.active_grade_nos] };
     appStore.applySystemTheme(payload.theme_code);
     appStore.applyPlatformTitle(payload.platform_name);
