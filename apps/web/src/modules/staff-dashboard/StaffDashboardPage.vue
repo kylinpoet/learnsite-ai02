@@ -2299,14 +2299,16 @@ onMounted(() => {
 .list-stack {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .dashboard-hero {
   background:
-    radial-gradient(circle at top right, rgba(255, 210, 111, 0.34), transparent 28%),
-    radial-gradient(circle at bottom left, rgba(47, 135, 255, 0.2), transparent 36%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(239, 246, 255, 0.92));
+    radial-gradient(circle at top right, rgba(255, 210, 111, 0.24), transparent 30%),
+    radial-gradient(circle at bottom left, rgba(47, 135, 255, 0.14), transparent 38%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(242, 247, 255, 0.93));
+  border-color: var(--ls-border);
+  box-shadow: var(--ls-shadow), var(--ls-surface-glow);
 }
 
 .dashboard-metric-grid,
@@ -2320,12 +2322,20 @@ onMounted(() => {
 
 .dashboard-insights-grid {
   display: grid;
-  gap: 16px;
+  gap: 14px;
 }
 
 .dashboard-metric-card {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+  min-height: 116px;
+  align-content: start;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.dashboard-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ls-soft-shadow), var(--ls-surface-glow);
 }
 
 .dashboard-metric-card__top {
@@ -2338,9 +2348,9 @@ onMounted(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   background: var(--ls-primary-soft);
   color: var(--ls-primary);
 }
@@ -2362,11 +2372,12 @@ onMounted(() => {
 
 .dashboard-chart-card {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .panel {
-  padding: 22px;
+  padding: 20px;
+  border-radius: 20px;
 }
 
 .panel-head,
@@ -2403,8 +2414,9 @@ onMounted(() => {
 
 .hint-box {
   padding: 14px 16px;
-  border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  border-radius: 14px;
+  border: 1px solid rgba(67, 109, 185, 0.14);
+  background: rgba(67, 109, 185, 0.06);
 }
 
 .hint-title,
@@ -2464,10 +2476,11 @@ onMounted(() => {
 
 .seat-card {
   border: 1px solid var(--ls-border);
-  border-radius: 14px;
-  padding: 6px 8px;
-  background: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 7px 9px;
+  background: rgba(255, 255, 255, 0.95);
   min-height: 68px;
+  box-shadow: var(--ls-surface-glow);
 }
 
 .seat-top {
@@ -2579,9 +2592,10 @@ onMounted(() => {
   display: grid;
   gap: 16px;
   border: 1px solid var(--ls-border);
-  border-radius: 20px;
+  border-radius: 18px;
   padding: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 250, 255, 0.9));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 251, 255, 0.92));
+  box-shadow: var(--ls-soft-shadow);
 }
 
 .group-card-skeleton {
@@ -2616,9 +2630,9 @@ onMounted(() => {
   display: grid;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: 14px;
   border: 1px solid rgba(67, 109, 185, 0.12);
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .member-pill-signed {
@@ -2646,16 +2660,18 @@ onMounted(() => {
   display: grid;
   gap: 12px;
   padding: 16px;
-  border-radius: 18px;
-  background: rgba(255, 248, 233, 0.72);
+  border-radius: 16px;
+  border: 1px solid rgba(235, 170, 75, 0.18);
+  background: rgba(255, 248, 233, 0.78);
 }
 
 .activity-panel {
   display: grid;
   gap: 12px;
   padding: 16px;
-  border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  border-radius: 16px;
+  border: 1px solid rgba(67, 109, 185, 0.12);
+  background: rgba(67, 109, 185, 0.06);
 }
 
 .file-list {
@@ -2675,7 +2691,7 @@ onMounted(() => {
 .file-item {
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px dashed rgba(67, 109, 185, 0.16);
+  border-bottom: 1px dashed rgba(67, 109, 185, 0.14);
 }
 
 .file-item:last-child {
@@ -2686,8 +2702,9 @@ onMounted(() => {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.9);
+  border-radius: 14px;
+  border: 1px solid rgba(67, 109, 185, 0.1);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .activity-head {
@@ -2711,9 +2728,10 @@ onMounted(() => {
 .metric-tile,
 .group-edit-card {
   border: 1px solid var(--ls-border);
-  border-radius: 18px;
+  border-radius: 16px;
   padding: 16px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--ls-surface-glow);
 }
 
 .group-manager-shell {

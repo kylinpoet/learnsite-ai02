@@ -641,12 +641,17 @@ onMounted(loadHome);
 
 <style scoped>
 .student-home-page {
-  gap: 16px;
+  gap: 18px;
 }
 
 .student-home-hero {
   align-items: center;
-  gap: 16px;
+  gap: 18px;
+  border-color: var(--ls-border);
+  background:
+    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.56), transparent 44%),
+    var(--ls-panel);
+  box-shadow: var(--ls-shadow), var(--ls-surface-glow);
 }
 
 .student-home-hero__button {
@@ -667,11 +672,12 @@ onMounted(loadHome);
 }
 
 .student-home-metrics {
-  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 
 .student-home-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
 .student-profile-grid {
@@ -686,9 +692,16 @@ onMounted(loadHome);
 
 .student-metric-card {
   display: grid;
-  gap: 8px;
-  min-height: 96px;
+  gap: 6px;
+  min-height: 88px;
+  padding: 14px 16px;
   align-content: center;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.student-metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--ls-soft-shadow), var(--ls-surface-glow);
 }
 
 .student-metric-card__top,
@@ -722,13 +735,17 @@ onMounted(loadHome);
   color: var(--ls-ink);
 }
 
+.student-card-head strong {
+  font-size: 15px;
+}
+
 .student-card-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 14px;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
   background: var(--ls-primary-soft);
   color: var(--ls-primary);
 }
@@ -760,8 +777,9 @@ onMounted(loadHome);
 .student-attendance-item,
 .student-score-item {
   border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-panel-soft);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: var(--ls-surface-glow);
 }
 
 .student-profile-item {
@@ -787,7 +805,12 @@ onMounted(loadHome);
   display: grid;
   gap: 6px;
   padding: 14px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.student-score-stat strong {
+  font-size: 20px;
+  line-height: 1.2;
 }
 
 .student-score-stat p,
@@ -801,7 +824,7 @@ onMounted(loadHome);
 .student-score-item {
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.84);
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .student-score-item__main {
@@ -828,6 +851,7 @@ onMounted(loadHome);
 .student-attendance-item {
   justify-content: space-between;
   padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.94);
 }
 
 .student-attendance-item__name {
@@ -838,7 +862,15 @@ onMounted(loadHome);
 .section-note {
   margin: 4px 0 0;
   color: var(--ls-muted);
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.student-list-card :deep(.el-card__body),
+.student-chart-card :deep(.el-card__body),
+.student-profile-card :deep(.el-card__body) {
+  display: grid;
+  gap: 14px;
 }
 
 @media (max-width: 1200px) {

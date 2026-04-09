@@ -106,10 +106,37 @@ async function handleLogin() {
 </script>
 
 <style scoped>
+.student-login-page {
+  gap: 20px;
+}
+
+.student-login-page :deep(.hero-copy) {
+  max-width: 60ch;
+  font-size: 14px;
+  line-height: 1.8;
+}
+
 .student-note-card {
   max-width: 560px;
   border-color: var(--ls-auth-note-border);
   background: var(--ls-auth-note-bg);
+  border-radius: 22px;
+  box-shadow: var(--ls-soft-shadow);
+}
+
+.student-login-page :deep(.auth-form-panel) {
+  border-radius: 24px;
+}
+
+.student-login-page :deep(.auth-form-panel__title) {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.student-login-page :deep(.el-form-item) {
+  margin-bottom: 14px;
 }
 
 .student-login-page :deep(.el-form-item__label) {
@@ -118,21 +145,35 @@ async function handleLogin() {
 }
 
 .student-login-page :deep(.el-input__wrapper) {
-  min-height: 46px;
-  border-radius: 16px;
+  min-height: 47px;
+  border-radius: 14px;
+  padding-inline: 14px;
   background: var(--ls-input-bg);
   box-shadow: var(--ls-input-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .student-login-page :deep(.el-button--primary) {
   min-height: 48px;
   border: none;
-  border-radius: 16px;
+  border-radius: 14px;
   background: var(--ls-button-gradient);
   box-shadow: var(--ls-button-shadow);
+  letter-spacing: 0.02em;
+}
+
+.student-login-page :deep(.el-button--primary:hover) {
+  transform: translateY(-1px);
 }
 
 .student-login-page :deep(.el-alert) {
-  border-radius: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--ls-border);
+}
+
+@media (max-width: 720px) {
+  .student-login-page :deep(.auth-form-panel) {
+    border-radius: 20px;
+  }
 }
 </style>

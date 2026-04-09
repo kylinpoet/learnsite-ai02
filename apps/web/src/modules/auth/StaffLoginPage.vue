@@ -111,6 +111,10 @@ async function handleLogin() {
 </script>
 
 <style scoped>
+.staff-login-page {
+  gap: 20px;
+}
+
 .staff-login-page__heading {
   display: flex;
   align-items: center;
@@ -122,20 +126,23 @@ async function handleLogin() {
   max-width: 620px;
   border-color: var(--ls-auth-note-border);
   background: var(--ls-auth-note-bg);
+  border-radius: 22px;
+  box-shadow: var(--ls-soft-shadow);
 }
 
 .staff-capability-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
 }
 
 .staff-capability-item {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   padding: 14px 16px;
   border: 1px solid var(--ls-auth-note-border);
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--ls-panel-soft);
+  box-shadow: var(--ls-surface-glow);
 }
 
 .staff-capability-item strong {
@@ -146,6 +153,12 @@ async function handleLogin() {
 .staff-capability-item span {
   color: var(--ls-muted);
   line-height: 1.6;
+}
+
+.staff-login-page :deep(.hero-copy) {
+  max-width: 64ch;
+  font-size: 14px;
+  line-height: 1.8;
 }
 
 .staff-login-page__tag {
@@ -164,11 +177,17 @@ async function handleLogin() {
   font-weight: 700;
 }
 
+.staff-login-page :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
 .staff-login-page :deep(.el-input__wrapper) {
-  min-height: 46px;
+  min-height: 47px;
   border-radius: 14px;
+  padding-inline: 14px;
   background: var(--ls-input-bg);
   box-shadow: var(--ls-input-shadow);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
 .staff-login-page :deep(.el-button--primary) {
@@ -177,9 +196,21 @@ async function handleLogin() {
   border-radius: 14px;
   background: var(--ls-button-gradient);
   box-shadow: var(--ls-button-shadow);
+  letter-spacing: 0.02em;
+}
+
+.staff-login-page :deep(.el-button--primary:hover) {
+  transform: translateY(-1px);
 }
 
 .staff-login-page :deep(.el-alert) {
-  border-radius: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--ls-border);
+}
+
+@media (max-width: 720px) {
+  .staff-note-card {
+    border-radius: 18px;
+  }
 }
 </style>
