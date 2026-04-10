@@ -15,9 +15,12 @@ apps/api/.env
 apps/api/learnsite.db
 apps/api/*.db
 apps/api/storage/submissions/
+apps/api/learnsite_api.egg-info/
+apps/api/uv.lock
 coverage/
 *.vue.js
 *.log
 *.db
 .gstack/
 .pytest-runtime/
+apps/api/learnsite_api.egg-info/SOURCES.txt
