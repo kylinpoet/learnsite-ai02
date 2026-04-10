@@ -2,6 +2,7 @@ import { computed, ref, watch, type Ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
+import { richTextToPlainText } from '@/utils/richText';
 import type {
   CustomTaskTemplate,
   PlanFormTask,
@@ -895,11 +896,11 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
       const payload = {
         title: taskTemplateForm.value.title.trim(),
         group_name: normalizeTaskTemplateGroupNameValue(taskTemplateForm.value.group_name) || null,
-        summary: taskTemplateForm.value.summary.trim() || null,
+        summary: richTextToPlainText(taskTemplateForm.value.summary).trim() || null,
         task_title: sourceTask.title.trim() || options.taskTypeLabel(sourceTask.task_type) || '未命名任务',
         task_type: sourceTask.task_type,
         submission_scope: options.normalizeTaskSubmissionScope(sourceTask.task_type, sourceTask.submission_scope),
-        task_description: options.normalizeHtmlValue(sourceTask.description, sourceTask.description_mode),
+        task_description: options.normalizeHtmlValue(sourceTask.description, 'visual'),
         config: options.buildTaskTemplateConfigPayload(sourceTask),
         is_required: sourceTask.is_required,
         is_pinned: taskTemplateForm.value.is_pinned,

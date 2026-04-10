@@ -40,10 +40,10 @@
           <strong>{{ sourceTitle }}</strong>
           <span class="section-note">{{ sourceNote }}</span>
         </div>
-        <el-input
+        <RichTextEditor
           v-model="htmlSourceValue"
-          :autosize="{ minRows: 10, maxRows: 18 }"
-          type="textarea"
+          class="slot-split-panel__editor"
+          :min-height="260"
           :placeholder="sourcePlaceholder"
         />
         <el-table v-if="showAssetTable && assets.length" :data="assets" size="small" stripe>
@@ -89,6 +89,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+
+import RichTextEditor from '@/components/RichTextEditor.vue';
 
 import TaskPreviewFeedbackPanel from './TaskPreviewFeedbackPanel.vue';
 import type {
@@ -206,6 +208,11 @@ const htmlSourceValue = computed({
 
 .slot-split-panel--preview {
   align-content: start;
+}
+
+.slot-split-panel__editor :deep(.ck-editor__editable) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  line-height: 1.55;
 }
 
 .asset-preview-frame {

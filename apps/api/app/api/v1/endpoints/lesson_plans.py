@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from html import unescape
 from io import BytesIO
 import json
 import mimetypes
@@ -10,12 +11,14 @@ import secrets
 import zipfile
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps.auth import require_staff, require_student
 from app.api.deps.db import get_db
+from app.core.config import settings
 from app.models import (
     AttendanceRecord,
     ClassSeatAssignment,
@@ -54,6 +57,26 @@ SUPPORTED_TASK_TYPES = {"reading", "upload_image", "programming", "web_page", "d
 SUPPORTED_TASK_SUBMISSION_SCOPES = {"individual", "group"}
 SUPPORTED_TASK_ASSET_SLOTS = {"web", "data_submit_form", "data_submit_visualization"}
 TASK_ID_COUNTER_SETTING_KEY = "lesson_plan_task_id_counter"
+# Rich-text HTML may include embedded image data URLs from the editor.
+# Keep this high enough to avoid 422 on normal classroom usage.
+RICH_TEXT_MAX_LENGTH = 2_000_000
+RICH_TEXT_IMAGE_UPLOAD_DIR = "lesson_plan_rich_images"
+MAX_RICH_TEXT_IMAGE_BYTES = 8 * 1024 * 1024
+ALLOWED_RICH_TEXT_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp"}
+MIME_TO_IMAGE_EXTENSION_MAP = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/bmp": ".bmp",
+}
+MEANINGFUL_RICH_HTML_TAG_PATTERN = re.compile(
+    r"<\s*(img|video|audio|iframe|embed|object|svg|canvas|table|form|input|textarea|select|button|style|font|figure|math|hr)\b",
+    re.IGNORECASE,
+)
+IMAGE_SRC_PATTERN = re.compile(r"<img[^>]*\bsrc\s*=\s*['\"]([^'\"]+)['\"]", re.IGNORECASE)
+SCRIPT_STYLE_PATTERN = re.compile(r"<(script|style)[^>]*>[\s\S]*?</\1>", re.IGNORECASE)
+HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
 
 
 class LessonPlanTaskPayload(BaseModel):
@@ -61,7 +84,7 @@ class LessonPlanTaskPayload(BaseModel):
     title: str = Field(min_length=1, max_length=120)
     task_type: str = Field(min_length=1, max_length=50)
     submission_scope: str = Field(default="individual", min_length=1, max_length=20)
-    description: str | None = Field(default=None, max_length=50000)
+    description: str | None = Field(default=None, max_length=RICH_TEXT_MAX_LENGTH)
     config: dict[str, object] | None = None
     sort_order: int | None = Field(default=None, ge=1, le=999)
     is_required: bool = True
@@ -70,7 +93,7 @@ class LessonPlanTaskPayload(BaseModel):
 class LessonPlanUpsertPayload(BaseModel):
     lesson_id: int = Field(ge=1)
     title: str = Field(min_length=1, max_length=120)
-    content: str | None = Field(default=None, max_length=50000)
+    content: str | None = Field(default=None, max_length=RICH_TEXT_MAX_LENGTH)
     assigned_date: date
     status: str = Field(default="draft", min_length=1, max_length=30)
     tasks: list[LessonPlanTaskPayload] = Field(default_factory=list, min_length=1)
@@ -83,7 +106,7 @@ class TaskTemplateUpsertPayload(BaseModel):
     task_title: str = Field(min_length=1, max_length=120)
     task_type: str = Field(min_length=1, max_length=50)
     submission_scope: str = Field(default="individual", min_length=1, max_length=20)
-    task_description: str | None = Field(default=None, max_length=50000)
+    task_description: str | None = Field(default=None, max_length=RICH_TEXT_MAX_LENGTH)
     config: dict[str, object] | None = None
     is_required: bool = True
     is_pinned: bool = False
@@ -124,7 +147,11 @@ def normalize_rich_text(html_value: str | None) -> str | None:
         return None
 
     text_only = re.sub(r"<[^>]+>", "", cleaned).replace("&nbsp;", " ").strip()
-    return cleaned if text_only else None
+    if text_only:
+        return cleaned
+    if MEANINGFUL_RICH_HTML_TAG_PATTERN.search(cleaned):
+        return cleaned
+    return None
 
 
 def normalize_task_template_title(title: str) -> str:
@@ -160,6 +187,28 @@ def normalize_task_type(task_type: str) -> str:
             detail="任务类型不受支持",
         )
     return normalized
+
+
+def extract_plan_preview_image_url(content: str | None) -> str | None:
+    if not content:
+        return None
+    match = IMAGE_SRC_PATTERN.search(content)
+    if not match:
+        return None
+    image_src = match.group(1).strip()
+    return image_src or None
+
+
+def build_plan_content_excerpt(content: str | None, max_length: int = 88) -> str:
+    if not content:
+        return ""
+    stripped = SCRIPT_STYLE_PATTERN.sub(" ", content)
+    stripped = HTML_TAG_PATTERN.sub(" ", stripped)
+    stripped = unescape(stripped).replace("\xa0", " ")
+    stripped = re.sub(r"\s+", " ", stripped).strip()
+    if len(stripped) <= max_length:
+        return stripped
+    return f"{stripped[:max_length].rstrip()}…"
 
 
 def normalize_task_submission_scope(submission_scope: str, task_type: str) -> str:
@@ -198,6 +247,26 @@ def build_absolute_api_url(request: Request | None, path: str) -> str:
     if normalized.startswith("/"):
         return f"{base_url.rstrip('/')}{normalized}"
     return f"{base_url}{normalized}"
+
+
+def resolve_rich_text_image_extension(upload: UploadFile, original_name: str) -> str:
+    suffix = Path(original_name).suffix.lower()
+    if suffix in ALLOWED_RICH_TEXT_IMAGE_EXTENSIONS:
+        return suffix
+
+    normalized_mime_type = str(upload.content_type or "").split(";")[0].strip().lower()
+    guessed_suffix = MIME_TO_IMAGE_EXTENSION_MAP.get(normalized_mime_type)
+    if guessed_suffix:
+        return guessed_suffix
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="仅支持 JPG/JPEG/PNG/GIF/WEBP/BMP 图片",
+    )
+
+
+def build_rich_text_image_url(staff_id: int, file_name: str) -> str:
+    return f"/api/v1/lesson-plans/rich-text-images/{staff_id}/{file_name}"
 
 
 def normalize_asset_manifest(value: object, slot: str) -> list[dict[str, object]]:
@@ -672,12 +741,16 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
 def serialize_staff_plan(plan: LessonPlan) -> dict:
     pending_count = sum(1 for item in plan.progresses if item.progress_status == "pending")
     completed_count = sum(1 for item in plan.progresses if item.progress_status == "completed")
+    preview_image_url = extract_plan_preview_image_url(plan.content)
+    content_excerpt = build_plan_content_excerpt(plan.content)
     return {
         "id": plan.id,
         "title": plan.title,
         "status": plan.status,
         "assigned_date": plan.assigned_date.isoformat(),
         "task_count": len(plan.tasks),
+        "preview_image_url": preview_image_url,
+        "content_excerpt": content_excerpt,
         "lesson": {
             "id": plan.lesson.id,
             "title": plan.lesson.title,
@@ -1308,6 +1381,69 @@ def upload_task_assets(
     )
 
 
+@router.post("/staff/rich-text-images", response_model=ApiResponse)
+async def upload_staff_rich_text_image(
+    file: UploadFile | None = File(default=None),
+    staff: User = Depends(require_staff),
+) -> ApiResponse:
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先选择要上传的图片")
+
+    original_name = Path(file.filename or "image").name
+    if not original_name:
+        original_name = "image"
+
+    normalized_mime_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if normalized_mime_type and not normalized_mime_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件不是有效图片")
+
+    content = await file.read()
+    await file.close()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传内容为空")
+    if len(content) > MAX_RICH_TEXT_IMAGE_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图片大小不能超过 8MB")
+
+    suffix = resolve_rich_text_image_extension(file, original_name)
+    target_dir = settings.storage_root / RICH_TEXT_IMAGE_UPLOAD_DIR / str(staff.id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    file_stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S%f")
+    target_name = f"lesson-guide-{file_stamp}-{secrets.token_hex(4)}{suffix}"
+    target_path = target_dir / target_name
+    target_path.write_bytes(content)
+
+    relative_path = (Path(RICH_TEXT_IMAGE_UPLOAD_DIR) / str(staff.id) / target_name).as_posix()
+    image_url = build_rich_text_image_url(staff.id, target_name)
+
+    return ApiResponse(
+        message="图片上传成功",
+        data={
+            "url": image_url,
+            "path": relative_path,
+            "size_kb": max(1, len(content) // 1024),
+        },
+    )
+
+
+@router.get("/rich-text-images/{staff_id}/{file_name}")
+def lesson_plan_rich_text_image(staff_id: int, file_name: str) -> FileResponse:
+    safe_name = Path(file_name).name
+    if staff_id <= 0 or not safe_name or safe_name != file_name:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="图片不存在")
+    if Path(safe_name).suffix.lower() not in ALLOWED_RICH_TEXT_IMAGE_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="图片不存在")
+
+    image_path = settings.storage_root / RICH_TEXT_IMAGE_UPLOAD_DIR / str(staff_id) / safe_name
+    if not image_path.exists() or not image_path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="图片不存在")
+
+    media_type, _ = mimetypes.guess_type(image_path.name)
+    if not media_type or not media_type.startswith("image/"):
+        media_type = "application/octet-stream"
+    return FileResponse(image_path, media_type=media_type)
+
+
 @router.get("/student/home", response_model=ApiResponse)
 def student_home(
     student: User = Depends(require_student),
@@ -1543,8 +1679,115 @@ def student_home(
     return ApiResponse(data=payload)
 
 
+def is_group_submission_task(task: Task) -> bool:
+    return (task.submission_scope or "individual").strip().lower() == "group"
+
+
+def resolve_student_task_completion_map(plan: LessonPlan, student: User, db: Session) -> dict[int, bool]:
+    task_list = list(plan.tasks)
+    if not task_list:
+        return {}
+
+    task_ids = [task.id for task in task_list]
+    completion_map: dict[int, bool] = {task_id: False for task_id in task_ids}
+
+    reading_task_ids = [task.id for task in task_list if task.task_type == "reading"]
+    if reading_task_ids:
+        completed_reading_ids = set(
+            db.scalars(
+                select(TaskReadRecord.task_id).where(
+                    TaskReadRecord.student_id == student.id,
+                    TaskReadRecord.task_id.in_(reading_task_ids),
+                )
+            ).all()
+        )
+        for task_id in completed_reading_ids:
+            completion_map[task_id] = True
+
+    discussion_task_ids = [task.id for task in task_list if task.task_type == "discussion"]
+    if discussion_task_ids:
+        completed_discussion_ids = set(
+            db.scalars(
+                select(TaskDiscussionPost.task_id).where(
+                    TaskDiscussionPost.author_user_id == student.id,
+                    TaskDiscussionPost.task_id.in_(discussion_task_ids),
+                )
+            ).all()
+        )
+        for task_id in completed_discussion_ids:
+            completion_map[task_id] = True
+
+    data_submit_task_ids = [task.id for task in task_list if task.task_type == "data_submit"]
+    if data_submit_task_ids:
+        completed_data_submit_ids = set(
+            db.scalars(
+                select(TaskDataSubmission.task_id).where(
+                    TaskDataSubmission.submitted_by_user_id == student.id,
+                    TaskDataSubmission.task_id.in_(data_submit_task_ids),
+                )
+            ).all()
+        )
+        for task_id in completed_data_submit_ids:
+            completion_map[task_id] = True
+
+    submission_task_ids = [task.id for task in task_list if task.task_type not in {"reading", "data_submit"}]
+    if not submission_task_ids:
+        return completion_map
+
+    individual_submission_task_ids = [
+        task.id
+        for task in task_list
+        if task.id in submission_task_ids and not is_group_submission_task(task)
+    ]
+    if individual_submission_task_ids:
+        completed_individual_submission_ids = set(
+            db.scalars(
+                select(Submission.task_id).where(
+                    Submission.student_id == student.id,
+                    Submission.task_id.in_(individual_submission_task_ids),
+                    Submission.submit_status.in_(("submitted", "reviewed")),
+                )
+            ).all()
+        )
+        for task_id in completed_individual_submission_ids:
+            completion_map[task_id] = True
+
+    group_submission_task_ids = [
+        task.id
+        for task in task_list
+        if task.id in submission_task_ids and is_group_submission_task(task)
+    ]
+    if not group_submission_task_ids:
+        return completion_map
+
+    membership = db.scalar(
+        select(StudentGroupMember).where(StudentGroupMember.student_user_id == student.id)
+    )
+    if membership is None:
+        return completion_map
+
+    completed_group_submission_ids = set(
+        db.scalars(
+            select(Submission.task_id).where(
+                Submission.group_id == membership.group_id,
+                Submission.task_id.in_(group_submission_task_ids),
+                Submission.submit_status.in_(("submitted", "reviewed")),
+            )
+        ).all()
+    )
+    for task_id in completed_group_submission_ids:
+        completion_map[task_id] = True
+
+    return completion_map
+
+
 @router.get("/{plan_id}", response_model=ApiResponse)
-def lesson_plan_detail(plan_id: str, request: Request, db: Session = Depends(get_db)) -> ApiResponse:
+def lesson_plan_detail(
+    plan_id: str,
+    request: Request,
+    student: User = Depends(require_student),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
     plan = db.scalar(
         select(LessonPlan)
         .where(LessonPlan.id == int(plan_id))
@@ -1552,6 +1795,8 @@ def lesson_plan_detail(plan_id: str, request: Request, db: Session = Depends(get
     )
     if plan is None:
         return ApiResponse(code="NOT_FOUND", message="lesson plan not found", data=None)
+
+    task_completion_map = resolve_student_task_completion_map(plan, student, db)
 
     return ApiResponse(
         data={
@@ -1570,6 +1815,7 @@ def lesson_plan_detail(plan_id: str, request: Request, db: Session = Depends(get
                     "config": serialize_task_config(task, request),
                     "sort_order": task.sort_order,
                     "is_required": task.is_required,
+                    "is_completed": task_completion_map.get(task.id, False),
                 }
                 for task in sorted(plan.tasks, key=lambda item: item.sort_order)
             ],

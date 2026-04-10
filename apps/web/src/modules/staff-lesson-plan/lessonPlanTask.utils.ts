@@ -592,6 +592,9 @@ export function normalizeHtmlValue(value: string, mode: 'visual' | 'source') {
   if (!trimmed) {
     return null;
   }
+  if (/<(style|script|iframe|object|embed|html|head|body)\b/i.test(trimmed)) {
+    return trimmed;
+  }
   if (mode === 'source') {
     return trimmed;
   }

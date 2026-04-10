@@ -12,7 +12,9 @@
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",
     "typecheck:web": "npm --workspace apps/web run typecheck",
+    "check:mirror-js": "npm --workspace apps/web run check:mirror-js",
     "dev:api": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010 --app-dir apps/api",
-    "check:api": "python -m compileall apps/api/app apps/api/tests"
+    "check:api": "python -m compileall apps/api/app apps/api/tests",
+    "hooks:install": "git config core.hooksPath .githooks"
   }
 }

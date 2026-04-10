@@ -68,12 +68,10 @@
           />
         </el-form-item>
         <el-form-item label="模板说明">
-          <el-input
+          <RichTextEditor
             v-model="summaryValue"
-            :autosize="{ minRows: 3, maxRows: 6 }"
-            maxlength="500"
-            show-word-limit
-            type="textarea"
+            class="task-template-summary-editor"
+            :min-height="160"
             placeholder="补充这个模板适合的课堂场景、学生产出形式或使用建议。"
           />
         </el-form-item>
@@ -92,6 +90,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+
+import RichTextEditor from '@/components/RichTextEditor.vue';
 
 import type { CustomTaskTemplate, PlanFormTask, TaskTemplateFormState } from '../lessonPlan.types';
 
@@ -193,5 +193,9 @@ const summaryValue = computed({
 
 .full-width {
   width: 100%;
+}
+
+.task-template-summary-editor :deep(.ck-editor__editable) {
+  line-height: 1.65;
 }
 </style>

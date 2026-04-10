@@ -364,7 +364,8 @@
                       <article
                         v-for="file in selectedSubmission.files"
                         :key="file.id"
-                        class="file-item"
+                        :class="['file-item', { 'file-item-active': gradingPreviewFileId === file.id }]"
+                        @click="loadGradingPreview(file)"
                       >
                         <div class="file-main">
                           <p class="file-name">{{ file.name }}</p>
@@ -373,24 +374,56 @@
                         <div class="file-actions">
                           <el-tag round type="info">{{ file.role }}</el-tag>
                           <el-button
-                            v-if="file.previewable"
-                            :loading="previewLoadingFileId === file.id"
+                            v-if="isFilePreviewable(file)"
+                            :loading="isGradingPreviewLoading && gradingPreviewFileId === file.id"
                             link
                             type="primary"
-                            @click="previewFile(file)"
+                            @click.stop="loadGradingPreview(file)"
                           >
-                            预览
+                            面板预览
                           </el-button>
                           <el-button
                             :loading="downloadLoadingFileId === file.id"
                             link
                             type="success"
-                            @click="downloadFile(file)"
+                            @click.stop="downloadFile(file)"
                           >
                             下载
                           </el-button>
                         </div>
                       </article>
+                    </div>
+                    <div
+                      v-if="selectedSubmission.files.length"
+                      v-loading="isGradingPreviewLoading"
+                      class="grading-preview-stage single-grading-preview-stage"
+                    >
+                      <iframe
+                        v-if="!isGradingPreviewLoading && gradingPreviewKind === 'pdf' && gradingPreviewUrl"
+                        :src="gradingPreviewUrl"
+                        class="preview-frame"
+                        title="单个评分面板附件预览"
+                      />
+                      <img
+                        v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'image' && gradingPreviewUrl"
+                        :src="gradingPreviewUrl"
+                        alt="单个评分面板附件预览"
+                        class="preview-image"
+                      />
+                      <pre
+                        v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'text'"
+                        class="preview-text"
+                      >{{ gradingPreviewText }}</pre>
+                      <div v-else-if="gradingPreviewFile" class="grading-preview-fallback">
+                        <p>当前附件暂不支持直接展示，请直接下载查看。</p>
+                        <el-button type="success" @click="downloadFile(gradingPreviewFile)">
+                          下载当前附件
+                        </el-button>
+                      </div>
+                      <el-empty
+                        v-else-if="!isGradingPreviewLoading"
+                        description="请选择一个附件进行查看"
+                      />
                     </div>
                   </div>
 
@@ -522,7 +555,6 @@
       v-model="gradingDialogVisible"
       destroy-on-close
       fullscreen
-      @closed="resetGradingPreviewState"
     >
       <template #header>
         <div class="grading-dialog-header">
@@ -940,33 +972,6 @@
       </div>
     </el-dialog>
 
-    <el-dialog
-      v-model="previewDialogVisible"
-      :title="previewTitle"
-      destroy-on-close
-      width="min(960px, 92vw)"
-      @closed="resetPreviewState"
-    >
-      <div v-loading="isPreviewLoading" class="preview-shell">
-        <iframe
-          v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
-          :src="previewUrl"
-          class="preview-frame"
-          title="附件预览"
-        />
-        <img
-          v-else-if="!isPreviewLoading && previewKind === 'image' && previewUrl"
-          :src="previewUrl"
-          alt="附件预览"
-          class="preview-image"
-        />
-        <pre v-else-if="!isPreviewLoading && previewKind === 'text'" class="preview-text">{{ previewText }}</pre>
-        <el-empty
-          v-else-if="!isPreviewLoading"
-          description="当前文件暂不支持在线预览，请直接下载查看。"
-        />
-      </div>
-    </el-dialog>
   </div>
 </template>
 
@@ -1144,14 +1149,6 @@ const isBatchSaving = ref(false);
 const isBatchDownloading = ref(false);
 const errorMessage = ref('');
 const gradingDialogVisible = ref(false);
-
-const previewDialogVisible = ref(false);
-const previewTitle = ref('');
-const previewKind = ref<PreviewKind>('unsupported');
-const previewUrl = ref('');
-const previewText = ref('');
-const isPreviewLoading = ref(false);
-const previewLoadingFileId = ref<number | null>(null);
 const downloadLoadingFileId = ref<number | null>(null);
 const gradingPreviewFileId = ref<number | null>(null);
 const gradingPreviewKind = ref<PreviewKind>('unsupported');
@@ -1894,23 +1891,6 @@ function clearBatchSelection() {
   tableRef.value?.clearSelection();
 }
 
-function revokePreviewUrl() {
-  if (!previewUrl.value) {
-    return;
-  }
-  URL.revokeObjectURL(previewUrl.value);
-  previewUrl.value = '';
-}
-
-function resetPreviewState() {
-  revokePreviewUrl();
-  previewKind.value = 'unsupported';
-  previewText.value = '';
-  previewTitle.value = '';
-  isPreviewLoading.value = false;
-  previewLoadingFileId.value = null;
-}
-
 function revokeGradingPreviewUrl() {
   if (!gradingPreviewUrl.value) {
     return;
@@ -2261,42 +2241,6 @@ async function downloadBatchFiles() {
   }
 }
 
-async function previewFile(file: TaskSubmissionFile) {
-  if (!authStore.token) {
-    errorMessage.value = '请先登录教师账号';
-    return;
-  }
-
-  previewDialogVisible.value = true;
-  previewTitle.value = file.name;
-  previewKind.value = 'unsupported';
-  previewText.value = '';
-  revokePreviewUrl();
-  isPreviewLoading.value = true;
-  previewLoadingFileId.value = file.id;
-  errorMessage.value = '';
-
-  try {
-    const response = await apiGetBlob(`/submissions/files/${file.id}?disposition=inline`, authStore.token);
-    const blob = await response.blob();
-    const nextKind = detectPreviewKind(file, blob);
-    previewKind.value = nextKind;
-
-    if (nextKind === 'text') {
-      previewText.value = await blob.text();
-      return;
-    }
-
-    previewUrl.value = URL.createObjectURL(blob);
-  } catch (error) {
-    previewDialogVisible.value = false;
-    errorMessage.value = error instanceof Error ? error.message : '附件预览失败';
-  } finally {
-    isPreviewLoading.value = false;
-    previewLoadingFileId.value = null;
-  }
-}
-
 async function downloadFile(file: TaskSubmissionFile) {
   if (!authStore.token) {
     errorMessage.value = '请先登录教师账号';
@@ -2373,7 +2317,6 @@ watch(
   () => gradingDialogVisible.value,
   async (visible) => {
     if (!visible) {
-      resetGradingPreviewState();
       return;
     }
     await nextTick();
@@ -2384,9 +2327,6 @@ watch(
 watch(
   () => selectedSubmission.value?.submission_id,
   async () => {
-    if (!gradingDialogVisible.value) {
-      return;
-    }
     await nextTick();
     await syncGradingPreview();
   }
@@ -2397,7 +2337,6 @@ onMounted(() => {
   void loadTaskDetail();
 });
 onBeforeUnmount(() => {
-  resetPreviewState();
   resetGradingPreviewState();
 });
 </script>
@@ -2811,8 +2750,28 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   align-items: center;
-  padding: 14px 0;
+  padding: 14px 12px;
+  border-radius: 12px;
+  border: 1px solid transparent;
   border-bottom: 1px dashed var(--ls-border);
+  cursor: pointer;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.file-item:hover {
+  border-color: rgba(67, 109, 185, 0.22);
+  background: rgba(67, 109, 185, 0.05);
+}
+
+.file-item-active {
+  border-color: rgba(67, 109, 185, 0.35);
+  background:
+    linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
+    rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 22px rgba(67, 109, 185, 0.08);
 }
 
 .file-item:last-child {
@@ -2843,8 +2802,9 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-.preview-shell {
-  min-height: 360px;
+.single-grading-preview-stage {
+  margin-top: 12px;
+  min-height: 320px;
 }
 
 .preview-frame {

@@ -1,26 +1,15 @@
 <template>
-  <el-form-item :label="label">
-    <div class="mode-toolbar">
-      <el-radio-group v-model="task.description_mode" size="small">
-        <el-radio-button value="visual">可视化</el-radio-button>
-        <el-radio-button value="source">HTML源码</el-radio-button>
-      </el-radio-group>
-      <el-button :loading="generating" plain @click="generateTaskDescriptionDraft(task)">
+  <el-form-item :label="props.label">
+    <div class="description-toolbar">
+      <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
+      <el-button :loading="props.generating" plain @click="props.generateTaskDescriptionDraft(props.task)">
         AI 生成说明
       </el-button>
     </div>
     <RichTextEditor
-      v-if="task.description_mode === 'visual'"
-      v-model="task.description"
-      :min-height="minHeight"
-      :placeholder="visualPlaceholder"
-    />
-    <el-input
-      v-else
-      v-model="task.description"
-      :autosize="{ minRows: 10, maxRows: 18 }"
-      type="textarea"
-      :placeholder="sourcePlaceholder"
+      v-model="props.task.description"
+      :min-height="props.minHeight"
+      :placeholder="props.placeholder"
     />
   </el-form-item>
 </template>
@@ -30,27 +19,25 @@ import RichTextEditor from '@/components/RichTextEditor.vue';
 
 import type { PlanFormTask } from '../lessonPlan.types';
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     task: PlanFormTask;
     generating: boolean;
     generateTaskDescriptionDraft: (task: PlanFormTask) => void;
     label?: string;
     minHeight?: number;
-    visualPlaceholder?: string;
-    sourcePlaceholder?: string;
+    placeholder?: string;
   }>(),
   {
     label: '任务说明',
     minHeight: 220,
-    visualPlaceholder: '填写任务目标、步骤与提交要求。',
-    sourcePlaceholder: '<p>这里可以直接编辑任务说明 HTML。</p>',
+    placeholder: '填写任务目标、步骤与提交要求。',
   }
 );
 </script>
 
 <style scoped>
-.mode-toolbar {
+.description-toolbar {
   display: flex;
   justify-content: space-between;
   gap: 12px;
@@ -59,8 +46,14 @@ withDefaults(
   flex-wrap: wrap;
 }
 
+.section-note {
+  margin: 0;
+  color: var(--ls-muted);
+  line-height: 1.7;
+}
+
 @media (max-width: 768px) {
-  .mode-toolbar {
+  .description-toolbar {
     flex-direction: column;
     align-items: flex-start;
   }

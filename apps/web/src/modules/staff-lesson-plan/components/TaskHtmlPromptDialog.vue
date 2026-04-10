@@ -30,22 +30,20 @@
         </el-form-item>
 
         <el-form-item label="自定义提示词">
-          <el-input
+          <RichTextEditor
             v-model="customPromptValue"
-            :autosize="{ minRows: 5, maxRows: 9 }"
-            maxlength="4000"
-            show-word-limit
-            type="textarea"
+            class="task-html-prompt-editor"
+            :min-height="180"
             placeholder="可补充字段、交互方式、页面风格、配色、版式、图表形式、校验规则等要求。"
           />
         </el-form-item>
 
         <el-form-item label="将发送给 AI 的提示词预览">
-          <el-input
+          <RichTextEditor
             :model-value="previewText"
-            :autosize="{ minRows: 10, maxRows: 18 }"
+            class="task-html-prompt-preview"
+            :min-height="240"
             readonly
-            type="textarea"
           />
         </el-form-item>
 
@@ -106,6 +104,8 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+
+import RichTextEditor from '@/components/RichTextEditor.vue';
 
 import type {
   PlanFormTask,
@@ -280,6 +280,12 @@ const submitButtonLabel = computed(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.task-html-prompt-editor :deep(.ck-editor__editable),
+.task-html-prompt-preview :deep(.ck-editor__editable) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  line-height: 1.6;
 }
 
 .task-html-generation-status {

@@ -1,3 +1,6 @@
+const meaningfulRichHtmlTagPattern =
+  /<\s*(img|video|audio|iframe|embed|object|svg|canvas|table|form|input|textarea|select|button|style|font|figure|math|hr)\b/i;
+
 export function richTextToPlainText(html: string | null | undefined): string {
   if (!html) {
     return '';
@@ -15,16 +18,57 @@ export function richTextToPlainText(html: string | null | undefined): string {
   return document.body.textContent?.replace(/\s+/g, ' ').trim() || '';
 }
 
+function hasMeaningfulRichHtml(html: string): boolean {
+  if (meaningfulRichHtmlTagPattern.test(html)) {
+    return true;
+  }
+
+  if (typeof DOMParser === 'undefined') {
+    return false;
+  }
+
+  const document = new DOMParser().parseFromString(html, 'text/html');
+  const meaningfulSelector = [
+    'img',
+    'video',
+    'audio',
+    'iframe',
+    'embed',
+    'object',
+    'svg',
+    'canvas',
+    'table',
+    'form',
+    'input',
+    'textarea',
+    'select',
+    'button',
+    'style',
+    'font',
+    'figure',
+    'math',
+    'hr',
+  ].join(',');
+  return Boolean(document.body.querySelector(meaningfulSelector));
+}
+
 export function isRichTextEmpty(html: string | null | undefined): boolean {
-  return !richTextToPlainText(html);
+  const normalized = (html || '').trim();
+  if (!normalized) {
+    return true;
+  }
+  if (richTextToPlainText(normalized)) {
+    return false;
+  }
+  return !hasMeaningfulRichHtml(normalized);
 }
 
 export function normalizeRichTextHtml(html: string | null | undefined): string {
-  if (!html) {
+  const normalized = (html || '').trim();
+  if (!normalized) {
     return '';
   }
-
-  return isRichTextEmpty(html) ? '' : html.trim();
+  return isRichTextEmpty(normalized) ? '' : normalized;
 }
 
 export function richTextToExcerpt(html: string | null | undefined, maxLength = 120): string {

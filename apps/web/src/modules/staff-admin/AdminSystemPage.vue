@@ -123,6 +123,7 @@
                     </article>
                   </div>
                 </section>
+
               </div>
             </el-tab-pane>
 
@@ -164,9 +165,11 @@
                     </el-table-column>
                     <el-table-column label="操作" min-width="220">
                       <template #default="{ row }">
-                        <el-button link type="primary" @click="openClassProfilePermissionDialog(row)">权限设置</el-button>
-                        <el-button link type="primary" @click="openClassDialog(row)">编辑</el-button>
-                        <el-button link type="danger" @click="deleteClass(row.id)">删除</el-button>
+                        <div class="table-action-buttons">
+                          <el-button link type="primary" @click="openClassProfilePermissionDialog(row)">权限设置</el-button>
+                          <el-button link type="primary" @click="openClassDialog(row)">编辑</el-button>
+                          <el-button link type="danger" @click="deleteClass(row.id)">删除</el-button>
+                        </div>
                       </template>
                     </el-table-column>
                   </el-table>
@@ -194,29 +197,41 @@
                         <p class="section-note">切换开关后点击“保存当前班级权限”立即生效。</p>
                       </div>
                     </div>
-                    <el-space wrap>
-                      <el-switch
-                        v-model="inlineClassProfilePermissionForm.can_edit_name"
-                        active-text="允许修改姓名"
-                        inactive-text="禁止修改姓名"
-                      />
-                      <el-switch
-                        v-model="inlineClassProfilePermissionForm.can_edit_gender"
-                        active-text="允许修改性别"
-                        inactive-text="禁止修改性别"
-                      />
-                      <el-switch
-                        v-model="inlineClassProfilePermissionForm.can_edit_photo"
-                        active-text="允许修改相片"
-                        inactive-text="禁止修改相片"
-                      />
-                      <el-switch
-                        v-model="inlineClassProfilePermissionForm.can_edit_class"
-                        active-text="允许提交转班申请"
-                        inactive-text="禁止提交转班申请"
-                      />
-                    </el-space>
-                    <div class="chip-row" style="margin-top: 10px;">
+                    <div class="permission-switch-grid">
+                      <article class="permission-switch-item">
+                        <p class="permission-switch-title">姓名资料</p>
+                        <el-switch
+                          v-model="inlineClassProfilePermissionForm.can_edit_name"
+                          active-text="允许修改"
+                          inactive-text="禁止修改"
+                        />
+                      </article>
+                      <article class="permission-switch-item">
+                        <p class="permission-switch-title">性别资料</p>
+                        <el-switch
+                          v-model="inlineClassProfilePermissionForm.can_edit_gender"
+                          active-text="允许修改"
+                          inactive-text="禁止修改"
+                        />
+                      </article>
+                      <article class="permission-switch-item">
+                        <p class="permission-switch-title">头像照片</p>
+                        <el-switch
+                          v-model="inlineClassProfilePermissionForm.can_edit_photo"
+                          active-text="允许修改"
+                          inactive-text="禁止修改"
+                        />
+                      </article>
+                      <article class="permission-switch-item">
+                        <p class="permission-switch-title">转班申请</p>
+                        <el-switch
+                          v-model="inlineClassProfilePermissionForm.can_edit_class"
+                          active-text="允许提交"
+                          inactive-text="禁止提交"
+                        />
+                      </article>
+                    </div>
+                    <div class="table-toolbar">
                       <el-button
                         type="primary"
                         :disabled="!inlineClassProfilePermissionClassId"
@@ -240,6 +255,7 @@
                         type="file"
                         @change="handleStudentImportChange"
                       />
+                      <el-button plain @click="downloadStudentImportTemplateFile">下载学生模板</el-button>
                       <el-button plain @click="openStudentImportDialog">批量导入学生</el-button>
                       <el-button type="primary" @click="openTeacherDialog()">新增教师</el-button>
                     </div>
@@ -256,11 +272,13 @@
                     <el-table-column label="关联班级" min-width="220">
                       <template #default="{ row }">{{ teacherClassNames(row.class_ids).join('、') || '未关联' }}</template>
                     </el-table-column>
-                    <el-table-column label="操作" min-width="160">
+                    <el-table-column label="操作" min-width="220">
                       <template #default="{ row }">
-                        <el-button link type="primary" @click="openTeacherEditor(row)">页面编辑</el-button>
-                        <el-button link type="primary" @click="openTeacherDialog(row)">编辑</el-button>
-                        <el-button link type="danger" @click="deleteTeacher(row.id)">删除</el-button>
+                        <div class="table-action-buttons">
+                          <el-button link type="primary" @click="openTeacherEditor(row)">页面编辑</el-button>
+                          <el-button link type="primary" @click="openTeacherDialog(row)">编辑</el-button>
+                          <el-button link type="danger" @click="deleteTeacher(row.id)">删除</el-button>
+                        </div>
                       </template>
                     </el-table-column>
                   </el-table>
@@ -343,6 +361,120 @@
                       </div>
                     </el-form>
                   </div>
+                </section>
+
+                <section class="soft-card panel account-student-panel">
+                  <div class="panel-head">
+                    <div>
+                      <h3>学生列表</h3>
+                      <p class="section-note">按班级筛选后可批量停用、恢复、重置密码、删除学生。</p>
+                    </div>
+                    <el-tag round type="info">共 {{ filteredAdminStudents.length }} 人</el-tag>
+                  </div>
+                  <div class="toolbar-row">
+                    <div class="filter-row">
+                      <el-select
+                        v-model="adminStudentFilterClassId"
+                        clearable
+                        class="filter-select"
+                        placeholder="按班级筛选"
+                      >
+                        <el-option
+                          v-for="item in bootstrap.classes"
+                          :key="item.id"
+                          :label="`${item.class_name}（${item.student_count}人）`"
+                          :value="item.id"
+                        />
+                      </el-select>
+                      <el-input
+                        v-model="adminStudentKeyword"
+                        clearable
+                        class="filter-select"
+                        placeholder="按学号 / 账号 / 姓名搜索"
+                      />
+                    </div>
+                    <div class="chip-row">
+                      <el-tag round>已选 {{ selectedAdminStudentIds.length }} 人</el-tag>
+                      <el-input
+                        v-model="adminStudentBatchPassword"
+                        class="batch-password-input"
+                        show-password
+                        placeholder="批量重置密码（至少6位）"
+                      />
+                      <el-button
+                        plain
+                        :disabled="!hasSelectedAdminStudents"
+                        @click="runAdminStudentBatchAction('deactivate')"
+                      >
+                        批量停用
+                      </el-button>
+                      <el-button
+                        plain
+                        :disabled="!hasSelectedAdminStudents"
+                        @click="runAdminStudentBatchAction('activate')"
+                      >
+                        批量恢复
+                      </el-button>
+                      <el-button
+                        plain
+                        type="primary"
+                        :disabled="!hasSelectedAdminStudents"
+                        @click="runAdminStudentBatchAction('reset_password')"
+                      >
+                        批量重置密码
+                      </el-button>
+                      <el-button
+                        plain
+                        type="danger"
+                        :disabled="!hasSelectedAdminStudents"
+                        @click="runAdminStudentBatchAction('delete')"
+                      >
+                        批量删除
+                      </el-button>
+                      <el-button
+                        type="danger"
+                        :disabled="!hasSelectedAdminStudents"
+                        @click="runAdminStudentBatchAction('force_delete')"
+                      >
+                        强制删除
+                      </el-button>
+                    </div>
+                  </div>
+                  <p class="section-note">普通删除会跳过有学习记录的学生；“强制删除”会清空相关学习数据并永久删除账号。</p>
+                  <el-empty v-if="!filteredAdminStudents.length" description="暂无可管理学生" />
+                  <el-table
+                    v-else
+                    :data="filteredAdminStudents"
+                    row-key="id"
+                    stripe
+                    @selection-change="handleAdminStudentSelectionChange"
+                  >
+                    <el-table-column type="selection" width="48" />
+                    <el-table-column label="学号" min-width="110" prop="student_no" />
+                    <el-table-column label="账号" min-width="110" prop="username" />
+                    <el-table-column label="姓名" min-width="120" prop="display_name" />
+                    <el-table-column label="班级" min-width="120" prop="class_name" />
+                    <el-table-column label="状态" min-width="90">
+                      <template #default="{ row }">
+                        <el-tag :type="row.is_active ? 'success' : 'warning'" round>{{ row.is_active ? '启用' : '停用' }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="操作" min-width="240">
+                      <template #default="{ row }">
+                        <div class="table-action-buttons">
+                          <el-button
+                            link
+                            :type="row.is_active ? 'warning' : 'success'"
+                            @click="toggleAdminStudentStatus(row)"
+                          >
+                            {{ row.is_active ? '停用账号' : '恢复账号' }}
+                          </el-button>
+                          <el-button link type="danger" @click="deleteStudent(row.id)">删除学生</el-button>
+                          <el-button link type="danger" @click="forceDeleteStudent(row.id)">强制删除</el-button>
+                        </div>
+                      </template>
+                    </el-table-column>
+                  </el-table>
                 </section>
               </div>
             </el-tab-pane>
@@ -453,6 +585,7 @@
                       <el-button :disabled="!selectedRoom" plain @click="downloadSeatTemplate">下载模板</el-button>
                       <el-button :disabled="!selectedRoom" :loading="isImportingSeats" plain @click="openSeatImportPicker">导入表格</el-button>
                       <el-button :disabled="!selectedRoom" plain @click="addSeatDraft">新增座位</el-button>
+                      <el-button :disabled="!selectedRoom || !roomSeatDraft.length" plain type="danger" @click="clearSeatDraft">一键清空</el-button>
                       <el-button :disabled="!selectedRoom" type="primary" @click="saveSeatDraft">保存座位表</el-button>
                     </div>
                   </div>
@@ -838,6 +971,7 @@
       <el-form label-position="top">
         <el-form-item label="导入文件">
           <div class="chip-row">
+            <el-button plain @click="downloadStudentImportTemplateFile">下载 Excel 模板</el-button>
             <el-button plain @click="openStudentImportPicker">选择文件</el-button>
             <span class="section-note">{{ selectedStudentImportFileName || '未选择文件' }}</span>
           </div>
@@ -997,7 +1131,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
-import { apiDelete, apiGet, apiPost, apiPut, apiUpload } from '@/api/http';
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 
@@ -1054,6 +1188,16 @@ type BootstrapPayload = {
     archived_at: string | null;
   }>;
   teachers: Array<{ id: number; username: string; display_name: string; title: string | null; is_admin: boolean; class_ids: number[] }>;
+  students: Array<{
+    id: number;
+    username: string;
+    display_name: string;
+    student_no: string;
+    grade_no: number | null;
+    class_id: number | null;
+    class_name: string;
+    is_active: boolean;
+  }>;
   rooms: Array<{ id: number; name: string; row_count: number; col_count: number; description: string | null; seats: Array<{ id?: number; row_no: number; col_no: number; seat_label: string; ip_address: string; hostname: string | null; is_enabled: boolean }> }>;
   stats: { class_count: number; teacher_count: number; student_count: number; room_count: number; archived_class_count: number };
 };
@@ -1116,6 +1260,33 @@ type TeacherEditorForm = {
   password: string;
   is_admin: boolean;
   class_ids: number[];
+};
+type AdminStudentBatchAction = 'activate' | 'deactivate' | 'reset_password' | 'delete' | 'force_delete';
+type AdminStudentBatchResultItem = {
+  student_id: number;
+  status: 'processed' | 'skipped';
+  reason: string;
+};
+type AdminStudentBatchResult = {
+  selected_count: number;
+  processed_count: number;
+  skipped_count: number;
+  items?: AdminStudentBatchResultItem[];
+};
+type StudentImportSkippedRow = {
+  row_number: number;
+  student_no: string;
+  username: string;
+  display_name: string;
+  status: 'skipped';
+  reason: string;
+};
+type StudentImportResult = {
+  created_count: number;
+  updated_count: number;
+  skipped_count: number;
+  processed_count: number;
+  skipped_rows?: StudentImportSkippedRow[];
 };
 type RoomSeat = BootstrapPayload['rooms'][number]['seats'][number];
 type RoomSeatDraftPayload = { row_count: number; col_count: number; seats: RoomSeat[] };
@@ -1247,6 +1418,10 @@ const inlineClassProfilePermissionClassId = ref<number | null>(null);
 const inlineClassProfilePermissionForm = ref<ClassProfileEditPermissions>({ ...defaultClassProfileEditPermissions });
 const classBatchForm = ref({ lines: '', overwrite_existing: false });
 const studentImportForm = ref({ update_existing: false, default_password: '123456' });
+const adminStudentFilterClassId = ref<number | null>(null);
+const adminStudentKeyword = ref('');
+const adminStudentBatchPassword = ref('123456');
+const selectedAdminStudentIds = ref<number[]>([]);
 const teacherForm = ref({ username: '', display_name: '', title: '', password: '', is_admin: false, class_ids: [] as number[] });
 const teacherEditorTeacherId = ref<number | null>(null);
 const teacherEditorForm = ref<TeacherEditorForm>({
@@ -1276,6 +1451,26 @@ const editingClassProfilePermissionName = computed(() => {
 });
 const selectedStudentImportFileName = ref('');
 const selectedCurriculumImportFileName = ref('');
+const filteredAdminStudents = computed(() => {
+  const classId = adminStudentFilterClassId.value;
+  const keyword = adminStudentKeyword.value.trim().toLowerCase();
+  const students = bootstrap.value?.students ?? [];
+  return students.filter((item) => {
+    if (classId && item.class_id !== classId) {
+      return false;
+    }
+    if (!keyword) {
+      return true;
+    }
+    return [
+      item.student_no,
+      item.username,
+      item.display_name,
+      item.class_name,
+    ].some((text) => (text || '').toLowerCase().includes(keyword));
+  });
+});
+const hasSelectedAdminStudents = computed(() => selectedAdminStudentIds.value.length > 0);
 const maxSeatRow = computed(() => roomSeatDraft.value.reduce((max, seat) => Math.max(max, seat.row_no), 1));
 const maxSeatCol = computed(() => roomSeatDraft.value.reduce((max, seat) => Math.max(max, seat.col_no), 1));
 const roomLayoutStyle = computed(() => ({ gridTemplateColumns: `repeat(${Math.max(roomGridCols.value, 1)}, minmax(0, 1fr))` }));
@@ -1494,6 +1689,40 @@ async function loadCurriculum() {
   curriculumBooks.value = payload.books;
 }
 
+function extractFilename(disposition: string | null, fallback: string) {
+  if (!disposition) {
+    return fallback;
+  }
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
+  }
+  const basicMatch = disposition.match(/filename="([^"]+)"/i);
+  if (basicMatch?.[1]) {
+    return basicMatch[1];
+  }
+  return fallback;
+}
+
+async function downloadStudentImportTemplateFile() {
+  if (!authStore.token) {
+    return;
+  }
+  try {
+    const response = await apiGetBlob('/settings/admin/students/import-template', authStore.token);
+    const blob = await response.blob();
+    const filename = extractFilename(response.headers.get('content-disposition'), '学生导入模板.xlsx');
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(downloadUrl);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '下载学生导入模板失败');
+  }
+}
+
 function downloadCurriculumImportTemplateFile() {
   const templatePath = `${import.meta.env.BASE_URL}templates/curriculum-import-template.csv`;
   const anchor = document.createElement('a');
@@ -1595,8 +1824,14 @@ watch(() => [route.path, route.query.tab], () => {
 
 watch(
   () => bootstrap.value?.classes,
-  () => {
+  (classes) => {
     ensureInlineClassProfilePermissionClassId();
+    if (
+      adminStudentFilterClassId.value
+      && !(classes ?? []).some((item) => item.id === adminStudentFilterClassId.value)
+    ) {
+      adminStudentFilterClassId.value = null;
+    }
   }
 );
 
@@ -1604,6 +1839,14 @@ watch(
   () => bootstrap.value?.teachers,
   () => {
     ensureTeacherEditorTeacherId();
+  }
+);
+
+watch(
+  filteredAdminStudents,
+  (items) => {
+    const validIds = new Set(items.map((item) => item.id));
+    selectedAdminStudentIds.value = selectedAdminStudentIds.value.filter((id) => validIds.has(id));
   }
 );
 
@@ -1763,31 +2006,40 @@ function buildTemplateSeats() {
 
 function downloadSeatTemplate() {
   if (!selectedRoom.value) {
+    ElMessage.warning('请先选择机房，再下载座位导入模板');
     return;
   }
 
-  const csvRows = [
-    ['行号', '列号', '座位号', 'IP地址', '主机名', '是否启用'],
-    ...buildTemplateSeats().map((seat) => [
-      seat.row_no,
-      seat.col_no,
-      seat.seat_label,
-      seat.ip_address,
-      seat.hostname ?? '',
-      seat.is_enabled ? '是' : '否',
-    ]),
-  ];
-  const csvContent = `\uFEFF${csvRows.map((row) => row.map((cell) => csvEscapeCell(cell)).join(',')).join('\r\n')}`;
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = downloadUrl;
-  anchor.download = `${selectedRoom.value.name}-座位导入模板.csv`;
-  anchor.click();
-  URL.revokeObjectURL(downloadUrl);
+  try {
+    const csvRows = [
+      ['行号', '列号', '座位号', 'IP地址', '主机名', '是否启用'],
+      ...buildTemplateSeats().map((seat) => [
+        seat.row_no,
+        seat.col_no,
+        seat.seat_label,
+        seat.ip_address,
+        seat.hostname ?? '',
+        seat.is_enabled ? '是' : '否',
+      ]),
+    ];
+    const csvContent = `\uFEFF${csvRows.map((row) => row.map((cell) => csvEscapeCell(cell)).join(',')).join('\r\n')}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const downloadUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = downloadUrl;
+    anchor.download = `${selectedRoom.value.name}-座位导入模板.csv`;
+    anchor.click();
+    URL.revokeObjectURL(downloadUrl);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '下载座位导入模板失败');
+  }
 }
 
 function openSeatImportPicker() {
+  if (!selectedRoom.value) {
+    ElMessage.warning('请先选择机房，再导入座位表');
+    return;
+  }
   seatImportInputRef.value?.click();
 }
 
@@ -1797,7 +2049,17 @@ async function handleSeatImportChange(event: Event) {
   if (!input) {
     return;
   }
-  if (!file || !authStore.token || !selectedRoomId.value) {
+  if (!file) {
+    input.value = '';
+    return;
+  }
+  if (!authStore.token) {
+    ElMessage.warning('登录状态已失效，请重新登录后再导入座位表');
+    input.value = '';
+    return;
+  }
+  if (!selectedRoomId.value) {
+    ElMessage.warning('请先选择机房后再导入座位表');
     input.value = '';
     return;
   }
@@ -1815,7 +2077,21 @@ async function handleSeatImportChange(event: Event) {
     setRoomDraft(payload);
     ElMessage.success(`已导入 ${payload.seats.length} 个座位，请检查后再保存`);
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '导入座位表失败');
+    const message = error instanceof Error ? error.message : '导入座位表失败';
+    const helpTips = [
+      '请确认文件格式为 .csv / .txt / .tsv / .xlsx',
+      '请保留表头：行号、列号、座位号、IP地址（主机名、是否启用可选）',
+      '请检查是否存在重复座标、重复 IP 或超出机房网格范围',
+    ];
+    await ElMessageBox.alert(
+      `${escapeHtml(message).replace(/\n/g, '<br/>')}<br/><br/>${helpTips.map((item, index) => `${index + 1}. ${escapeHtml(item)}`).join('<br/>')}`,
+      '座位表导入失败',
+      {
+        confirmButtonText: '知道了',
+        dangerouslyUseHTMLString: true,
+        customClass: 'admin-batch-skip-dialog',
+      }
+    );
   } finally {
     isImportingSeats.value = false;
     input.value = '';
@@ -2109,9 +2385,16 @@ async function saveClassBatch() {
 
 async function deleteClass(classId: number) {
   if (!authStore.token) return;
-  await ElMessageBox.confirm('确认删除这个班级吗？');
-  bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/classes/${classId}`, authStore.token);
-  ElMessage.success('班级已删除');
+  try {
+    await ElMessageBox.confirm('确认删除这个班级吗？');
+    bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/classes/${classId}`, authStore.token);
+    ElMessage.success('班级已删除');
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : '删除班级失败');
+  }
 }
 
 function openStudentImportDialog() {
@@ -2153,7 +2436,7 @@ async function submitStudentImport() {
   try {
     const payload = await apiUpload<
       BootstrapPayload & {
-        import_result?: { created_count: number; updated_count: number; skipped_count: number };
+        import_result?: StudentImportResult;
       }
     >('/settings/admin/students/import', formData, authStore.token);
     bootstrap.value = payload;
@@ -2164,14 +2447,229 @@ async function submitStudentImport() {
     selectedStudentImportFileName.value = '';
     const result = payload.import_result;
     if (result) {
-      ElMessage.success(`导入完成：新增 ${result.created_count}，更新 ${result.updated_count}，跳过 ${result.skipped_count}`);
+      const summary = `导入完成：新增 ${result.created_count}，更新 ${result.updated_count}，跳过 ${result.skipped_count}`;
+      const successCount = result.created_count + result.updated_count;
+      if (result.skipped_count > 0) {
+        if (successCount > 0) {
+          ElMessage.warning(`${summary}，请核对跳过原因`);
+        } else {
+          ElMessage.warning(`没有成功导入任何学生：跳过 ${result.skipped_count} 行`);
+        }
+        await showStudentImportSkippedDetails(result);
+        return;
+      }
+      ElMessage.success(summary);
     } else {
       ElMessage.success('学生导入完成');
     }
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : '批量导入学生失败');
+    const message = error instanceof Error ? error.message : '批量导入学生失败';
+    await ElMessageBox.alert(escapeHtml(message).replace(/\n/g, '<br/>'), '学生导入失败', {
+      confirmButtonText: '知道了',
+      dangerouslyUseHTMLString: true,
+      customClass: 'admin-batch-skip-dialog',
+    });
   } finally {
     isImportingStudents.value = false;
+  }
+}
+
+function handleAdminStudentSelectionChange(rows: BootstrapPayload['students']) {
+  selectedAdminStudentIds.value = rows.map((item) => item.id);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function showStudentImportSkippedDetails(result: StudentImportResult) {
+  const skippedRows = result.skipped_rows ?? [];
+  if (!skippedRows.length) {
+    return;
+  }
+
+  const rows = skippedRows.map((item, index) => {
+    const displayText = item.display_name || '未填写姓名';
+    const studentNoText = item.student_no ? `学号 ${item.student_no}` : '';
+    const usernameText = item.username ? `账号 ${item.username}` : '';
+    const identityParts = [displayText, studentNoText, usernameText].filter((part) => part);
+    const identity = identityParts.join(' / ');
+    return `${index + 1}. 第 ${item.row_number} 行 ${escapeHtml(identity)}：${escapeHtml(item.reason || '未知原因')}`;
+  });
+
+  await ElMessageBox.alert(rows.join('<br/>'), '学生导入跳过明细', {
+    confirmButtonText: '知道了',
+    dangerouslyUseHTMLString: true,
+    customClass: 'admin-batch-skip-dialog',
+  });
+}
+
+async function showAdminStudentBatchSkippedDetails(
+  action: AdminStudentBatchAction,
+  result: AdminStudentBatchResult,
+  selectedStudentsById: Map<number, BootstrapPayload['students'][number]>
+) {
+  const skippedItems = (result.items ?? []).filter((item) => item.status === 'skipped');
+  if (!skippedItems.length) {
+    return;
+  }
+
+  const title = action === 'force_delete' ? '强制删除跳过明细' : '批量操作跳过明细';
+  const rows = skippedItems.map((item, index) => {
+    const student = selectedStudentsById.get(item.student_id);
+    const displayText = student?.display_name || `学生ID ${item.student_id}`;
+    const studentNoText = student?.student_no ? `学号 ${student.student_no}` : '';
+    const usernameText = student?.username ? `账号 ${student.username}` : '';
+    const identityParts = [displayText, studentNoText, usernameText].filter((part) => part);
+    const identity = identityParts.join(' / ');
+    return `${index + 1}. ${escapeHtml(identity)}：${escapeHtml(item.reason || '未知原因')}`;
+  });
+
+  await ElMessageBox.alert(rows.join('<br/>'), title, {
+    confirmButtonText: '知道了',
+    dangerouslyUseHTMLString: true,
+    customClass: 'admin-batch-skip-dialog',
+  });
+}
+
+async function runAdminStudentBatchAction(action: AdminStudentBatchAction) {
+  if (!authStore.token || !selectedAdminStudentIds.value.length) {
+    return;
+  }
+
+  const selectedStudentsById = new Map(
+    (bootstrap.value?.students ?? [])
+      .filter((item) => selectedAdminStudentIds.value.includes(item.id))
+      .map((item) => [item.id, item] as const)
+  );
+
+  if (action === 'reset_password' && adminStudentBatchPassword.value.trim().length < 6) {
+    ElMessage.warning('批量重置密码至少需要 6 位');
+    return;
+  }
+
+  const actionLabelMap: Record<AdminStudentBatchAction, string> = {
+    activate: '恢复账号',
+    deactivate: '停用账号',
+    reset_password: '重置密码',
+    delete: '删除学生',
+    force_delete: '强制删除学生',
+  };
+  const actionLabel = actionLabelMap[action];
+
+  try {
+    if (action === 'delete') {
+      await ElMessageBox.confirm(`确认批量删除已选的 ${selectedAdminStudentIds.value.length} 名学生吗？`);
+    }
+    if (action === 'force_delete') {
+      await ElMessageBox.prompt(
+        `此操作将永久清理已选 ${selectedAdminStudentIds.value.length} 名学生的学习数据并删除账号，无法恢复。\n请输入 DELETE 继续：`,
+        '高风险操作确认',
+        {
+          confirmButtonText: '强制删除',
+          cancelButtonText: '取消',
+          inputPlaceholder: 'DELETE',
+          inputValidator: (value) => value.trim() === 'DELETE' || '请输入 DELETE 才能继续',
+        }
+      );
+    }
+
+    const payload = await apiPost<
+      BootstrapPayload & {
+        batch_result?: AdminStudentBatchResult;
+      }
+    >(
+      '/settings/admin/students/batch-action',
+      {
+        action,
+        student_user_ids: [...selectedAdminStudentIds.value],
+        password: action === 'reset_password' ? adminStudentBatchPassword.value.trim() : null,
+      },
+      authStore.token
+    );
+    bootstrap.value = payload;
+    selectedAdminStudentIds.value = [];
+    const result = payload.batch_result;
+    if (result) {
+      ElMessage.success(
+        `批量${actionLabel}完成：成功 ${result.processed_count}，跳过 ${result.skipped_count}`
+      );
+      if ((action === 'force_delete' || action === 'delete') && result.skipped_count > 0) {
+        await showAdminStudentBatchSkippedDetails(action, result, selectedStudentsById);
+      }
+      return;
+    }
+    ElMessage.success(`批量${actionLabel}已完成`);
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : `批量${actionLabel}失败`);
+  }
+}
+
+async function toggleAdminStudentStatus(student: BootstrapPayload['students'][number]) {
+  if (!authStore.token) {
+    return;
+  }
+  const action: AdminStudentBatchAction = student.is_active ? 'deactivate' : 'activate';
+  try {
+    const payload = await apiPost<BootstrapPayload>(
+      '/settings/admin/students/batch-action',
+      {
+        action,
+        student_user_ids: [student.id],
+      },
+      authStore.token
+    );
+    bootstrap.value = payload;
+    ElMessage.success(student.is_active ? '学生账号已停用' : '学生账号已恢复');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '更新学生状态失败');
+  }
+}
+
+async function deleteStudent(studentUserId: number) {
+  if (!authStore.token) return;
+  try {
+    await ElMessageBox.confirm('确认删除这个学生账号吗？删除后不可恢复。');
+    bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/students/${studentUserId}`, authStore.token);
+    selectedAdminStudentIds.value = selectedAdminStudentIds.value.filter((id) => id !== studentUserId);
+    ElMessage.success('学生已删除');
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : '删除学生失败');
+  }
+}
+
+async function forceDeleteStudent(studentUserId: number) {
+  if (!authStore.token) return;
+  try {
+    await ElMessageBox.prompt(
+      '此操作将永久清理该学生的学习数据并删除账号，无法恢复。\n请输入 DELETE 确认：',
+      '高风险操作确认',
+      {
+        confirmButtonText: '强制删除',
+        cancelButtonText: '取消',
+        inputPlaceholder: 'DELETE',
+        inputValidator: (value) => value.trim() === 'DELETE' || '请输入 DELETE 才能继续',
+      }
+    );
+    bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/students/${studentUserId}?force=true`, authStore.token);
+    selectedAdminStudentIds.value = selectedAdminStudentIds.value.filter((id) => id !== studentUserId);
+    ElMessage.success('学生已强制删除');
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : '强制删除学生失败');
   }
 }
 
@@ -2260,10 +2758,17 @@ async function saveTeacherEditor() {
 
 async function deleteTeacher(teacherId: number) {
   if (!authStore.token) return;
-  await ElMessageBox.confirm('确认删除这个教师账号吗？');
-  bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/teachers/${teacherId}`, authStore.token);
-  ensureTeacherEditorTeacherId();
-  ElMessage.success('教师已删除');
+  try {
+    await ElMessageBox.confirm('确认删除这个教师账号吗？');
+    bootstrap.value = await apiDelete<BootstrapPayload>(`/settings/admin/teachers/${teacherId}`, authStore.token);
+    ensureTeacherEditorTeacherId();
+    ElMessage.success('教师已删除');
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : '删除教师失败');
+  }
 }
 
 function openRoomDialog(item?: BootstrapPayload['rooms'][number]) {
@@ -2316,6 +2821,40 @@ function removeSeatDraft(index: number) {
   sortRoomSeatDraft();
 }
 
+async function clearSeatDraft() {
+  if (!authStore.token || !selectedRoomId.value) {
+    return;
+  }
+  if (!roomSeatDraft.value.length) {
+    ElMessage.info('当前座位表已经是空的');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm('确认一键清空当前机房的全部座位吗？该操作会立即保存且不可撤销。', '清空座位表', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    });
+
+    bootstrap.value = await apiPut<BootstrapPayload>(
+      `/settings/admin/rooms/${selectedRoomId.value}/seats`,
+      {
+        row_count: roomGridRows.value,
+        col_count: roomGridCols.value,
+        seats: [],
+      },
+      authStore.token
+    );
+    ElMessage.success('座位表已一键清空');
+  } catch (error) {
+    if (isDialogCancelled(error)) {
+      return;
+    }
+    ElMessage.error(error instanceof Error ? error.message : '清空座位表失败');
+  }
+}
+
 async function saveSeatDraft() {
   if (!authStore.token || !selectedRoomId.value) return;
   if (roomGridRows.value < maxSeatRow.value) {
@@ -2328,24 +2867,28 @@ async function saveSeatDraft() {
     roomGridCols.value = maxSeatCol.value;
     return;
   }
-  bootstrap.value = await apiPut<BootstrapPayload>(
-    `/settings/admin/rooms/${selectedRoomId.value}/seats`,
-    {
-      row_count: roomGridRows.value,
-      col_count: roomGridCols.value,
-      seats: roomSeatDraft.value.map((seat) => ({
-        id: seat.id,
-        row_no: seat.row_no,
-        col_no: seat.col_no,
-        seat_label: seat.seat_label,
-        ip_address: seat.ip_address,
-        hostname: seat.hostname,
-        is_enabled: seat.is_enabled,
-      })),
-    },
-    authStore.token
-  );
-  ElMessage.success('机房座位已更新');
+  try {
+    bootstrap.value = await apiPut<BootstrapPayload>(
+      `/settings/admin/rooms/${selectedRoomId.value}/seats`,
+      {
+        row_count: roomGridRows.value,
+        col_count: roomGridCols.value,
+        seats: roomSeatDraft.value.map((seat) => ({
+          id: seat.id,
+          row_no: seat.row_no,
+          col_no: seat.col_no,
+          seat_label: seat.seat_label,
+          ip_address: seat.ip_address,
+          hostname: seat.hostname,
+          is_enabled: seat.is_enabled,
+        })),
+      },
+      authStore.token
+    );
+    ElMessage.success('机房座位已更新');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '保存座位表失败');
+  }
 }
 
 function openBookDialog(book?: CurriculumBook) {
@@ -2607,5 +3150,16 @@ onMounted(() => {
 .provider-model-alert-list{margin:0;padding-left:18px;display:grid;gap:4px;line-height:1.5}
 .provider-model-alert-list li{overflow-wrap:anywhere;word-break:break-word}
 .panel-stack-gap{margin-bottom:16px}
-@media (max-width: 1100px){.admin-grid,.two-col{grid-template-columns:1fr}}
+.table-action-buttons{display:flex;flex-wrap:wrap;gap:2px 10px}
+.table-toolbar{display:flex;justify-content:flex-end;margin-top:10px}
+.permission-switch-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
+.permission-switch-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--ls-border);border-radius:12px;background:rgba(255,255,255,.76)}
+.permission-switch-title{margin:0;font-size:13px;font-weight:600;color:var(--ls-text)}
+.toolbar-row{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.filter-select{width:220px;max-width:100%}
+.batch-password-input{width:220px;max-width:100%}
+.account-student-panel{grid-column:1 / -1}
+:deep(.admin-batch-skip-dialog .el-message-box__message){max-height:320px;overflow:auto;line-height:1.65}
+@media (max-width: 1100px){.admin-grid,.two-col,.permission-switch-grid{grid-template-columns:1fr}}
 </style>

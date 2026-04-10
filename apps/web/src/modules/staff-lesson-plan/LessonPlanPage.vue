@@ -11,20 +11,17 @@
       </div>
       <div class="lesson-plan-hero__actions">
         <article class="lesson-plan-hero__summary">
-          <p class="lesson-plan-hero__summary-label">当前最新学案</p>
-          <strong>{{ plans[0]?.title || '还没有学案' }}</strong>
+          <p class="lesson-plan-hero__summary-label">{{ isEditorRoute ? '当前编辑学案' : '当前最新学案' }}</p>
+          <strong>{{ heroSummaryTitle }}</strong>
           <span>
-            {{
-              plans[0]
-                ? `${plans[0].lesson.title} · ${planStatusLabel(plans[0].status)}`
-                : '先绑定课次，再添加正文和任务。'
-            }}
+            {{ heroSummarySubtitle }}
           </span>
         </article>
         <el-space wrap class="lesson-plan-hero__buttons">
-          <el-button type="primary" @click="openCreateDialog">新建学案</el-button>
+          <el-button v-if="!isEditorRoute" type="primary" @click="openCreateDialog">新建学案</el-button>
+          <el-button v-else type="primary" plain @click="goToPlanList">返回学案清单</el-button>
           <el-button plain @click="router.push('/staff/curriculum')">查看课程体系</el-button>
-          <el-button plain @click="selectPlan(plans[0]?.id || null)">回到最新学案</el-button>
+          <el-button v-if="!isEditorRoute" plain @click="selectPlan(plans[0]?.id || null)">编辑最新学案</el-button>
         </el-space>
       </div>
     </section>
@@ -39,34 +36,55 @@
       </template>
 
       <template #default>
-        <div class="metric-grid">
-          <article class="metric-tile">
-            <p class="metric-label">学案总数</p>
-            <p class="metric-value">{{ plans.length }}</p>
-            <p class="metric-note">包含草稿、已发布和已开课学案</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">任务总数</p>
-            <p class="metric-value">{{ totalTaskCount }}</p>
-            <p class="metric-note">阅读、上传、编程任务合计</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">待完成进度</p>
-            <p class="metric-value">{{ totalPendingCount }}</p>
-            <p class="metric-note">只会在开课后产生</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">已完成进度</p>
-            <p class="metric-value">{{ totalCompletedCount }}</p>
-            <p class="metric-note">便于教师快速判断班级推进情况</p>
-          </article>
-        </div>
+        <template v-if="!isEditorRoute">
+          <div class="metric-grid">
+            <article class="metric-tile">
+              <p class="metric-label">学案总数</p>
+              <p class="metric-value">{{ plans.length }}</p>
+              <p class="metric-note">包含草稿、已发布和已开课学案</p>
+            </article>
+            <article class="metric-tile">
+              <p class="metric-label">任务总数</p>
+              <p class="metric-value">{{ totalTaskCount }}</p>
+              <p class="metric-note">阅读、上传、编程任务合计</p>
+            </article>
+            <article class="metric-tile">
+              <p class="metric-label">待完成进度</p>
+              <p class="metric-value">{{ totalPendingCount }}</p>
+              <p class="metric-note">只会在开课后产生</p>
+            </article>
+            <article class="metric-tile">
+              <p class="metric-label">已完成进度</p>
+              <p class="metric-value">{{ totalCompletedCount }}</p>
+              <p class="metric-note">便于教师快速判断班级推进情况</p>
+            </article>
+          </div>
 
-        <el-card class="soft-card">
-          <template #header>学案列表</template>
-          <el-empty v-if="!plans.length" description="暂无学案数据" />
-          <el-table v-else :data="plans" stripe @row-click="handleRowClick">
-            <el-table-column label="学案标题" min-width="240" prop="title" />
+          <el-card class="soft-card">
+            <template #header>学案列表</template>
+            <el-empty v-if="!plans.length" description="暂无学案数据" />
+            <el-table v-else :data="plans" stripe @row-click="handleRowClick">
+              <el-table-column label="学案" min-width="360">
+                <template #default="{ row }">
+                  <div class="plan-title-cell">
+                    <div class="plan-title-cell__thumb-wrap">
+                      <img
+                        v-if="row.preview_image_url"
+                        :src="row.preview_image_url"
+                        alt="学案缩略图"
+                        class="plan-title-cell__thumb"
+                      />
+                      <div v-else class="plan-title-cell__thumb plan-title-cell__thumb--placeholder">
+                        {{ row.title.slice(0, 1) || '学' }}
+                      </div>
+                    </div>
+                    <div class="plan-title-cell__meta">
+                      <p class="plan-title-cell__title">{{ row.title }}</p>
+                      <p class="plan-title-cell__desc">{{ row.content_excerpt || '当前学案暂未添加导读摘要' }}</p>
+                    </div>
+                  </div>
+                </template>
+              </el-table-column>
             <el-table-column label="状态" min-width="110">
               <template #default="{ row }">
                 <el-tag round :type="planStatusType(row.status)">{{ planStatusLabel(row.status) }}</el-tag>
@@ -92,14 +110,14 @@
             <el-table-column label="操作" min-width="220">
               <template #default="{ row }">
                 <el-space wrap>
-                  <el-button link type="primary" @click.stop="openEditDialog(row.id)">查看</el-button>
+                  <el-button link type="primary" @click.stop="openEditDialog(row.id)">进入编辑</el-button>
                   <el-button
                     link
                     type="warning"
                     :disabled="!canEditPlan(row)"
                     @click.stop="openEditDialog(row.id)"
                   >
-                    定位编辑区
+                    快速编辑
                   </el-button>
                   <el-button
                     v-if="row.status === 'draft'"
@@ -121,82 +139,13 @@
                 </el-space>
               </template>
             </el-table-column>
-          </el-table>
-        </el-card>
-
-        <el-card v-if="selectedPlanDetail" class="soft-card">
-          <template #header>
-            <div class="info-row">
-              <span>当前选中学案</span>
-              <el-tag round :type="planStatusType(selectedPlanDetail.status)">
-                {{ planStatusLabel(selectedPlanDetail.status) }}
-              </el-tag>
-            </div>
-          </template>
-
-          <div class="stack-list">
-            <div class="info-row">
-              <strong>{{ selectedPlanDetail.title }}</strong>
-              <el-space wrap>
-                <el-button
-                  plain
-                  type="warning"
-                  :disabled="!canEditPlan(selectedPlanDetail)"
-                  @click="openEditDialog(selectedPlanDetail.id)"
-                >
-                  重置编辑区
-                </el-button>
-                <el-button
-                  v-if="selectedPlanDetail.status === 'draft'"
-                  :loading="publishingPlanId === selectedPlanDetail.id"
-                  type="success"
-                  @click="publishPlan(selectedPlanDetail.id)"
-                >
-                  发布学案
-                </el-button>
-                <el-button
-                  plain
-                  type="danger"
-                  :disabled="!canEditPlan(selectedPlanDetail)"
-                  :loading="deletingPlanId === selectedPlanDetail.id"
-                  @click="deletePlan(selectedPlanDetail.id)"
-                >
-                  删除学案
-                </el-button>
-                <el-button
-                  :disabled="selectedPlanDetail.status === 'draft'"
-                  type="primary"
-                  @click="goToClassroom(selectedPlanDetail.id)"
-                >
-                  去开课
-                </el-button>
-              </el-space>
-            </div>
-
-            <p class="section-note">
-              {{ selectedPlanDetail.lesson.book_name }} / {{ selectedPlanDetail.lesson.unit_title }} /
-              {{ selectedPlanDetail.lesson.title }}
-            </p>
-
-            <el-space wrap>
-              <el-tag round>发布日期 {{ selectedPlanDetail.assigned_date }}</el-tag>
-              <el-tag round type="success">任务 {{ selectedPlanDetail.tasks.length }}</el-tag>
-              <el-tag round type="warning">待完成 {{ selectedPlanDetail.progress.pending_count }}</el-tag>
-              <el-tag round type="info">已完成 {{ selectedPlanDetail.progress.completed_count }}</el-tag>
-            </el-space>
-
-            <el-alert
-              :closable="false"
-              description="选中学案后，正文与任务会自动同步到下方编辑区，可以直接修改并保存。"
-              title="当前学案已进入页内编辑模式"
-              type="info"
-            />
-          </div>
-        </el-card>
+            </el-table>
+          </el-card>
+        </template>
       </template>
     </el-skeleton>
 
-    <el-card v-if="editorVisible" id="plan-editor-card" class="soft-card plan-editor-card">
+    <el-card v-if="isEditorRoute && editorVisible" id="plan-editor-card" class="soft-card plan-editor-card">
       <template #header>
         <div class="info-row">
           <div class="plan-editor-card__header">
@@ -204,8 +153,8 @@
             <p class="section-note">
               {{
                 editingPlanId
-                  ? '可以直接在当前页面修改学案正文、任务与资源，保存后立即同步。'
-                  : '先绑定课次，再补充正文与任务，保存后即可继续发布或开课。'
+                  ? '可以直接在当前页面修改学案导读、任务与资源，保存后立即同步。'
+                  : '先绑定课次，再补充学案导读与任务，保存后即可继续发布或开课。'
               }}
             </p>
           </div>
@@ -264,52 +213,59 @@
           </el-select>
         </el-form-item>
 
-        <el-tabs v-model="editorActiveTab" class="editor-tabs">
-          <el-tab-pane label="学案正文" name="content">
+        <div class="dialog-task-head editor-task-toolbar">
+          <div>
+            <h3>学案导读与任务配置</h3>
+            <p class="section-note">按“学案导读、任务 1、任务 2...”逐项配置，减少来回跳转。</p>
+          </div>
+          <el-space wrap>
+            <el-button plain @click="addTaskRow">新增空白任务</el-button>
+            <TaskTemplatePickerDropdown
+              :custom-task-templates-loading="customTaskTemplatesLoading"
+              :custom-task-templates="customTaskTemplates"
+              :dropdown-pinned-custom-task-templates="dropdownPinnedCustomTaskTemplates"
+              :dropdown-recent-custom-task-templates="dropdownRecentCustomTaskTemplates"
+              :custom-task-template-dropdown-groups="customTaskTemplateDropdownGroups"
+              :task-type-label="taskTypeLabel"
+              :handle-task-template-command="handleTaskTemplateCommand"
+            />
+            <el-button plain @click="openTaskTemplateLibrary">模板库</el-button>
+          </el-space>
+        </div>
+
+        <el-tabs v-model="editorTaskTabKey" class="editor-tabs editor-tabs--unified" type="card">
+          <el-tab-pane label="学案导读" name="content">
             <div class="dialog-task-head">
               <div>
-                <h3>学案正文</h3>
-                <p class="section-note">支持可视化富文本与 HTML 源码双模式编辑。</p>
+                <h3>学案导读</h3>
+                <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
               </div>
               <el-space wrap>
-                <el-radio-group v-model="planForm.content_mode" size="small">
-                  <el-radio-button value="visual">可视化</el-radio-button>
-                  <el-radio-button value="source">HTML 源码</el-radio-button>
-                </el-radio-group>
-                <el-button :loading="generatingPlanHtml" plain @click="generatePlanHtmlDraft">AI 生成初稿</el-button>
+                <el-button :loading="generatingPlanHtml" plain @click="generatePlanHtmlDraft">AI 生成导读初稿</el-button>
               </el-space>
             </div>
-            <div v-if="planForm.content_mode === 'visual'" class="content-mode-panel">
+            <div class="content-mode-panel">
               <RichTextEditor
                 v-model="planForm.content"
                 :min-height="320"
                 placeholder="填写学案导读、课堂流程、重点提示、参考链接等。"
               />
             </div>
-            <div v-else class="content-mode-panel">
-              <el-input
-                v-model="planForm.content"
-                :autosize="{ minRows: 14, maxRows: 24 }"
-                type="textarea"
-                placeholder="<h2>学案标题</h2><p>这里可以直接编辑 HTML 源码。</p>"
-              />
-            </div>
           </el-tab-pane>
 
-          <el-tab-pane label="任务配置" name="tasks">
-            <LessonPlanTaskConfigPanel
-              v-model:active-task-editor-key="activeTaskEditorKey"
-              :tasks="planForm.tasks"
-              :custom-task-templates-loading="customTaskTemplatesLoading"
-              :custom-task-templates="customTaskTemplates"
-              :dropdown-pinned-custom-task-templates="dropdownPinnedCustomTaskTemplates"
-              :dropdown-recent-custom-task-templates="dropdownRecentCustomTaskTemplates"
-              :custom-task-template-dropdown-groups="customTaskTemplateDropdownGroups"
-              :dragging-task-key="draggingTaskKey"
-              :drag-over-task-key="dragOverTaskKey"
+          <el-tab-pane
+            v-for="(task, index) in planForm.tasks"
+            :key="task.key"
+            :label="taskEditorTabTitle(task, index)"
+            :name="`task:${task.key}`"
+            lazy
+          >
+            <LessonPlanTaskEditorCard
+              :task="task"
+              :index="index"
+              :task-count="planForm.tasks.length"
               :generating-task-html-key="generatingTaskHtmlKey"
               :task-type-label="taskTypeLabel"
-              :task-editor-tab-title="taskEditorTabTitle"
               :task-template-button-label="taskTemplateButtonLabel"
               :is-task-scope-fixed="isTaskScopeFixed"
               :can-upload-task-assets="canUploadTaskAssets"
@@ -317,13 +273,6 @@
               :task-description-generation-key="taskDescriptionGenerationKey"
               :asset-bindings="taskAssetBindings"
               :data-submit-bindings="taskDataSubmitBindings"
-              :add-task-row="addTaskRow"
-              :handle-task-template-command="handleTaskTemplateCommand"
-              :open-task-template-library="openTaskTemplateLibrary"
-              :handle-task-tab-drag-start="handleTaskTabDragStart"
-              :handle-task-tab-drag-over="handleTaskTabDragOver"
-              :handle-task-tab-drop="handleTaskTabDrop"
-              :handle-task-tab-drag-end="handleTaskTabDragEnd"
               :move-task-row="moveTaskRow"
               :copy-task-row="copyTaskRow"
               :remove-task-row="removeTaskRow"
@@ -436,12 +385,12 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
-import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import { useAuthStore } from '@/stores/auth';
-import { richTextToExcerpt } from '@/utils/richText';
+import { richTextToExcerpt, richTextToPlainText } from '@/utils/richText';
 import TaskHtmlPromptDialog from './components/TaskHtmlPromptDialog.vue';
-import LessonPlanTaskConfigPanel from './components/LessonPlanTaskConfigPanel.vue';
+import LessonPlanTaskEditorCard from './components/LessonPlanTaskEditorCard.vue';
+import TaskTemplatePickerDropdown from './components/TaskTemplatePickerDropdown.vue';
 import TaskTemplateLibraryDialog from './components/TaskTemplateLibraryDialog.vue';
 import TaskTemplateSaveDialog from './components/TaskTemplateSaveDialog.vue';
 import { taskHtmlPromptTemplateOptions } from './lessonPlan.constants';
@@ -615,13 +564,8 @@ const {
 });
 
 const {
-  draggingTaskKey,
-  dragOverTaskKey,
   appendTaskToEditor,
   addTaskRow,
-  handleTaskTabDragStart,
-  handleTaskTabDragOver,
-  handleTaskTabDrop,
   handleTaskTabDragEnd,
   moveTaskRow,
   copyTaskRow,
@@ -797,15 +741,46 @@ const taskDataSubmitBindings: TaskDataSubmitEndpointBindings = {
   taskDataSubmitAlertDescription,
 };
 
-const selectedPlanId = computed(() => {
-  const routePlanId = Number(route.params.planId);
-  if (Number.isFinite(routePlanId) && routePlanId > 0) {
-    return routePlanId;
-  }
-  return plans.value[0]?.id || null;
+const routePlanId = computed(() => {
+  const parsed = Number(route.params.planId);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 });
+const isCreateRoute = computed(() => route.path === '/staff/lesson-plans/new');
+const isEditorRoute = computed(() => isCreateRoute.value || routePlanId.value !== null);
+const selectedPlanId = computed(() => routePlanId.value);
 
-const pageTitle = computed(() => selectedPlanDetail.value?.title || '教师学案管理');
+const pageTitle = computed(() => {
+  if (!isEditorRoute.value) {
+    return '教师学案管理';
+  }
+  if (isCreateRoute.value) {
+    return '新建学案';
+  }
+  return planForm.value.title.trim() || selectedPlanDetail.value?.title || '编辑学案';
+});
+const heroSummaryTitle = computed(() => {
+  if (!isEditorRoute.value) {
+    return plans.value[0]?.title || '还没有学案';
+  }
+  if (isCreateRoute.value) {
+    return planForm.value.title.trim() || '新建学案';
+  }
+  return planForm.value.title.trim() || selectedPlanDetail.value?.title || '学案编辑';
+});
+const heroSummarySubtitle = computed(() => {
+  if (!isEditorRoute.value) {
+    return plans.value[0]
+      ? `${plans.value[0].lesson.title} · ${planStatusLabel(plans.value[0].status)}`
+      : '先绑定课次，再添加学案导读和任务。';
+  }
+  if (isCreateRoute.value) {
+    return '先选择课次，再补充学案导读和任务内容。';
+  }
+  if (selectedPlanDetail.value) {
+    return `${selectedPlanDetail.value.lesson.title} · ${planStatusLabel(selectedPlanDetail.value.status)}`;
+  }
+  return '正在加载学案详情...';
+});
 const totalTaskCount = computed(() => plans.value.reduce((sum, item) => sum + item.task_count, 0));
 const totalPendingCount = computed(() =>
   plans.value.reduce((sum, item) => sum + item.progress.pending_count, 0)
@@ -859,6 +834,29 @@ const currentTaskHtmlPromptGenerationKey = computed(() => {
 const selectedTaskHtmlPromptTemplateDescription = computed(
   () => selectedTaskHtmlPromptTemplate.value?.description || ''
 );
+const editorTaskTabKey = computed({
+  get() {
+    if (editorActiveTab.value === 'content') {
+      return 'content';
+    }
+    return activeTaskEditorKey.value ? `task:${activeTaskEditorKey.value}` : 'content';
+  },
+  set(value: string) {
+    if (value === 'content') {
+      editorActiveTab.value = 'content';
+      return;
+    }
+    if (!value.startsWith('task:')) {
+      return;
+    }
+    const taskKey = value.slice(5);
+    if (!taskKey) {
+      return;
+    }
+    editorActiveTab.value = 'tasks';
+    activeTaskEditorKey.value = taskKey;
+  },
+});
 const taskHtmlPromptDialogSubmitApiPath = computed(() => {
   const task = taskHtmlPromptDialogTask.value;
   if (!task || task.task_type !== 'data_submit') {
@@ -927,12 +925,6 @@ function createTaskFromCustomTemplate(
     },
     options
   );
-}
-
-async function focusPlanEditor() {
-  await nextTick();
-  const target = document.getElementById('plan-editor-card');
-  target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function resetPlanForm() {
@@ -1545,9 +1537,9 @@ function buildPlanHtmlPrompt() {
   const lessonLabel = currentLessonLabel() || '未选择课次';
   const title = planForm.value.title.trim() || '未命名学案';
   return [
-    `请生成一份教师学案正文 HTML，标题为：${title}。`,
+    `请生成一份教师学案导读 HTML，标题为：${title}。`,
     `绑定课次：${lessonLabel}。`,
-    '内容用于教师后台学案正文区域，适合课堂导入、步骤说明、重点提示和资源链接。',
+    '内容用于教师后台学案导读区域，适合课堂导入、步骤说明、重点提示和资源链接。',
     '请直接返回可渲染的完整片段或 HTML 正文，不要添加代码围栏或额外解释。',
   ].join('\n');
 }
@@ -1570,7 +1562,7 @@ function buildTaskHtmlPrompt(task: PlanFormTask, slot: TaskAssetSlot, options?: 
     '生成页面时请只使用浏览器原生能力；如需请求数据，请使用原生 fetch 并处理失败情况。';
   const previewHint = '生成结果会直接写入当前任务的 HTML 源码区域，页面应能在 iframe 中独立运行。';
   const templatePrompt = options?.template_prompt?.trim();
-  const customPrompt = options?.custom_prompt?.trim();
+  const customPrompt = richTextToPlainText(options?.custom_prompt).trim();
 
   if (slot === 'web') {
     const promptLines = [
@@ -1629,10 +1621,10 @@ async function generatePlanHtmlDraft() {
   try {
     const html = await requestHtmlDraft(buildPlanHtmlPrompt());
     planForm.value.content = html;
-    planForm.value.content_mode = 'source';
-    ElMessage.success('学案正文初稿已生成');
+    planForm.value.content_mode = 'visual';
+    ElMessage.success('学案导读初稿已生成');
   } catch (error) {
-    const message = error instanceof Error ? error.message : '生成学案正文失败';
+    const message = error instanceof Error ? error.message : '生成学案导读失败';
     errorMessage.value = message;
     ElMessage.error(message);
   } finally {
@@ -1646,7 +1638,7 @@ async function generateTaskDescriptionDraft(task: PlanFormTask) {
   try {
     const html = await requestHtmlDraft(buildTaskDescriptionPrompt(task));
     task.description = html;
-    task.description_mode = 'source';
+    task.description_mode = 'visual';
     ElMessage.success('任务说明初稿已生成');
   } catch (error) {
     const message = error instanceof Error ? error.message : '生成任务说明失败';
@@ -1710,10 +1702,6 @@ async function loadPlans() {
 
   plans.value = planPayload.plans;
   curriculumBooks.value = curriculumPayload.books;
-
-  if (!selectedPlanId.value && planPayload.plans[0]) {
-    await router.replace(`/staff/lesson-plans/${planPayload.plans[0].id}`);
-  }
 }
 
 async function loadPlanDetail(planId: number | null) {
@@ -1736,6 +1724,11 @@ async function loadPage() {
 
   try {
     await Promise.all([loadPlans(), loadCustomTaskTemplates()]);
+    if (isCreateRoute.value) {
+      selectedPlanDetail.value = null;
+      activateBlankPlanEditor();
+      return;
+    }
     await loadPlanDetail(selectedPlanId.value);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载学案数据失败';
@@ -1790,30 +1783,20 @@ function handleRowClick(row: PlanSummary) {
 
 function openCreateDialog() {
   persistCurrentEditorDraft();
-  activateBlankPlanEditor();
-  void focusPlanEditor();
+  void router.push('/staff/lesson-plans/new');
 }
 
 
 async function openEditDialog(planId: number) {
   try {
-    let targetPlan = planId === selectedPlanDetail.value?.id ? selectedPlanDetail.value : null;
-    if (!targetPlan) {
-      await selectPlan(planId);
-      await loadPlanDetail(planId);
-      targetPlan = selectedPlanDetail.value;
-    }
-
-    if (!targetPlan) {
-      errorMessage.value = '加载学案详情失败';
-      return;
-    }
-
-    activatePlanEditor(targetPlan);
-    await focusPlanEditor();
+    await selectPlan(planId);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '打开编辑区失败';
   }
+}
+
+async function goToPlanList() {
+  await router.push('/staff/lesson-plans');
 }
 
 function buildPayload() {
@@ -1833,7 +1816,7 @@ function buildPayload() {
       title: task.title.trim(),
       task_type: task.task_type,
       submission_scope: normalizeTaskSubmissionScope(task.task_type, task.submission_scope),
-      description: normalizeHtmlValue(task.description, task.description_mode),
+      description: normalizeHtmlValue(task.description, 'visual'),
       config: buildTaskConfigPayload(task),
       sort_order: index + 1,
       is_required: task.is_required,
@@ -1843,7 +1826,7 @@ function buildPayload() {
   return {
     lesson_id: planForm.value.lesson_id,
     title: planForm.value.title.trim(),
-    content: normalizeHtmlValue(planForm.value.content, planForm.value.content_mode),
+    content: normalizeHtmlValue(planForm.value.content, 'visual'),
     assigned_date: planForm.value.assigned_date,
     status: planForm.value.status,
     tasks,
@@ -1968,10 +1951,6 @@ async function deletePlan(planId: number) {
   }
 }
 
-async function goToClassroom(planId: number) {
-  await router.push({ path: '/staff/classroom', query: { planId: String(planId) } });
-}
-
 onBeforeRouteUpdate((_to, _from) => {
   persistCurrentEditorDraft();
   return true;
@@ -1982,13 +1961,45 @@ onBeforeRouteLeave(async () => {
 });
 
 watch(
-  () => route.params.planId,
-  () => {
+  () => route.fullPath,
+  async () => {
+    if (isCreateRoute.value) {
+      selectedPlanDetail.value = null;
+      activateBlankPlanEditor();
+      await nextTick();
+      return;
+    }
+    if (!isEditorRoute.value) {
+      selectedPlanDetail.value = null;
+      editingPlanId.value = null;
+      editorVisible.value = false;
+      markEditorCommitted('');
+      return;
+    }
     if (selectedPlanId.value === selectedPlanDetail.value?.id) {
       return;
     }
-    void loadPlanDetail(selectedPlanId.value);
+    await loadPlanDetail(selectedPlanId.value);
   }
+);
+
+watch(
+  () => planForm.value.tasks.map((task) => task.key),
+  (taskKeys) => {
+    if (!taskKeys.length) {
+      editorActiveTab.value = 'content';
+      activeTaskEditorKey.value = '';
+      return;
+    }
+    if (taskKeys.includes(activeTaskEditorKey.value)) {
+      return;
+    }
+    activeTaskEditorKey.value = taskKeys[0];
+    if (editorActiveTab.value === 'tasks') {
+      editorTaskTabKey.value = `task:${taskKeys[0]}`;
+    }
+  },
+  { deep: false }
 );
 
 watch(taskHtmlPromptDialogVisible, (visible) => {
@@ -2110,8 +2121,68 @@ onBeforeUnmount(() => {
   background: var(--ls-panel-soft);
 }
 
+.plan-title-cell {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.plan-title-cell__thumb-wrap {
+  width: 84px;
+  height: 58px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid rgba(67, 109, 185, 0.16);
+  background: rgba(67, 109, 185, 0.06);
+}
+
+.plan-title-cell__thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.plan-title-cell__thumb--placeholder {
+  display: grid;
+  place-items: center;
+  color: #4261a2;
+  font-weight: 700;
+  background:
+    linear-gradient(135deg, rgba(67, 109, 185, 0.2), rgba(111, 179, 149, 0.2)),
+    rgba(67, 109, 185, 0.1);
+}
+
+.plan-title-cell__meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.plan-title-cell__title,
+.plan-title-cell__desc {
+  margin: 0;
+}
+
+.plan-title-cell__title {
+  color: #1f2a44;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.plan-title-cell__desc {
+  color: var(--ls-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .editor-tabs {
   margin-top: 8px;
+}
+
+.editor-task-toolbar {
+  margin-top: 10px;
 }
 
 .content-mode-panel {
@@ -2176,6 +2247,15 @@ onBeforeUnmount(() => {
   .info-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .plan-title-cell {
+    grid-template-columns: 72px minmax(0, 1fr);
+  }
+
+  .plan-title-cell__thumb-wrap {
+    width: 72px;
+    height: 52px;
   }
 }
 </style>

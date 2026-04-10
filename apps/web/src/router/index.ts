@@ -2,6 +2,8 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
 import { useAuthStore } from '@/stores/auth';
 
+const sessionSyncTimeoutMs = 1_500;
+
 const AuthLayout = () => import('@/layouts/auth/AuthLayout.vue');
 const StudentLayout = () => import('@/layouts/student/StudentLayout.vue');
 const StaffLayout = () => import('@/layouts/staff/StaffLayout.vue');
@@ -101,6 +103,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'classroom', component: ClassroomPage },
       { path: 'classroom/:sessionId', component: ClassroomPage },
       { path: 'lesson-plans', component: LessonPlanPage },
+      { path: 'lesson-plans/new', component: LessonPlanPage },
       { path: 'lesson-plans/:planId', component: LessonPlanPage },
       { path: 'curriculum', component: StaffCurriculumPage },
       { path: 'assistants', component: StaffAssistantPage },
@@ -122,6 +125,21 @@ const router = createRouter({
   routes,
 });
 
+async function syncSessionUserWithTimeout() {
+  const authStore = useAuthStore();
+  if (!authStore.token) {
+    return;
+  }
+
+  const syncAttempt = authStore.syncSessionUser().catch(() => null);
+  await Promise.race([
+    syncAttempt,
+    new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), sessionSyncTimeoutMs);
+    }),
+  ]);
+}
+
 router.beforeEach(async (to) => {
   const authStore = useAuthStore();
 
@@ -132,11 +150,7 @@ router.beforeEach(async (to) => {
       || to.path === '/login/student'
       || to.path === '/login/staff')
   ) {
-    try {
-      await authStore.syncSessionUser();
-    } catch {
-      // Fall back to the last cached session snapshot if the sync request fails.
-    }
+    void syncSessionUserWithTimeout();
   }
 
   const user = authStore.user;

@@ -1,28 +1,40 @@
 <template>
-  <div class="rich-text-editor" :style="{ '--editor-min-height': `${minHeight}px` }">
-    <QuillEditor
-      :content="modelValue"
-      :options="editorOptions"
-      content-type="html"
-      theme="snow"
-      @update:content="handleUpdate"
-    />
-  </div>
+  <Suspense>
+    <template #default>
+      <AsyncRichTextEditor
+        :model-value="modelValue"
+        :min-height="minHeight"
+        :placeholder="placeholder"
+        :readonly="readonly"
+        @update:model-value="handleUpdate"
+      />
+    </template>
+    <template #fallback>
+      <div class="rich-text-editor-fallback" :style="{ '--editor-min-height': `${minHeight}px` }">
+        <div class="rich-text-editor-fallback__toolbar"></div>
+        <div class="rich-text-editor-fallback__panel">
+          <span>编辑器加载中...</span>
+        </div>
+      </div>
+    </template>
+  </Suspense>
 </template>
 
 <script setup lang="ts">
-import { QuillEditor } from '@vueup/vue-quill';
+import { defineAsyncComponent } from 'vue';
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     modelValue?: string;
     minHeight?: number;
     placeholder?: string;
+    readonly?: boolean;
   }>(),
   {
     modelValue: '',
     minHeight: 280,
     placeholder: '',
+    readonly: false,
   }
 );
 
@@ -30,55 +42,42 @@ const emit = defineEmits<{
   (event: 'update:modelValue', value: string): void;
 }>();
 
-const editorOptions = {
-  placeholder: props.placeholder,
-  modules: {
-    toolbar: [
-      [{ header: [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ color: [] }, { background: [] }],
-      [{ list: 'ordered' }, { list: 'bullet' }],
-      [{ indent: '-1' }, { indent: '+1' }],
-      [{ align: [] }],
-      ['blockquote', 'code-block', 'link', 'image'],
-      ['clean'],
-    ],
-  },
-};
+const AsyncRichTextEditor = defineAsyncComponent({
+  loader: () => import('./RichTextEditorCk.vue'),
+  delay: 120,
+  timeout: 30000,
+  suspensible: true,
+});
 
-function handleUpdate(value: unknown) {
-  emit('update:modelValue', typeof value === 'string' ? value : '');
+function handleUpdate(value: string) {
+  emit('update:modelValue', value);
 }
 </script>
 
 <style scoped>
-.rich-text-editor {
-  display: block;
-  overflow: hidden;
+.rich-text-editor-fallback {
+  display: grid;
+  gap: 0;
 }
 
-.rich-text-editor :deep(.quill) {
-  display: flex;
-  flex-direction: column;
-}
-
-.rich-text-editor :deep(.ql-toolbar.ql-snow) {
+.rich-text-editor-fallback__toolbar {
+  height: 42px;
+  border: 1px solid var(--ls-border);
+  border-bottom: none;
   border-radius: 16px 16px 0 0;
-  border-color: var(--ls-border);
   background: var(--ls-card);
 }
 
-.rich-text-editor :deep(.ql-container.ql-snow) {
-  border-radius: 0 0 16px 16px;
-  border-color: var(--ls-border);
-  background: var(--ls-panel-soft);
+.rich-text-editor-fallback__panel {
   min-height: calc(var(--editor-min-height) + 2px);
-  height: auto;
-}
-
-.rich-text-editor :deep(.ql-editor) {
-  min-height: var(--editor-min-height);
-  font-size: 15px;
-  line-height: 1.8;
+  border: 1px solid var(--ls-border);
+  border-radius: 0 0 16px 16px;
+  background: var(--ls-panel-soft);
+  color: var(--ls-muted);
+  line-height: 1.7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
 }
 </style>

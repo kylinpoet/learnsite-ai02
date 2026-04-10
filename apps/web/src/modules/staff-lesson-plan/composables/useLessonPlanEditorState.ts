@@ -40,6 +40,59 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     () => editorVisible.value && currentEditorSnapshot.value !== committedEditorSnapshot.value
   );
 
+  function shouldUseSourceMode(html: string | null | undefined) {
+    if (typeof html !== 'string') {
+      return false;
+    }
+    if (!html.trim()) {
+      return false;
+    }
+    return /<(style|script|iframe|object|embed|html|head|body)\b/i.test(html);
+  }
+
+  function protectSourceModeFields(
+    draftState: LessonPlanDraftState,
+    serverPlan: PlanDetail | null | undefined
+  ): LessonPlanDraftState {
+    if (!serverPlan) {
+      return draftState;
+    }
+
+    const nextState: LessonPlanDraftState = {
+      ...draftState,
+      tasks: draftState.tasks.map((task) => ({
+        ...task,
+        config: cloneTaskConfigState(task.config),
+      })),
+    };
+
+    if (shouldUseSourceMode(serverPlan.content) && !shouldUseSourceMode(nextState.content)) {
+      nextState.content = serverPlan.content || '';
+      nextState.content_mode = 'source';
+    }
+
+    const serverTaskById = new Map(serverPlan.tasks.map((task) => [task.id, task]));
+    nextState.tasks = nextState.tasks.map((draftTask) => {
+      if (typeof draftTask.id !== 'number') {
+        return draftTask;
+      }
+      const serverTask = serverTaskById.get(draftTask.id);
+      if (!serverTask) {
+        return draftTask;
+      }
+      if (shouldUseSourceMode(serverTask.description) && !shouldUseSourceMode(draftTask.description)) {
+        return {
+          ...draftTask,
+          description: serverTask.description || '',
+          description_mode: 'source',
+        };
+      }
+      return draftTask;
+    });
+
+    return nextState;
+  }
+
   function createEmptyTaskConfig(): TaskConfigState {
     return {
       topic: '',
@@ -257,7 +310,10 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
               task_type: task.task_type || 'rich_text',
               submission_scope: options.normalizeTaskSubmissionScope(task.task_type, task.submission_scope),
               description: task.description || '',
-              description_mode: task.description_mode === 'source' ? 'source' : 'visual',
+              description_mode:
+                task.description_mode === 'source' || shouldUseSourceMode(task.description)
+                  ? 'source'
+                  : 'visual',
               config: normalizeTaskConfigState(task.task_type, task.config),
               is_required: task.is_required !== false,
               linked_template_id: typeof task.linked_template_id === 'number' ? task.linked_template_id : null,
@@ -271,7 +327,8 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       lesson_id: state.lesson_id ?? null,
       title: state.title || '',
       content: state.content || '',
-      content_mode: state.content_mode === 'source' ? 'source' : 'visual',
+      content_mode:
+        state.content_mode === 'source' || shouldUseSourceMode(state.content) ? 'source' : 'visual',
       assigned_date: state.assigned_date || new Date().toISOString().slice(0, 10),
       status: state.status || 'draft',
       tasks: nextTasks,
@@ -280,13 +337,13 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     activeTaskEditorKey.value = state.active_task_editor_key || nextTasks[0]?.key || '';
   }
 
-  function restoreLessonPlanDraft(planId: number | null) {
+  function restoreLessonPlanDraft(planId: number | null, serverPlan?: PlanDetail | null) {
     const draft = readLessonPlanDraft(planId);
     if (!draft?.state) {
       return false;
     }
     try {
-      applyDraftState(draft.state);
+      applyDraftState(protectSourceModeFields(draft.state, serverPlan));
     } catch {
       clearLessonPlanDraft(planId);
       return false;
@@ -305,7 +362,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
               task_type: task.task_type,
               submission_scope: options.normalizeTaskSubmissionScope(task.task_type, task.submission_scope),
               description: task.description || '',
-              description_mode: 'visual',
+              description_mode: shouldUseSourceMode(task.description) ? 'source' : 'visual',
               config: normalizeTaskConfigState(task.task_type, task.config),
               is_required: task.is_required,
               linked_template_id: null,
@@ -319,7 +376,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       lesson_id: plan.lesson.id,
       title: plan.title,
       content: plan.content || '',
-      content_mode: 'visual',
+      content_mode: shouldUseSourceMode(plan.content) ? 'source' : 'visual',
       assigned_date: plan.assigned_date,
       status: plan.status,
       tasks,
@@ -348,7 +405,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     editorVisible.value = true;
     resetPlanForm();
     if (!options?.skipDraftRestore) {
-      restoreLessonPlanDraft(null);
+      restoreLessonPlanDraft(null, null);
     }
     markEditorCommitted();
   }
@@ -358,7 +415,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     editorVisible.value = true;
     fillFormWithPlan(plan);
     if (!options?.skipDraftRestore) {
-      restoreLessonPlanDraft(plan.id);
+      restoreLessonPlanDraft(plan.id, plan);
     }
     markEditorCommitted();
   }

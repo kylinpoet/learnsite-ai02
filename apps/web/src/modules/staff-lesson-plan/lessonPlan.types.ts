@@ -4,6 +4,8 @@ export type PlanSummary = {
   status: string;
   assigned_date: string;
   task_count: number;
+  preview_image_url?: string | null;
+  content_excerpt?: string;
   lesson: {
     id: number;
     title: string;

@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },
+      extensions: ['.ts', '.tsx', '.mts', '.js', '.jsx', '.mjs', '.json', '.vue'],
     },
     server: {
       host: '0.0.0.0',

@@ -64,6 +64,11 @@ from app.services.task_assets import normalize_relative_path, resolve_asset_file
 router = APIRouter()
 SUPPORTED_TASK_ASSET_SLOTS = {"web", "data_submit_form", "data_submit_visualization"}
 TASK_RUNTIME_COOKIE_MAX_AGE = settings.task_runtime_ttl_seconds
+DISCUSSION_CONTENT_MAX_LENGTH = 200_000
+MEANINGFUL_RICH_HTML_TAG_PATTERN = re.compile(
+    r"<\s*(img|video|audio|iframe|embed|object|svg|canvas|table|form|input|textarea|select|button|style|font|figure|math|hr)\b",
+    re.IGNORECASE,
+)
 
 
 class GroupTaskDraftUpdateRequest(BaseModel):
@@ -72,7 +77,7 @@ class GroupTaskDraftUpdateRequest(BaseModel):
 
 
 class TaskDiscussionPostCreateRequest(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
+    content: str = Field(min_length=1, max_length=DISCUSSION_CONTENT_MAX_LENGTH)
     parent_post_id: int | None = Field(default=None, ge=1)
 
 
@@ -461,6 +466,22 @@ def normalize_submission_note(submission_note: str | None) -> str | None:
 
     text_only = re.sub(r"<[^>]+>", "", cleaned).replace("&nbsp;", " ").strip()
     return cleaned if text_only else None
+
+
+def normalize_discussion_content(content: str | None) -> str | None:
+    if content is None:
+        return None
+
+    cleaned = content.strip()
+    if not cleaned:
+        return None
+
+    text_only = re.sub(r"<[^>]+>", "", cleaned).replace("&nbsp;", " ").strip()
+    if text_only:
+        return cleaned
+    if MEANINGFUL_RICH_HTML_TAG_PATTERN.search(cleaned):
+        return cleaned
+    return None
 
 
 def normalize_draft_source_code(source_code: str | None) -> str | None:
@@ -941,6 +962,13 @@ def serialize_reading_progress(task: Task, read_record: TaskReadRecord | None) -
     }
 
 
+def default_course_content(plan: LessonPlan) -> str:
+    return (
+        f"<p>欢迎进入《{plan.title}》。</p>"
+        f"<p>本课次属于“{plan.lesson.unit.title} / {plan.lesson.title}”，教师可以在这里发布导读、步骤说明、图片或参考资料。</p>"
+    )
+
+
 def serialize_task_detail(
     task: Task,
     submission: Submission | None,
@@ -978,7 +1006,7 @@ def serialize_task_detail(
             "lesson_title": lesson.title,
             "unit_title": lesson.unit.title,
             "book_title": lesson.unit.book.name,
-            "content": plan.content or "",
+            "content": plan.content or default_course_content(plan),
         },
         "submission_policy": {
             "direct_submit": True,
@@ -1406,8 +1434,8 @@ def create_task_discussion_post(
     if (task.task_type or "").strip().lower() != "discussion":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
 
-    content = payload.content.strip()
-    if not content:
+    content = normalize_discussion_content(payload.content)
+    if content is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="回复内容不能为空")
 
     parent_post: TaskDiscussionPost | None = None
@@ -1890,3 +1918,5 @@ async def submit_task(
             request=request,
         ),
     )
+
+

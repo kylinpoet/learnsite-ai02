@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 import os
 import shutil
 from pathlib import Path
@@ -26,7 +27,7 @@ from app.api.deps.auth import TASK_RUNTIME_COOKIE_NAME
 from app.db.demo_seed import seed_demo_data
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
-from app.models import AIProvider, StudentLessonPlanProgress, User
+from app.models import AIProvider, LessonPlan, StudentLessonPlanProgress, User
 
 API_PREFIX = "/api/v1"
 DB_PATH = TEST_DB_PATH
@@ -2896,6 +2897,29 @@ def test_admin_can_create_large_room_and_import_seat_bindings():
         assert saved_last["ip_address"] == "10.21.1.142"
         assert saved_last["is_enabled"] is False
 
+        clear_response = client.put(
+            f"{API_PREFIX}/settings/admin/rooms/{room['id']}/seats",
+            headers=admin,
+            json={
+                "row_count": saved_room["row_count"],
+                "col_count": saved_room["col_count"],
+                "seats": [],
+            },
+        )
+        assert clear_response.status_code == 200
+        cleared_room = next(item for item in clear_response.json()["data"]["rooms"] if item["id"] == room["id"])
+        assert cleared_room["row_count"] == 21
+        assert cleared_room["col_count"] == 2
+        assert cleared_room["seats"] == []
+
+        incomplete_import_response = client.post(
+            f"{API_PREFIX}/settings/admin/rooms/{room['id']}/seats/import",
+            headers=admin,
+            files={"file": ("seat-import-incomplete.csv", csv_content.encode("utf-8-sig"), "text/csv")},
+        )
+        assert incomplete_import_response.status_code == 400
+        assert "座位数据不完整" in incomplete_import_response.json()["detail"]
+
         delete_response = client.delete(f"{API_PREFIX}/settings/admin/rooms/{room['id']}", headers=admin)
         assert delete_response.status_code == 200
 
@@ -4702,6 +4726,25 @@ def test_admin_can_batch_create_classes_and_import_students():
     with TestClient(app) as client:
         admin = staff_headers(client, "admin")
 
+        template_response = client.get(
+            f"{API_PREFIX}/settings/admin/students/import-template",
+            headers=admin,
+        )
+        assert template_response.status_code == 200
+        assert "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" in (
+            template_response.headers.get("content-type") or ""
+        )
+        assert "attachment;" in (template_response.headers.get("content-disposition") or "")
+        assert len(template_response.content) > 100
+        from openpyxl import load_workbook
+        workbook = load_workbook(filename=BytesIO(template_response.content), read_only=True, data_only=True)
+        try:
+            template_sheet = workbook.active
+            header_values = [str(item or "").strip() for item in next(template_sheet.iter_rows(min_row=1, max_row=1, values_only=True))]
+            assert header_values[:4] == ["姓名", "学号", "账号", "班级"]
+        finally:
+            workbook.close()
+
         batch_response = client.post(
             f"{API_PREFIX}/settings/admin/classes/batch",
             headers=admin,
@@ -4734,11 +4777,165 @@ def test_admin_can_batch_create_classes_and_import_students():
         import_payload = import_response.json()["data"]["import_result"]
         assert import_payload["created_count"] >= 2
 
+        skipped_csv_content = "\n".join(
+            [
+                "姓名,学号,账号,班级,性别,初始密码",
+                "跳过学生甲,99901,99901,999班,男,abc123",
+            ]
+        )
+        skipped_import_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            data={"update_existing": "false", "default_password": "123456"},
+            files={"file": ("students-import-skipped.csv", skipped_csv_content.encode("utf-8-sig"), "text/csv")},
+        )
+        assert skipped_import_response.status_code == 200
+        skipped_import_result = skipped_import_response.json()["data"]["import_result"]
+        assert skipped_import_result["created_count"] == 0
+        assert skipped_import_result["updated_count"] == 0
+        assert skipped_import_result["skipped_count"] == 1
+        assert len(skipped_import_result["skipped_rows"]) == 1
+        assert skipped_import_result["skipped_rows"][0]["row_number"] == 2
+        assert skipped_import_result["skipped_rows"][0]["reason"] == "找不到目标班级"
+
         student_login = client.post(
             f"{API_PREFIX}/auth/student/login",
             json={"username": "90201", "password": "abc123"},
         )
         assert student_login.status_code == 200
+
+        import_payload_root = import_response.json()["data"]
+        imported_student = next(
+            item for item in import_payload_root["students"]
+            if item["student_no"] == "90201"
+        )
+        imported_student_903 = next(
+            item for item in import_payload_root["students"]
+            if item["student_no"] == "90301"
+        )
+        class_902 = next(
+            item for item in import_payload_root["classes"]
+            if item["class_name"] == "902班"
+        )
+
+        batch_deactivate_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={
+                "action": "deactivate",
+                "student_user_ids": [imported_student["id"], imported_student_903["id"]],
+            },
+        )
+        assert batch_deactivate_response.status_code == 200
+        batch_deactivate_result = batch_deactivate_response.json()["data"]["batch_result"]
+        assert batch_deactivate_result["processed_count"] == 2
+        assert batch_deactivate_result["skipped_count"] == 0
+        deactivated_students = {
+            item["id"]: item for item in batch_deactivate_response.json()["data"]["students"]
+        }
+        assert deactivated_students[imported_student["id"]]["is_active"] is False
+        assert deactivated_students[imported_student_903["id"]]["is_active"] is False
+
+        batch_reset_password_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={
+                "action": "reset_password",
+                "student_user_ids": [imported_student_903["id"]],
+                "password": "newpass8",
+            },
+        )
+        assert batch_reset_password_response.status_code == 200
+        assert batch_reset_password_response.json()["data"]["batch_result"]["processed_count"] == 1
+
+        updated_login_response = client.post(
+            f"{API_PREFIX}/auth/student/login",
+            json={"username": "90301", "password": "newpass8"},
+        )
+        assert updated_login_response.status_code == 200
+
+        with SessionLocal() as session:
+            plan = session.scalar(select(LessonPlan).order_by(LessonPlan.id.asc()))
+            assert plan is not None
+            session.add(
+                StudentLessonPlanProgress(
+                    student_id=imported_student_903["id"],
+                    plan_id=plan.id,
+                    progress_status="completed",
+                    assigned_date=plan.assigned_date,
+                    completed_date=plan.assigned_date,
+                )
+            )
+            session.commit()
+
+        batch_delete_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={
+                "action": "delete",
+                "student_user_ids": [imported_student["id"]],
+            },
+        )
+        assert batch_delete_response.status_code == 200
+        assert batch_delete_response.json()["data"]["batch_result"]["processed_count"] == 1
+        assert all(
+            item["student_no"] != "90201"
+            for item in batch_delete_response.json()["data"]["students"]
+        )
+
+        blocked_delete_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={
+                "action": "delete",
+                "student_user_ids": [imported_student_903["id"]],
+            },
+        )
+        assert blocked_delete_response.status_code == 200
+        blocked_result = blocked_delete_response.json()["data"]["batch_result"]
+        assert blocked_result["processed_count"] == 0
+        assert blocked_result["skipped_count"] == 1
+        assert any(
+            item["student_id"] == imported_student_903["id"] and "学习记录" in item["reason"]
+            for item in blocked_result["items"]
+        )
+
+        force_delete_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={
+                "action": "force_delete",
+                "student_user_ids": [imported_student_903["id"]],
+            },
+        )
+        assert force_delete_response.status_code == 200
+        assert force_delete_response.json()["data"]["batch_result"]["processed_count"] == 1
+        assert all(
+            item["student_no"] != "90301"
+            for item in force_delete_response.json()["data"]["students"]
+        )
+
+        deleted_login_response = client.post(
+            f"{API_PREFIX}/auth/student/login",
+            json={"username": "90201", "password": "abc123"},
+        )
+        assert deleted_login_response.status_code == 401
+
+        force_deleted_login_response = client.post(
+            f"{API_PREFIX}/auth/student/login",
+            json={"username": "90301", "password": "newpass8"},
+        )
+        assert force_deleted_login_response.status_code == 401
+
+        delete_class_response = client.delete(
+            f"{API_PREFIX}/settings/admin/classes/{class_902['id']}",
+            headers=admin,
+        )
+        assert delete_class_response.status_code == 200
+        assert all(
+            item["id"] != class_902["id"]
+            for item in delete_class_response.json()["data"]["classes"]
+        )
 
 
 def test_admin_can_discover_ai_provider_models(monkeypatch: pytest.MonkeyPatch):

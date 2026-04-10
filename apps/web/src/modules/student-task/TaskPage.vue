@@ -11,6 +11,21 @@
       </div>
       <div class="action-group">
         <el-button plain @click="goToCourse">返回课程</el-button>
+        <el-button
+          v-if="taskDetail?.task_navigation.previous_task"
+          plain
+          @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
+        >
+          上一个任务
+        </el-button>
+        <el-button
+          v-if="taskDetail?.task_navigation.next_task"
+          type="primary"
+          plain
+          @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+        >
+          下一个任务
+        </el-button>
         <el-button plain @click="goToPeerReview">作品互评</el-button>
         <el-button v-if="usesStandardSubmissionFlow && currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
       </div>
@@ -90,21 +105,8 @@
                     :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读任务说明后回复。'"
                     type="info"
                   />
-                  <div class="discussion-composer">
-                    <el-input
-                      v-model="discussionComposer"
-                      :autosize="{ minRows: 6, maxRows: 12 }"
-                      type="textarea"
-                      placeholder="写下你的观点、理由或回应。"
-                    />
-                    <div class="action-group">
-                      <el-button :loading="isPostingDiscussion" type="primary" @click="postDiscussionReply">
-                        发布回复
-                      </el-button>
-                      <el-button :loading="isDiscussionLoading" plain @click="loadDiscussionFeed">
-                        刷新讨论
-                      </el-button>
-                    </div>
+                  <div class="discussion-compose-note">
+                    请在下方“提交说明”中使用富文本编辑器填写观点，再点击“发布回复”同步到讨论区。
                   </div>
                   <div class="stack-list">
                     <article v-for="post in discussionPosts" :key="post.id" class="discussion-item">
@@ -113,7 +115,7 @@
                         <span>{{ post.author.student_no || '学号未登记' }}</span>
                         <span>{{ formatDateTime(post.updated_at || post.created_at) }}</span>
                       </div>
-                      <p class="discussion-text">{{ post.content }}</p>
+                      <RichTextContent class="discussion-text-rich" :html="post.content" empty-text="" sanitize-preset="strict" />
                       <div v-if="post.replies?.length" class="discussion-replies">
                         <article v-for="reply in post.replies" :key="reply.id" class="discussion-reply">
                           <div class="discussion-meta">
@@ -121,14 +123,11 @@
                             <span>{{ reply.author.student_no || '学号未登记' }}</span>
                             <span>{{ formatDateTime(reply.updated_at || reply.created_at) }}</span>
                           </div>
-                          <p class="discussion-text">{{ reply.content }}</p>
+                          <RichTextContent class="discussion-text-rich" :html="reply.content" empty-text="" sanitize-preset="strict" />
                         </article>
                       </div>
                     </article>
-                    <el-empty
-                      v-if="!isDiscussionLoading && !discussionPosts.length"
-                      description="还没有同学参与讨论"
-                    />
+                    <p v-if="!isDiscussionLoading && !discussionPostCount" class="discussion-empty-text">还没有同学参与讨论，欢迎你先发言。</p>
                   </div>
                 </div>
 
@@ -140,11 +139,12 @@
                   <iframe
                     v-if="webTaskUrl"
                     :src="webTaskUrl"
-                    :sandbox="taskEmbedSandbox"
+                    :sandbox="taskEmbedSandboxFor(webTaskUrl)"
                     class="task-embed-frame"
                     title="网页任务"
                   ></iframe>
-                  <el-empty v-else description="教师暂未上传网页任务资源" />
+                  <el-empty v-else-if="isWebTaskResourcePreparing" description="任务资源初始化中，请稍候..." />
+                  <el-empty v-else description="教师暂未上传网页任务资源或资源加载失败" />
                 </div>
 
                 <div v-else-if="isDataSubmitTask" class="embed-shell">
@@ -182,7 +182,7 @@
                         <iframe
                           v-if="dataSubmitFormUrl"
                           :src="dataSubmitFormUrl"
-                          :sandbox="taskEmbedSandbox"
+                          :sandbox="taskEmbedSandboxFor(dataSubmitFormUrl)"
                           class="task-embed-frame"
                           title="数据提交页"
                         ></iframe>
@@ -193,7 +193,7 @@
                       <iframe
                         v-if="dataSubmitVisualizationUrl"
                         :src="dataSubmitVisualizationUrl"
-                        :sandbox="taskEmbedSandbox"
+                        :sandbox="taskEmbedSandboxFor(dataSubmitVisualizationUrl)"
                         class="task-embed-frame"
                         title="数据可视化页"
                       ></iframe>
@@ -202,10 +202,10 @@
                   </el-tabs>
                 </div>
 
-                <div v-else class="submission-form">
+                <div v-if="usesStandardSubmissionFlow" class="submission-form">
                   <div class="section-head">
-                    <h3>作品说明</h3>
-                    <span>支持富文本排版，提交后即保存，教师评价前可再次提交。</span>
+                    <h3>{{ submissionNoteTitle }}</h3>
+                    <span>{{ submissionNoteHint }}</span>
                   </div>
                   <div class="submission-editor">
                     <RichTextEditor
@@ -215,12 +215,22 @@
                     />
                   </div>
 
-                  <div class="section-head section-head--compact">
+                  <div v-if="isDiscussionTask" class="action-group discussion-action-group">
+                    <el-button :loading="isPostingDiscussion" type="primary" @click="postDiscussionReply">
+                      发布回复
+                    </el-button>
+                    <el-button :loading="isDiscussionLoading" plain @click="loadDiscussionFeed">
+                      刷新讨论
+                    </el-button>
+                  </div>
+
+                  <div v-if="!isDiscussionTask" class="section-head section-head--compact">
                     <h3>作品附件</h3>
                     <span>支持多文件。重新选择附件后，本次提交会替换当前已保存附件。</span>
                   </div>
 
                   <input
+                    v-if="!isDiscussionTask"
                     ref="fileInputRef"
                     class="file-input"
                     multiple
@@ -228,7 +238,7 @@
                     @change="handleFileChange"
                   />
 
-                  <div class="action-group">
+                  <div v-if="!isDiscussionTask" class="action-group">
                     <el-button :disabled="!taskDetail.can_submit" plain @click="openFilePicker">
                       选择附件
                     </el-button>
@@ -249,7 +259,7 @@
                     type="warning"
                   />
 
-                  <div class="stack-list">
+                  <div v-if="!isDiscussionTask" class="stack-list">
                     <article v-for="file in selectedFiles" :key="selectedFileKey(file)" class="file-item">
                       <div>
                         <p class="file-name">{{ file.name }}</p>
@@ -313,26 +323,26 @@
 
                 <div class="tip-panel">
                   <p class="tip-title">本页规则</p>
-                  <template v-if="usesStandardSubmissionFlow">
+                  <template v-if="isDiscussionTask">
+                    <p>1. 当前任务支持“讨论互动 + 正式提交”双轨模式。</p>
+                    <p>2. 请在下方“提交说明”中编辑内容后，直接点击“发布回复”同步到讨论区。</p>
+                    <p>3. 教师评分以正式提交内容为准，讨论内容用于课堂交流。</p>
+                  </template>
+                  <template v-else-if="isWebTask">
+                    <p>1. 当前任务通过网页页面完成，老师发布的网页会直接嵌入展示。</p>
+                    <p>2. 完成网页互动后，请在下方补充提交说明并可上传结果附件。</p>
+                    <p>3. 教师更新网页资源后，刷新页面即可看到最新内容。</p>
+                  </template>
+                  <template v-else-if="isDataSubmitTask">
+                    <p>1. 当前任务通过数据页面完成，不需要在这里单独提交附件。</p>
+                    <p>2. 先在提交页完成数据上报，再切换到可视化页查看结果。</p>
+                    <p>3. 可视化页对学生开放，可直接查看全班结果展示。</p>
+                  </template>
+                  <template v-else>
                     <p>1. 不再保存草稿，点击提交就是正式保存。</p>
                     <p>2. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
                     <p>3. 若本次不重新选择附件，将保留当前已保存附件。</p>
                     <p v-if="taskDetail.submission_scope === 'group'">4. 可先同步共享草稿共同编辑作品说明，再由任一成员正式提交附件与最终版本。</p>
-                  </template>
-                  <template v-else-if="isDiscussionTask">
-                    <p>1. 当前任务以讨论回复为主，不需要上传附件。</p>
-                    <p>2. 教师已设置讨论主题，可直接在左侧输入观点并发布。</p>
-                    <p>3. 刷新讨论后可以看到全班最新回复。</p>
-                  </template>
-                  <template v-else-if="isWebTask">
-                    <p>1. 当前任务通过网页页面完成，老师发布的网页会直接嵌入展示。</p>
-                    <p>2. 若页面内需要交互，请先阅读页面说明再操作。</p>
-                    <p>3. 教师更新网页资源后，刷新页面即可看到最新内容。</p>
-                  </template>
-                  <template v-else>
-                    <p>1. 当前任务通过数据页面完成，不需要在这里单独提交附件。</p>
-                    <p>2. 先在提交页完成数据上报，再切换到可视化页查看结果。</p>
-                    <p>3. 可视化页对学生开放，可直接查看全班结果展示。</p>
                   </template>
                 </div>
 
@@ -346,6 +356,20 @@
                 >
                   {{ submitButtonText }}
                 </el-button>
+
+                <el-button
+                  v-if="taskDetail.task_navigation.next_task"
+                  class="submit-button"
+                  plain
+                  @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+                >
+                  进入下一任务
+                </el-button>
+              </el-card>
+
+              <el-card class="soft-card">
+                <template #header>学案导读</template>
+                <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
               </el-card>
 
               <el-card v-if="taskDetail.group_collaboration && usesStandardSubmissionFlow" class="soft-card">
@@ -413,7 +437,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -423,6 +447,7 @@ import RichTextEditor from '@/components/RichTextEditor.vue';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import GroupDraftHistoryDialog from '@/modules/student-task/components/GroupDraftHistoryDialog.vue';
 import { useAuthStore } from '@/stores/auth';
+import { resolveIframeSandbox } from '@/utils/iframeTrust';
 import { normalizeRichTextHtml } from '@/utils/richText';
 
 type TaskSubmissionFile = {
@@ -547,6 +572,20 @@ type DiscussionPost = {
   replies?: DiscussionPost[];
 };
 
+type DiscussionFeedPayload = {
+  task_id?: number;
+  topic?: string;
+  count?: number;
+  items?: DiscussionPost[];
+  posts?: DiscussionPost[];
+};
+
+type NavigationTask = {
+  id: number;
+  title: string;
+  task_type: string;
+};
+
 type TaskDetailPayload = {
   id: number;
   title: string;
@@ -558,6 +597,7 @@ type TaskDetailPayload = {
   course: {
     id: number;
     title: string;
+    content: string | null;
     assigned_date: string;
     lesson_title: string;
     unit_title: string;
@@ -566,6 +606,10 @@ type TaskDetailPayload = {
     direct_submit: boolean;
     allow_resubmit_until_reviewed: boolean;
     draft_enabled: boolean;
+  };
+  task_navigation: {
+    previous_task: NavigationTask | null;
+    next_task: NavigationTask | null;
   };
   group_collaboration: {
     group_id: number;
@@ -615,8 +659,9 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-const taskEmbedSandbox = 'allow-scripts allow-forms allow-downloads';
+const taskEmbedSandboxFor = (src: string | null | undefined) => resolveIframeSandbox(src);
 const runtimeSessionRefreshBufferMs = 15_000;
+const routeNavigationTimeoutMs = 1_200;
 
 const taskDetail = ref<TaskDetailPayload | null>(null);
 const submissionNote = ref('');
@@ -630,12 +675,14 @@ const isGroupDraftSaving = ref(false);
 const isRefreshingTask = ref(false);
 const isGroupDraftHistoryVisible = ref(false);
 const discussionPosts = ref<DiscussionPost[]>([]);
-const discussionComposer = ref('');
 const isDiscussionLoading = ref(false);
 const isPostingDiscussion = ref(false);
 const dataSubmitActiveTab = ref<'submit' | 'visualization'>('submit');
 const taskRuntimeSessionExpiresAt = ref<string | null>(null);
 const taskRuntimeSessionLoading = ref(false);
+const taskRuntimeSessionTaskId = ref<number | null>(null);
+let latestLoadTaskRequestId = 0;
+let latestRuntimeSessionRequestId = 0;
 
 const currentSubmission = computed(() => taskDetail.value?.current_submission || null);
 const currentGroupDraft = computed(() => taskDetail.value?.group_draft || null);
@@ -649,9 +696,22 @@ const groupDraftActionsEnabled = computed(
 const isDiscussionTask = computed(() => taskDetail.value?.task_type === 'discussion');
 const isWebTask = computed(() => taskDetail.value?.task_type === 'web_page');
 const isDataSubmitTask = computed(() => taskDetail.value?.task_type === 'data_submit');
-const usesStandardSubmissionFlow = computed(
-  () => !isDiscussionTask.value && !isWebTask.value && !isDataSubmitTask.value
-);
+const usesStandardSubmissionFlow = computed(() => !isDataSubmitTask.value);
+const submissionNoteTitle = computed(() => {
+  if (isDiscussionTask.value || isWebTask.value) {
+    return '提交说明';
+  }
+  return '作品说明';
+});
+const submissionNoteHint = computed(() => {
+  if (isDiscussionTask.value) {
+    return '可整理你的讨论结论、观点总结或课后反思，提交后教师可直接评分。';
+  }
+  if (isWebTask.value) {
+    return '完成网页互动后，补充你的完成说明、结果截图说明或学习总结。';
+  }
+  return '支持富文本排版，提交后即保存，教师评价前可再次提交。';
+});
 const displayedCurrentFiles = computed(() => {
   if (selectedFiles.value.length) {
     return [];
@@ -773,6 +833,12 @@ const submissionStatusNote = computed(() => {
 });
 const submitButtonText = computed(() => {
   if (!taskDetail.value) return '提交作品';
+  if (isDiscussionTask.value) {
+    return currentSubmission.value ? '更新讨论任务提交' : '提交讨论任务';
+  }
+  if (isWebTask.value) {
+    return currentSubmission.value ? '更新网页任务提交' : '提交网页任务';
+  }
   if (taskDetail.value.submission_scope === 'group') {
     return currentSubmission.value ? '再次提交小组作品' : '提交小组作品';
   }
@@ -798,6 +864,61 @@ const groupDraftMeta = computed(() => {
     currentGroupDraft.value.updated_at ? `同步时间 ${formatDateTime(currentGroupDraft.value.updated_at)}` : '暂无时间',
   ].join(' · ');
 });
+
+function normalizeRouteParam(value: string | string[] | number | null | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ? String(value[0]) : '';
+  }
+  if (value === null || value === undefined) {
+    return '';
+  }
+  return String(value);
+}
+
+function resolveCourseId() {
+  const routeCourseId = normalizeRouteParam(route.params.courseId as string | string[] | undefined);
+  if (routeCourseId) {
+    return routeCourseId;
+  }
+  return normalizeRouteParam(taskDetail.value?.course.id);
+}
+
+function resolveCourseRoutePath() {
+  const courseId = resolveCourseId();
+  if (!courseId) {
+    return '';
+  }
+  return router.resolve(`/student/courses/${courseId}`).fullPath;
+}
+
+async function navigateToPath(targetPath: string) {
+  const normalizedTarget = targetPath.trim();
+  if (!normalizedTarget) {
+    return;
+  }
+  const resolvedTarget = router.resolve(normalizedTarget).fullPath;
+  if (router.currentRoute.value.fullPath === resolvedTarget) {
+    return;
+  }
+
+  const fallbackTimer = window.setTimeout(() => {
+    if (router.currentRoute.value.fullPath !== resolvedTarget) {
+      window.location.assign(resolvedTarget);
+    }
+  }, routeNavigationTimeoutMs);
+
+  try {
+    await router.push(resolvedTarget);
+  } catch {
+    // Ignore router navigation failure and use fallback below.
+  } finally {
+    window.clearTimeout(fallbackTimer);
+  }
+
+  if (router.currentRoute.value.fullPath !== resolvedTarget) {
+    window.location.assign(resolvedTarget);
+  }
+}
 
 function pickInitialSubmissionNote(payload: TaskDetailPayload) {
   const submissionText = payload.current_submission?.submission_note || '';
@@ -897,35 +1018,52 @@ function parseTimestamp(value: string | null | undefined) {
   return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
-const taskRuntimeSessionValid = computed(() => {
+function isTaskRuntimeSessionValidForTask(taskId: number | null | undefined) {
+  if (!taskId) {
+    return false;
+  }
+  if (taskRuntimeSessionTaskId.value !== taskId) {
+    return false;
+  }
   return parseTimestamp(taskRuntimeSessionExpiresAt.value) - runtimeSessionRefreshBufferMs > Date.now();
+}
+
+const taskRuntimeSessionValid = computed(() => {
+  return isTaskRuntimeSessionValidForTask(taskDetail.value?.id ?? null);
 });
 
-async function ensureTaskRuntimeSession(force = false) {
-  if (!taskDetail.value?.id || !authStore.token) {
+async function ensureTaskRuntimeSession(force = false, requestedTaskId?: number) {
+  const taskId = requestedTaskId ?? taskDetail.value?.id;
+  if (!taskId || !authStore.token) {
     return false;
   }
-  if (!force && taskRuntimeSessionValid.value) {
+  if (!force && isTaskRuntimeSessionValidForTask(taskId)) {
     return true;
   }
-  if (taskRuntimeSessionLoading.value) {
-    return false;
-  }
 
+  const requestId = ++latestRuntimeSessionRequestId;
   taskRuntimeSessionLoading.value = true;
   try {
     const payload = await apiPost<TaskRuntimeSessionPayload>(
-      `/tasks/${taskDetail.value.id}/runtime-session`,
+      `/tasks/${taskId}/runtime-session`,
       {},
       authStore.token
     );
+    if (requestId !== latestRuntimeSessionRequestId) {
+      return false;
+    }
+    taskRuntimeSessionTaskId.value = taskId;
     taskRuntimeSessionExpiresAt.value = payload.expires_at;
     return true;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '任务运行时会话初始化失败';
+    if (requestId === latestRuntimeSessionRequestId) {
+      errorMessage.value = error instanceof Error ? error.message : '任务运行时会话初始化失败';
+    }
     return false;
   } finally {
-    taskRuntimeSessionLoading.value = false;
+    if (requestId === latestRuntimeSessionRequestId) {
+      taskRuntimeSessionLoading.value = false;
+    }
   }
 }
 
@@ -937,16 +1075,29 @@ function encodeAssetPath(path: string) {
     .join('/');
 }
 
+function withAccessToken(url: string) {
+  const normalized = url.trim();
+  if (!normalized || !authStore.token) {
+    return normalized;
+  }
+
+  try {
+    const parsedUrl = new URL(normalized, window.location.origin);
+    parsedUrl.searchParams.set('access_token', authStore.token);
+    return parsedUrl.toString();
+  } catch {
+    const separator = normalized.includes('?') ? '&' : '?';
+    return `${normalized}${separator}access_token=${encodeURIComponent(authStore.token)}`;
+  }
+}
+
 function taskAssetUrl(slot: 'web' | 'data_submit_form' | 'data_submit_visualization', entryPath: string) {
-  if (!taskDetail.value?.id || !entryPath) {
+  const currentTaskId = taskDetail.value?.id;
+  if (!currentTaskId || !entryPath) {
     return '';
   }
-  if (!taskRuntimeSessionValid.value) {
-    void ensureTaskRuntimeSession();
-    return '';
-  }
-  return buildAbsoluteApiUrl(
-    `${apiBaseUrl}/tasks/${taskDetail.value.id}/assets/${slot}/${encodeAssetPath(entryPath)}`
+  return withAccessToken(
+    buildAbsoluteApiUrl(`${apiBaseUrl}/tasks/${currentTaskId}/assets/${slot}/${encodeAssetPath(entryPath)}`)
   );
 }
 
@@ -963,9 +1114,28 @@ const dataSubmitVisualizationUrl = computed(() =>
     ? taskAssetUrl('data_submit_visualization', taskConfig.value.visualization_entry_path)
     : ''
 );
-const discussionReplyCount = computed(() =>
-  discussionPosts.value.reduce((count, post) => count + 1 + (post.replies?.length || 0), 0)
+const isWebTaskResourcePreparing = computed(
+  () => isWebTask.value && taskConfig.value.assets.length > 0 && taskRuntimeSessionLoading.value && !webTaskUrl.value
 );
+const discussionPostCount = computed(() =>
+  Array.isArray(discussionPosts.value) ? discussionPosts.value.length : 0
+);
+const discussionReplyCount = computed(() =>
+  (Array.isArray(discussionPosts.value) ? discussionPosts.value : []).reduce(
+    (count, post) => count + 1 + (post.replies?.length || 0),
+    0
+  )
+);
+
+function normalizeDiscussionFeedItems(payload: DiscussionFeedPayload) {
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+  if (Array.isArray(payload.posts)) {
+    return payload.posts;
+  }
+  return [];
+}
 
 function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
@@ -1219,33 +1389,53 @@ async function handleTaskRuntimeMessage(event: MessageEvent) {
 }
 
 async function loadTask() {
+  const activeTaskId = normalizeRouteParam(route.params.taskId as string | string[] | undefined);
+  if (!activeTaskId) {
+    return;
+  }
+
   if (!authStore.token) {
     errorMessage.value = '请先登录学生账号';
     isLoading.value = false;
     return;
   }
 
+  const requestId = ++latestLoadTaskRequestId;
   isLoading.value = true;
   errorMessage.value = '';
 
   try {
-    const payload = await apiGet<TaskDetailPayload>(`/tasks/${route.params.taskId}`, authStore.token);
+    const payload = await apiGet<TaskDetailPayload>(`/tasks/${activeTaskId}`, authStore.token);
+    if (
+      requestId !== latestLoadTaskRequestId ||
+      normalizeRouteParam(route.params.taskId as string | string[] | undefined) !== activeTaskId
+    ) {
+      return;
+    }
     hydrateTaskDetail(payload);
     if (payload.task_type === 'web_page' || payload.task_type === 'data_submit') {
-      await ensureTaskRuntimeSession(true);
+      if (taskRuntimeSessionTaskId.value !== payload.id) {
+        taskRuntimeSessionExpiresAt.value = null;
+      }
+      await ensureTaskRuntimeSession(true, payload.id);
     } else {
+      taskRuntimeSessionTaskId.value = null;
       taskRuntimeSessionExpiresAt.value = null;
     }
     if (payload.task_type === 'discussion') {
       await loadDiscussionFeed();
     } else {
       discussionPosts.value = [];
-      discussionComposer.value = '';
     }
   } catch (error) {
+    if (requestId !== latestLoadTaskRequestId) {
+      return;
+    }
     errorMessage.value = error instanceof Error ? error.message : '加载任务详情失败';
   } finally {
-    isLoading.value = false;
+    if (requestId === latestLoadTaskRequestId) {
+      isLoading.value = false;
+    }
   }
 }
 
@@ -1257,14 +1447,15 @@ async function loadDiscussionFeed() {
 
   isDiscussionLoading.value = true;
   try {
-    const payload = await apiGet<{ posts: DiscussionPost[] }>(
+    const payload = await apiGet<DiscussionFeedPayload>(
       `/tasks/${taskDetail.value.id}/discussion`,
       authStore.token
     );
-    discussionPosts.value = payload.posts;
+    discussionPosts.value = normalizeDiscussionFeedItems(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : '加载讨论内容失败';
     errorMessage.value = message;
+    discussionPosts.value = [];
   } finally {
     isDiscussionLoading.value = false;
   }
@@ -1274,8 +1465,9 @@ async function postDiscussionReply() {
   if (!taskDetail.value?.id || !authStore.token) {
     return;
   }
-  if (!discussionComposer.value.trim()) {
-    ElMessage.warning('请先输入讨论内容');
+  const discussionContent = normalizeRichTextHtml(submissionNote.value);
+  if (!discussionContent) {
+    ElMessage.warning('请先在提交说明中输入讨论内容');
     return;
   }
 
@@ -1283,10 +1475,9 @@ async function postDiscussionReply() {
   try {
     await apiPost(
       `/tasks/${taskDetail.value.id}/discussion/posts`,
-      { content: discussionComposer.value.trim() },
+      { content: discussionContent },
       authStore.token
     );
-    discussionComposer.value = '';
     await loadDiscussionFeed();
     ElMessage.success('讨论回复已发布');
   } catch (error) {
@@ -1391,8 +1582,35 @@ async function submitTask() {
 }
 
 async function goToCourse() {
-  const courseId = taskDetail.value?.course.id || route.params.courseId;
-  await router.push(`/student/courses/${courseId}`);
+  const targetPath = resolveCourseRoutePath();
+  if (!targetPath) {
+    ElMessage.warning('课程信息未加载完成，请稍后重试');
+    return;
+  }
+  await navigateToPath(targetPath);
+}
+
+function buildTaskRoute(task: NavigationTask) {
+  const courseId = resolveCourseId();
+  if (!courseId) {
+    return '';
+  }
+  if (task.task_type === 'reading') {
+    return `/student/courses/${courseId}/readings/${task.id}`;
+  }
+  if (task.task_type === 'programming') {
+    return `/student/courses/${courseId}/programs/${task.id}`;
+  }
+  return `/student/courses/${courseId}/tasks/${task.id}`;
+}
+
+async function openNavigationTask(task: NavigationTask) {
+  const targetPath = buildTaskRoute(task);
+  if (!targetPath) {
+    ElMessage.warning('任务路由解析失败，请刷新页面后重试');
+    return;
+  }
+  await navigateToPath(targetPath);
 }
 
 async function goToWorkDetail() {
@@ -1425,7 +1643,22 @@ onMounted(() => {
   void loadTask();
 });
 
+watch(
+  () => normalizeRouteParam(route.params.taskId as string | string[] | undefined),
+  (nextTaskId, previousTaskId) => {
+    if (!nextTaskId) {
+      return;
+    }
+    if (nextTaskId === previousTaskId) {
+      return;
+    }
+    void loadTask();
+  }
+);
+
 onBeforeUnmount(() => {
+  latestLoadTaskRequestId += 1;
+  latestRuntimeSessionRequestId += 1;
   window.removeEventListener('message', handleTaskRuntimeMessage);
 });
 </script>
@@ -1467,9 +1700,13 @@ onBeforeUnmount(() => {
   gap: 16px;
 }
 
-.discussion-composer {
-  display: grid;
-  gap: 12px;
+.discussion-compose-note {
+  color: var(--ls-muted);
+  line-height: 1.7;
+}
+
+.discussion-action-group {
+  margin-top: -8px;
 }
 
 .discussion-item,
@@ -1490,11 +1727,28 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.discussion-text {
+.discussion-text-rich {
   margin: 0;
   color: var(--ls-ink);
   line-height: 1.8;
-  white-space: pre-wrap;
+}
+
+.discussion-text-rich :deep(p:last-child),
+.discussion-text-rich :deep(ul:last-child),
+.discussion-text-rich :deep(ol:last-child),
+.discussion-text-rich :deep(blockquote:last-child) {
+  margin-bottom: 0;
+}
+
+.discussion-empty-text {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--ls-border);
+  color: var(--ls-muted);
+  background: rgba(67, 109, 185, 0.04);
+  line-height: 1.6;
+  font-size: 13px;
 }
 
 .discussion-replies {
@@ -1610,3 +1864,4 @@ onBeforeUnmount(() => {
   font-size: 22px;
 }
 </style>
+
