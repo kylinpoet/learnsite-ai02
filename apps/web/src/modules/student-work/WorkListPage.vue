@@ -74,6 +74,11 @@
                 {{ row.score ?? '--' }}
               </template>
             </el-table-column>
+            <el-table-column label="教师评语" min-width="220">
+              <template #default="{ row }">
+                {{ teacherCommentPreview(row.teacher_comment) }}
+              </template>
+            </el-table-column>
             <el-table-column label="附件" min-width="180">
               <template #default="{ row }">
                 <span>{{ row.primary_file_name || '暂无附件' }}</span>
@@ -97,6 +102,15 @@
                   >
                     再次提交
                   </el-button>
+                  <el-button
+                    v-if="row.status === 'reviewed'"
+                    :loading="revokingSubmissionId === row.submission_id"
+                    link
+                    type="warning"
+                    @click="revokeReviewedSubmission(row)"
+                  >
+                    撤销评阅
+                  </el-button>
                 </el-space>
               </template>
             </el-table-column>
@@ -109,9 +123,10 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 
-import { apiGet } from '@/api/http';
+import { apiGet, apiPost } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
 type SubmissionItem = {
@@ -124,6 +139,7 @@ type SubmissionItem = {
   submission_scope: 'individual' | 'group';
   status: 'submitted' | 'reviewed';
   score: number | null;
+  teacher_comment: string | null;
   peer_review_score: number | null;
   submitted_at: string | null;
   updated_at: string | null;
@@ -151,6 +167,7 @@ const authStore = useAuthStore();
 const workData = ref<WorkPayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
+const revokingSubmissionId = ref<number | null>(null);
 
 const pageTitle = computed(() => {
   const displayName = authStore.user?.display_name || '同学';
@@ -198,6 +215,14 @@ function formatDateTime(value: string | null) {
   return value.replace('T', ' ').slice(0, 16);
 }
 
+function teacherCommentPreview(comment: string | null) {
+  const normalized = (comment || '').trim();
+  if (!normalized) {
+    return '--';
+  }
+  return normalized.length > 24 ? `${normalized.slice(0, 24)}...` : normalized;
+}
+
 async function loadWorkList() {
   if (!authStore.token) {
     errorMessage.value = '请先登录学生账号';
@@ -224,6 +249,28 @@ async function goToDetail(submissionId: number) {
 async function goToTask(courseId: number, taskId: number, taskType: string) {
   const taskSegment = taskType === 'programming' ? 'programs' : taskType === 'reading' ? 'readings' : 'tasks';
   await router.push(`/student/courses/${courseId}/${taskSegment}/${taskId}`);
+}
+
+async function revokeReviewedSubmission(item: SubmissionItem) {
+  if (!authStore.token) {
+    errorMessage.value = '请先登录学生账号';
+    return;
+  }
+  if (item.status !== 'reviewed') {
+    ElMessage.info('当前作品未处于已评阅状态');
+    return;
+  }
+
+  revokingSubmissionId.value = item.submission_id;
+  try {
+    await apiPost(`/submissions/${item.submission_id}/revoke`, {}, authStore.token);
+    ElMessage.success('已撤销评阅，可继续提交修改');
+    await loadWorkList();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '撤销评阅失败');
+  } finally {
+    revokingSubmissionId.value = null;
+  }
 }
 
 onMounted(loadWorkList);

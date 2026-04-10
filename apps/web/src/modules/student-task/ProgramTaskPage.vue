@@ -23,6 +23,15 @@
         <el-button plain @click="goToPeerReview">作品互评</el-button>
         <el-button v-if="currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
         <el-button
+          v-if="currentSubmission?.status === 'reviewed'"
+          :loading="isRevokingReview"
+          plain
+          type="warning"
+          @click="revokeReviewedSubmission"
+        >
+          撤销评阅并继续提交
+        </el-button>
+        <el-button
           v-if="taskDetail?.task_navigation.next_task"
           plain
           type="primary"
@@ -173,15 +182,25 @@
                   <el-descriptions-item label="提交范围">
                     {{ taskDetail.submission_scope === 'group' ? '小组作品' : '个人作品' }}
                   </el-descriptions-item>
-                    <el-descriptions-item v-if="currentSubmission?.submission_scope === 'group'" label="最近提交人">
-                      {{ currentSubmission?.submitted_by_name || '组内成员' }}
-                    </el-descriptions-item>
-                  </el-descriptions>
+                  <el-descriptions-item v-if="currentSubmission?.submission_scope === 'group'" label="最近提交人">
+                    {{ currentSubmission?.submitted_by_name || '组内成员' }}
+                  </el-descriptions-item>
+                </el-descriptions>
 
-                  <div class="tip-panel">
-                    <p class="tip-title">本页规则</p>
-                    <p>1. 完成代码后可直接提交，系统会自动整理主代码文件。</p>
-                    <p>2. 每次提交都会生成新的主代码文件，其他已保存附件默认保留，也可以手动排除。</p>
+                <div class="review-comment-panel">
+                  <p class="review-comment-title">教师评语</p>
+                  <RichTextContent
+                    class="review-comment-content"
+                    :html="currentSubmission?.teacher_comment || ''"
+                    empty-text="教师暂未留下评语。"
+                    sanitize-preset="strict"
+                  />
+                </div>
+
+                <div class="tip-panel">
+                  <p class="tip-title">本页规则</p>
+                  <p>1. 完成代码后可直接提交，系统会自动整理主代码文件。</p>
+                  <p>2. 每次提交都会生成新的主代码文件，其他已保存附件默认保留，也可以手动排除。</p>
                     <p>3. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
                     <p v-if="taskDetail.submission_scope === 'group'">
                       4. 组内可先同步共享草稿共同编辑代码，再由任一成员正式提交；本地草稿仍只保存在你的当前浏览器。
@@ -216,6 +235,16 @@
                     @click="submitTask"
                   >
                     {{ submitButtonText }}
+                  </el-button>
+                  <el-button
+                    v-if="currentSubmission?.status === 'reviewed'"
+                    :loading="isRevokingReview"
+                    class="full-width"
+                    plain
+                    type="warning"
+                    @click="revokeReviewedSubmission"
+                  >
+                    撤销评阅并继续提交
                   </el-button>
                 </div>
               </el-card>
@@ -360,7 +389,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
-import { apiGet, apiGetBlob, apiPut, apiUpload } from '@/api/http';
+import { apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
@@ -526,6 +555,7 @@ const downloadLoadingFileId = ref<number | null>(null);
 const isGroupDraftSaving = ref(false);
 const isRefreshingTask = ref(false);
 const isGroupDraftHistoryVisible = ref(false);
+const isRevokingReview = ref(false);
 const editorOrigin = ref<'starter' | 'submission' | 'local' | 'group'>('starter');
 const localDraftUpdatedAt = ref<string | null>(null);
 
@@ -1100,6 +1130,30 @@ async function submitTask() {
   }
 }
 
+async function revokeReviewedSubmission() {
+  if (!currentSubmission.value || !authStore.token) {
+    errorMessage.value = '请先登录学生账号';
+    return;
+  }
+  if (currentSubmission.value.status !== 'reviewed') {
+    ElMessage.info('当前作品未处于已评阅状态');
+    return;
+  }
+
+  isRevokingReview.value = true;
+  try {
+    await apiPost(`/submissions/${currentSubmission.value.id}/revoke`, {}, authStore.token);
+    ElMessage.success('已撤销评阅，可继续提交修改');
+    await loadTask();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '撤销评阅失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isRevokingReview.value = false;
+  }
+}
+
 async function openNavigationTask(task: NavigationTask) {
   await router.push(buildTaskRoute(task));
 }
@@ -1232,6 +1286,33 @@ onBeforeUnmount(() => {
   padding: 16px;
   border-radius: 18px;
   background: rgba(67, 109, 185, 0.08);
+}
+
+.review-comment-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(67, 109, 185, 0.14);
+  background: rgba(67, 109, 185, 0.05);
+}
+
+.review-comment-title {
+  margin: 0 0 8px;
+  color: var(--ls-ink);
+  font-weight: 700;
+}
+
+.review-comment-content {
+  margin: 0;
+  color: var(--ls-muted);
+  line-height: 1.7;
+}
+
+.review-comment-content :deep(p:last-child),
+.review-comment-content :deep(ul:last-child),
+.review-comment-content :deep(ol:last-child),
+.review-comment-content :deep(blockquote:last-child) {
+  margin-bottom: 0;
 }
 
 .tip-panel p {

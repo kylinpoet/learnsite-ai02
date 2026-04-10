@@ -28,6 +28,15 @@
         </el-button>
         <el-button plain @click="goToPeerReview">作品互评</el-button>
         <el-button v-if="usesStandardSubmissionFlow && currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
+        <el-button
+          v-if="currentSubmission?.status === 'reviewed'"
+          :loading="isRevokingReview"
+          plain
+          type="warning"
+          @click="revokeReviewedSubmission"
+        >
+          撤销评阅并继续提交
+        </el-button>
       </div>
     </section>
 
@@ -321,6 +330,16 @@
                   </el-descriptions-item>
                 </el-descriptions>
 
+                <div class="review-comment-panel">
+                  <p class="review-comment-title">教师评语</p>
+                  <RichTextContent
+                    class="review-comment-content"
+                    :html="currentSubmission?.teacher_comment || ''"
+                    empty-text="教师暂未留下评语。"
+                    sanitize-preset="strict"
+                  />
+                </div>
+
                 <div class="tip-panel">
                   <p class="tip-title">本页规则</p>
                   <template v-if="isDiscussionTask">
@@ -364,6 +383,17 @@
                   @click="openNavigationTask(taskDetail.task_navigation.next_task)"
                 >
                   进入下一任务
+                </el-button>
+
+                <el-button
+                  v-if="currentSubmission?.status === 'reviewed'"
+                  :loading="isRevokingReview"
+                  class="submit-button"
+                  plain
+                  type="warning"
+                  @click="revokeReviewedSubmission"
+                >
+                  撤销评阅并继续提交
                 </el-button>
               </el-card>
 
@@ -677,6 +707,7 @@ const isGroupDraftHistoryVisible = ref(false);
 const discussionPosts = ref<DiscussionPost[]>([]);
 const isDiscussionLoading = ref(false);
 const isPostingDiscussion = ref(false);
+const isRevokingReview = ref(false);
 const dataSubmitActiveTab = ref<'submit' | 'visualization'>('submit');
 const taskRuntimeSessionExpiresAt = ref<string | null>(null);
 const taskRuntimeSessionLoading = ref(false);
@@ -1581,6 +1612,30 @@ async function submitTask() {
   }
 }
 
+async function revokeReviewedSubmission() {
+  if (!currentSubmission.value || !authStore.token) {
+    errorMessage.value = '请先登录学生账号';
+    return;
+  }
+  if (currentSubmission.value.status !== 'reviewed') {
+    ElMessage.info('当前作品未处于已评阅状态');
+    return;
+  }
+
+  isRevokingReview.value = true;
+  try {
+    await apiPost(`/submissions/${currentSubmission.value.id}/revoke`, {}, authStore.token);
+    ElMessage.success('已撤销评阅，可继续提交修改');
+    await loadTask();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '撤销评阅失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isRevokingReview.value = false;
+  }
+}
+
 async function goToCourse() {
   const targetPath = resolveCourseRoutePath();
   if (!targetPath) {
@@ -1841,6 +1896,33 @@ onBeforeUnmount(() => {
   padding: 16px;
   border-radius: 18px;
   background: rgba(67, 109, 185, 0.08);
+}
+
+.review-comment-panel {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(67, 109, 185, 0.14);
+  background: rgba(67, 109, 185, 0.05);
+}
+
+.review-comment-title {
+  margin: 0 0 8px;
+  color: var(--ls-ink);
+  font-weight: 700;
+}
+
+.review-comment-content {
+  margin: 0;
+  color: var(--ls-muted);
+  line-height: 1.7;
+}
+
+.review-comment-content :deep(p:last-child),
+.review-comment-content :deep(ul:last-child),
+.review-comment-content :deep(ol:last-child),
+.review-comment-content :deep(blockquote:last-child) {
+  margin-bottom: 0;
 }
 
 .tip-panel p {

@@ -165,6 +165,7 @@ def serialize_submission_item(submission: Submission) -> dict:
         "status": submission.submit_status,
         "score": submission.score,
         "peer_review_score": submission.peer_review_score,
+        "teacher_comment": submission.teacher_comment,
         "is_recommended": is_recommended_submission(submission),
         "submitted_at": submission.submitted_at.isoformat() if submission.submitted_at else None,
         "updated_at": latest_time.isoformat() if latest_time else None,
@@ -321,6 +322,13 @@ def apply_review_update(submission: Submission, score: int | None, teacher_comme
     submission.submit_status = "reviewed"
     if submission.submitted_at is None:
         submission.submitted_at = datetime.now()
+
+
+def revoke_review_update(submission: Submission) -> None:
+    submission.submit_status = "submitted"
+    submission.score = None
+    submission.teacher_comment = None
+    submission.is_recommended = False
 
 
 def log_group_review_operation(db: Session, submission: Submission, staff: User, teacher_comment: str) -> None:
@@ -956,6 +964,58 @@ def score_submission(
     )
 
 
+
+@router.post("/{submission_id}/revoke", response_model=ApiResponse)
+def revoke_submission_review(
+    submission_id: int,
+    student: User = Depends(require_student),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    submission = load_student_submission(submission_id, student.id, db)
+    if submission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="作品不存在")
+
+    if submission.submit_status != "reviewed":
+        return ApiResponse(
+            message="当前作品尚未评阅，无需撤销",
+            data={
+                "task_id": submission.task_id,
+                "submission": serialize_submission_detail(submission)["submission"],
+            },
+        )
+
+    revoke_review_update(submission)
+    if submission.group is not None:
+        membership = load_student_group_membership(student.id, db, include_members=False)
+        actor_role = membership.role if membership and membership.group_id == submission.group_id else None
+        log_group_operation(
+            db,
+            event_type="group_submission_review_revoked",
+            event_label="撤销评阅",
+            title=f"{student.display_name} 撤销了《{submission.task.title}》的已评阅状态",
+            description="已恢复为待教师评价，组内可继续修改后再次提交。",
+            actor=student,
+            actor_role=actor_role,
+            group=submission.group,
+            task=submission.task,
+            submission=submission,
+        )
+
+    db.commit()
+
+    latest_submission = load_student_submission(submission_id, student.id, db)
+    if latest_submission is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="作品不存在")
+
+    return ApiResponse(
+        message="已成功撤销评阅，可继续提交修改",
+        data={
+            "task_id": latest_submission.task_id,
+            "submission": serialize_submission_detail(latest_submission)["submission"],
+        },
+    )
+
+
 @router.get("/{submission_id}", response_model=ApiResponse)
 def submission_detail(
     submission_id: int,
@@ -967,3 +1027,4 @@ def submission_detail(
         return ApiResponse(code="NOT_FOUND", message="submission not found", data=None)
 
     return ApiResponse(data=serialize_submission_detail(submission))
+

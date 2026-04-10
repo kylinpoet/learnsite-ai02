@@ -18,6 +18,15 @@
         >
           {{ detailData?.submission.submission_scope === 'group' ? '再次提交小组作品' : '再次提交作品' }}
         </el-button>
+        <el-button
+          v-if="detailData?.submission.status === 'reviewed'"
+          :loading="isRevokingReview"
+          plain
+          type="warning"
+          @click="revokeReviewedSubmission"
+        >
+          撤销评阅
+        </el-button>
       </div>
     </section>
 
@@ -170,7 +179,7 @@ import { ElMessage } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
-import { apiGet, apiGetBlob } from '@/api/http';
+import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
 import { useAuthStore } from '@/stores/auth';
 
@@ -220,6 +229,7 @@ const detailData = ref<DetailPayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
 const downloadLoadingFileId = ref<number | null>(null);
+const isRevokingReview = ref(false);
 
 function statusLabel(status: DetailPayload['submission']['status']) {
   return status === 'reviewed' ? '已评价' : '待教师评价';
@@ -337,6 +347,28 @@ async function goToTask(courseId: number, taskId: number) {
   const taskType = detailData.value?.task.task_type;
   const taskSegment = taskType === 'programming' ? 'programs' : taskType === 'reading' ? 'readings' : 'tasks';
   await router.push(`/student/courses/${courseId}/${taskSegment}/${taskId}`);
+}
+
+async function revokeReviewedSubmission() {
+  if (!authStore.token || !detailData.value) {
+    errorMessage.value = '请先登录学生账号';
+    return;
+  }
+  if (detailData.value.submission.status !== 'reviewed') {
+    ElMessage.info('当前作品未处于已评阅状态');
+    return;
+  }
+
+  isRevokingReview.value = true;
+  try {
+    await apiPost(`/submissions/${detailData.value.submission.id}/revoke`, {}, authStore.token);
+    ElMessage.success('已撤销评阅，可继续提交修改');
+    await loadDetail();
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '撤销评阅失败');
+  } finally {
+    isRevokingReview.value = false;
+  }
 }
 
 onMounted(loadDetail);
