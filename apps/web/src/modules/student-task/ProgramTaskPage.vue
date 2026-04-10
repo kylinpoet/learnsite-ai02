@@ -419,9 +419,15 @@
                 alt="附件预览"
                 class="file-preview-image"
               />
-              <pre v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text">{{
-                filePreviewText
-              }}</pre>
+              <div v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text-shell">
+                <div v-if="filePreviewTextCanExpand" class="file-preview-text-toolbar">
+                  <p>{{ filePreviewTextHint() }}</p>
+                  <el-button link type="primary" :loading="isFilePreviewTextExpanding" @click="toggleFilePreviewTextExpand">
+                    {{ filePreviewTextExpanded ? '恢复截断' : '展开全文' }}
+                  </el-button>
+                </div>
+                <pre class="file-preview-text">{{ filePreviewText }}</pre>
+              </div>
               <div v-else class="file-preview-fallback">
                 <p>当前文件暂不支持在线预览。</p>
                 <p>可点击下载后在本地打开查看。</p>
@@ -586,6 +592,7 @@ type LocalDraft = {
 
 type FilePreviewKind = 'image' | 'pdf' | 'text' | 'unsupported';
 
+const textPreviewSliceBytes = 256 * 1024;
 const CODE_FILE_EXTENSIONS = new Set(['py', 'txt', 'md', 'html', 'css', 'js', 'ts', 'json']);
 const previewableImageExtensions = new Set(['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']);
 const previewableTextExtensions = new Set([
@@ -630,6 +637,11 @@ const filePreviewName = ref('');
 const filePreviewKind = ref<FilePreviewKind>('unsupported');
 const filePreviewUrl = ref('');
 const filePreviewText = ref('');
+const filePreviewTextBlob = ref<Blob | null>(null);
+const filePreviewTextCanExpand = ref(false);
+const filePreviewTextExpanded = ref(false);
+const filePreviewTextTotalBytes = ref(0);
+const isFilePreviewTextExpanding = ref(false);
 const previewLoadingSavedFileId = ref<number | null>(null);
 const previewLoadingSelectedFileKey = ref<string | null>(null);
 const editorOrigin = ref<'starter' | 'submission' | 'local' | 'group'>('starter');
@@ -757,6 +769,19 @@ function formatFileSize(size: number) {
   return `${sizeKb} KB`;
 }
 
+function formatByteSize(size: number) {
+  if (size <= 0) {
+    return '0 B';
+  }
+  if (size < 1024) {
+    return `${size} B`;
+  }
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`;
+  }
+  return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 function selectedFileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
 }
@@ -785,6 +810,39 @@ function detectFilePreviewKind(ext: string, mimeType: string): FilePreviewKind {
   return 'unsupported';
 }
 
+function resetFilePreviewTextState() {
+  filePreviewTextBlob.value = null;
+  filePreviewTextCanExpand.value = false;
+  filePreviewTextExpanded.value = false;
+  filePreviewTextTotalBytes.value = 0;
+  isFilePreviewTextExpanding.value = false;
+}
+
+async function setTextPreviewContentFromBlob(blob: Blob, expandFull = false) {
+  filePreviewTextBlob.value = blob;
+  filePreviewTextTotalBytes.value = blob.size;
+  filePreviewTextCanExpand.value = blob.size > textPreviewSliceBytes;
+
+  if (!filePreviewTextCanExpand.value || expandFull) {
+    filePreviewText.value = await blob.text();
+    filePreviewTextExpanded.value = filePreviewTextCanExpand.value;
+    return;
+  }
+
+  filePreviewText.value = await blob.slice(0, textPreviewSliceBytes).text();
+  filePreviewTextExpanded.value = false;
+}
+
+function filePreviewTextHint() {
+  if (!filePreviewTextCanExpand.value) {
+    return '';
+  }
+  if (filePreviewTextExpanded.value) {
+    return `已展开全文，文件大小 ${formatByteSize(filePreviewTextTotalBytes.value)}`;
+  }
+  return `当前仅显示前 ${formatByteSize(textPreviewSliceBytes)}，完整文件为 ${formatByteSize(filePreviewTextTotalBytes.value)}`;
+}
+
 function revokeFilePreviewUrl() {
   if (!filePreviewUrl.value) {
     return;
@@ -800,7 +858,25 @@ function resetFilePreviewState() {
   filePreviewKind.value = 'unsupported';
   filePreviewText.value = '';
   filePreviewName.value = '';
+  resetFilePreviewTextState();
   revokeFilePreviewUrl();
+}
+
+async function toggleFilePreviewTextExpand() {
+  if (!filePreviewTextBlob.value || !filePreviewTextCanExpand.value) {
+    return;
+  }
+
+  isFilePreviewTextExpanding.value = true;
+  try {
+    await setTextPreviewContentFromBlob(filePreviewTextBlob.value, !filePreviewTextExpanded.value);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '加载文本预览失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isFilePreviewTextExpanding.value = false;
+  }
 }
 
 function isLocalFilePreviewable(file: File) {
@@ -825,6 +901,7 @@ async function previewSelectedFile(file: File) {
   filePreviewName.value = file.name;
   filePreviewKind.value = 'unsupported';
   filePreviewText.value = '';
+  resetFilePreviewTextState();
   revokeFilePreviewUrl();
   isFilePreviewLoading.value = true;
   previewLoadingSelectedFileKey.value = selectedFileKey(file);
@@ -833,7 +910,7 @@ async function previewSelectedFile(file: File) {
   try {
     filePreviewKind.value = previewKind;
     if (previewKind === 'text') {
-      filePreviewText.value = await file.text();
+      await setTextPreviewContentFromBlob(file, false);
       return;
     }
     filePreviewUrl.value = URL.createObjectURL(file);
@@ -1155,6 +1232,7 @@ async function previewSavedFile(file: TaskSubmissionFile) {
   filePreviewName.value = file.name;
   filePreviewKind.value = 'unsupported';
   filePreviewText.value = '';
+  resetFilePreviewTextState();
   revokeFilePreviewUrl();
   isFilePreviewLoading.value = true;
   previewLoadingSavedFileId.value = file.id;
@@ -1166,7 +1244,7 @@ async function previewSavedFile(file: TaskSubmissionFile) {
     const nextKind = detectFilePreviewKind(file.ext || '', blob.type || file.mime_type || '');
     filePreviewKind.value = nextKind;
     if (nextKind === 'text') {
-      filePreviewText.value = await blob.text();
+      await setTextPreviewContentFromBlob(blob, false);
       return;
     }
     if (nextKind === 'image' || nextKind === 'pdf') {
@@ -1572,6 +1650,29 @@ onBeforeUnmount(() => {
   max-height: 68vh;
   margin: 0 auto;
   border-radius: 12px;
+}
+
+.file-preview-text-shell {
+  display: grid;
+  gap: 10px;
+}
+
+.file-preview-text-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(67, 109, 185, 0.14);
+  background: rgba(67, 109, 185, 0.06);
+}
+
+.file-preview-text-toolbar p {
+  margin: 0;
+  color: var(--ls-muted);
+  font-size: 12px;
 }
 
 .file-preview-text {

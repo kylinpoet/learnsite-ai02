@@ -1454,6 +1454,34 @@ def create_task_discussion_post(
     )
     db.add(post)
     db.flush()
+
+    # Keep discussion replies visible in teacher grading pages that rely on Submission rows.
+    # For discussion tasks, each student maintains one submission snapshot with latest reply content.
+    submission, group_membership = load_task_submission_for_student(task, student, db)
+    now = datetime.now()
+    if submission is None:
+        submission = Submission(
+            id=next_submission_id(db),
+            task_id=task.id,
+            student_id=student.id,
+            group_id=group_membership.group_id if group_membership is not None else None,
+            submit_status="submitted",
+            score=None,
+            is_recommended=False,
+            peer_review_score=None,
+            submission_note=content,
+            teacher_comment=None,
+            submitted_at=now,
+        )
+        db.add(submission)
+    else:
+        submission.student_id = student.id
+        submission.group_id = group_membership.group_id if group_membership is not None else None
+        submission.submission_note = content
+        submission.submitted_at = now
+        if submission.submit_status != "reviewed":
+            submission.submit_status = "submitted"
+
     sync_student_lesson_plan_progress(task, student, db)
     db.commit()
 
