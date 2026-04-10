@@ -311,9 +311,20 @@
                       <p class="file-name">{{ file.name }}</p>
                       <p class="file-meta">{{ formatFileSize(file.size) }} · 本次新增附件</p>
                     </div>
-                    <el-button link type="danger" @click="removeSelectedFile(file.name)">
-                      移除
-                    </el-button>
+                    <div class="file-actions">
+                      <el-button
+                        :loading="previewLoadingSelectedFileKey === selectedFileKey(file)"
+                        :disabled="!isLocalFilePreviewable(file)"
+                        link
+                        type="primary"
+                        @click="previewSelectedFile(file)"
+                      >
+                        预览
+                      </el-button>
+                      <el-button link type="danger" @click="removeSelectedFile(file.name)">
+                        移除
+                      </el-button>
+                    </div>
                   </article>
 
                   <article
@@ -338,6 +349,15 @@
                         @click="toggleRetainedFile(file.id)"
                       >
                         {{ keptExistingFileIds.includes(file.id) ? '本次不保留' : '恢复保留' }}
+                      </el-button>
+                      <el-button
+                        :loading="previewLoadingSavedFileId === file.id"
+                        :disabled="!isSavedFilePreviewable(file)"
+                        link
+                        type="primary"
+                        @click="previewSavedFile(file)"
+                      >
+                        预览
                       </el-button>
                       <el-button
                         :loading="downloadLoadingFileId === file.id"
@@ -378,6 +398,36 @@
             :task-id="taskDetail.id"
             :token="authStore.token || ''"
           />
+
+          <el-dialog
+            v-model="filePreviewDialogVisible"
+            :title="`附件预览 · ${filePreviewName || '未命名文件'}`"
+            width="min(980px, 92vw)"
+            append-to-body
+            @closed="resetFilePreviewState"
+          >
+            <div v-loading="isFilePreviewLoading" class="file-preview-stage">
+              <iframe
+                v-if="!isFilePreviewLoading && filePreviewKind === 'pdf' && filePreviewUrl"
+                :src="filePreviewUrl"
+                class="file-preview-frame"
+                title="附件预览"
+              ></iframe>
+              <img
+                v-else-if="!isFilePreviewLoading && filePreviewKind === 'image' && filePreviewUrl"
+                :src="filePreviewUrl"
+                alt="附件预览"
+                class="file-preview-image"
+              />
+              <pre v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text">{{
+                filePreviewText
+              }}</pre>
+              <div v-else class="file-preview-fallback">
+                <p>当前文件暂不支持在线预览。</p>
+                <p>可点击下载后在本地打开查看。</p>
+              </div>
+            </div>
+          </el-dialog>
         </div>
       </template>
     </el-skeleton>
@@ -534,7 +584,25 @@ type LocalDraft = {
   updated_at: string;
 };
 
+type FilePreviewKind = 'image' | 'pdf' | 'text' | 'unsupported';
+
 const CODE_FILE_EXTENSIONS = new Set(['py', 'txt', 'md', 'html', 'css', 'js', 'ts', 'json']);
+const previewableImageExtensions = new Set(['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']);
+const previewableTextExtensions = new Set([
+  'txt',
+  'md',
+  'csv',
+  'json',
+  'log',
+  'html',
+  'css',
+  'js',
+  'ts',
+  'xml',
+  'yml',
+  'yaml',
+  'py',
+]);
 
 const route = useRoute();
 const router = useRouter();
@@ -556,6 +624,14 @@ const isGroupDraftSaving = ref(false);
 const isRefreshingTask = ref(false);
 const isGroupDraftHistoryVisible = ref(false);
 const isRevokingReview = ref(false);
+const filePreviewDialogVisible = ref(false);
+const isFilePreviewLoading = ref(false);
+const filePreviewName = ref('');
+const filePreviewKind = ref<FilePreviewKind>('unsupported');
+const filePreviewUrl = ref('');
+const filePreviewText = ref('');
+const previewLoadingSavedFileId = ref<number | null>(null);
+const previewLoadingSelectedFileKey = ref<string | null>(null);
 const editorOrigin = ref<'starter' | 'submission' | 'local' | 'group'>('starter');
 const localDraftUpdatedAt = ref<string | null>(null);
 
@@ -683,6 +759,92 @@ function formatFileSize(size: number) {
 
 function selectedFileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function getFileExtension(fileName: string) {
+  const index = fileName.lastIndexOf('.');
+  if (index < 0) {
+    return '';
+  }
+  return fileName.slice(index + 1).toLowerCase();
+}
+
+function detectFilePreviewKind(ext: string, mimeType: string): FilePreviewKind {
+  const normalizedExt = ext.toLowerCase();
+  const normalizedMimeType = mimeType.toLowerCase();
+
+  if (normalizedExt === 'pdf' || normalizedMimeType.includes('pdf')) {
+    return 'pdf';
+  }
+  if (normalizedMimeType.startsWith('image/') || previewableImageExtensions.has(normalizedExt)) {
+    return 'image';
+  }
+  if (normalizedMimeType.startsWith('text/') || previewableTextExtensions.has(normalizedExt)) {
+    return 'text';
+  }
+  return 'unsupported';
+}
+
+function revokeFilePreviewUrl() {
+  if (!filePreviewUrl.value) {
+    return;
+  }
+  URL.revokeObjectURL(filePreviewUrl.value);
+  filePreviewUrl.value = '';
+}
+
+function resetFilePreviewState() {
+  isFilePreviewLoading.value = false;
+  previewLoadingSavedFileId.value = null;
+  previewLoadingSelectedFileKey.value = null;
+  filePreviewKind.value = 'unsupported';
+  filePreviewText.value = '';
+  filePreviewName.value = '';
+  revokeFilePreviewUrl();
+}
+
+function isLocalFilePreviewable(file: File) {
+  return detectFilePreviewKind(getFileExtension(file.name), file.type || '') !== 'unsupported';
+}
+
+function isSavedFilePreviewable(file: TaskSubmissionFile) {
+  if (typeof file.previewable === 'boolean') {
+    return file.previewable;
+  }
+  return detectFilePreviewKind(file.ext || '', file.mime_type || '') !== 'unsupported';
+}
+
+async function previewSelectedFile(file: File) {
+  const previewKind = detectFilePreviewKind(getFileExtension(file.name), file.type || '');
+  if (previewKind === 'unsupported') {
+    ElMessage.info('当前文件暂不支持在线预览，请下载后查看');
+    return;
+  }
+
+  filePreviewDialogVisible.value = true;
+  filePreviewName.value = file.name;
+  filePreviewKind.value = 'unsupported';
+  filePreviewText.value = '';
+  revokeFilePreviewUrl();
+  isFilePreviewLoading.value = true;
+  previewLoadingSelectedFileKey.value = selectedFileKey(file);
+  previewLoadingSavedFileId.value = null;
+
+  try {
+    filePreviewKind.value = previewKind;
+    if (previewKind === 'text') {
+      filePreviewText.value = await file.text();
+      return;
+    }
+    filePreviewUrl.value = URL.createObjectURL(file);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '加载附件预览失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isFilePreviewLoading.value = false;
+    previewLoadingSelectedFileKey.value = null;
+  }
 }
 
 function groupRoleLabel(role: string | null | undefined) {
@@ -979,6 +1141,49 @@ async function downloadSavedFile(file: TaskSubmissionFile) {
   }
 }
 
+async function previewSavedFile(file: TaskSubmissionFile) {
+  if (!authStore.token) {
+    errorMessage.value = '请先登录学生账号';
+    return;
+  }
+  if (!isSavedFilePreviewable(file)) {
+    ElMessage.info('当前文件暂不支持在线预览，请下载后查看');
+    return;
+  }
+
+  filePreviewDialogVisible.value = true;
+  filePreviewName.value = file.name;
+  filePreviewKind.value = 'unsupported';
+  filePreviewText.value = '';
+  revokeFilePreviewUrl();
+  isFilePreviewLoading.value = true;
+  previewLoadingSavedFileId.value = file.id;
+  previewLoadingSelectedFileKey.value = null;
+
+  try {
+    const response = await apiGetBlob(`/submissions/files/${file.id}?disposition=inline`, authStore.token);
+    const blob = await response.blob();
+    const nextKind = detectFilePreviewKind(file.ext || '', blob.type || file.mime_type || '');
+    filePreviewKind.value = nextKind;
+    if (nextKind === 'text') {
+      filePreviewText.value = await blob.text();
+      return;
+    }
+    if (nextKind === 'image' || nextKind === 'pdf') {
+      filePreviewUrl.value = URL.createObjectURL(blob);
+      return;
+    }
+    ElMessage.info('当前文件暂不支持在线预览，请下载后查看');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '加载附件预览失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    isFilePreviewLoading.value = false;
+    previewLoadingSavedFileId.value = null;
+  }
+}
+
 async function buildPreservedFiles() {
   if (!currentSubmission.value || !authStore.token) {
     return [] as File[];
@@ -1196,6 +1401,7 @@ onBeforeUnmount(() => {
   if (draftPersistTimer !== null) {
     window.clearTimeout(draftPersistTimer);
   }
+  resetFilePreviewState();
 });
 </script>
 
@@ -1346,6 +1552,55 @@ onBeforeUnmount(() => {
 
 .file-name {
   font-weight: 600;
+}
+
+.file-preview-stage {
+  min-height: 320px;
+}
+
+.file-preview-frame {
+  width: 100%;
+  min-height: 68vh;
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.file-preview-image {
+  display: block;
+  max-width: 100%;
+  max-height: 68vh;
+  margin: 0 auto;
+  border-radius: 12px;
+}
+
+.file-preview-text {
+  margin: 0;
+  max-height: 68vh;
+  overflow: auto;
+  padding: 16px;
+  border-radius: 12px;
+  background: rgba(67, 109, 185, 0.08);
+  color: #1f2a44;
+  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.file-preview-fallback {
+  min-height: 320px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--ls-muted);
+}
+
+.file-preview-fallback p {
+  margin: 0;
 }
 
 .full-width {
