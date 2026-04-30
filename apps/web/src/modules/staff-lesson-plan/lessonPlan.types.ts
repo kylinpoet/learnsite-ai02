@@ -12,7 +12,7 @@ export type PlanSummary = {
     lesson_no: number;
     unit_title: string;
     book_name: string;
-  };
+  } | null;
   progress: {
     pending_count: number;
     completed_count: number;
@@ -153,6 +153,16 @@ export type TaskHtmlPromptDialogState = {
   slot: TaskAssetSlot;
   template_id: string;
   custom_prompt: string;
+  provider_id: number | null;
+  stream_enabled: boolean;
+  thinking_enabled: boolean;
+  knowledge_base_ids: string[];
+};
+
+export type TaskHtmlPromptConversationMessage = {
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
 };
 
 export type TaskHtmlPromptGenerationStatus = {
@@ -161,8 +171,40 @@ export type TaskHtmlPromptGenerationStatus = {
   provider_mode: string;
   warning: string;
   error_message: string;
+  html_source: string;
   attempt: number;
   total_attempts: number;
+  stream_enabled: boolean;
+  thinking_enabled: boolean;
+  received_chars: number;
+};
+
+export type TaskHtmlPromptProviderOption = {
+  id: number;
+  name: string;
+  provider_type: string;
+  base_url: string;
+  model_name: string;
+  is_default: boolean;
+};
+
+export type TaskHtmlPromptKnowledgeBaseOption = {
+  id: string;
+  name: string;
+  description: string;
+  scopes: Array<'general' | 'lesson'>;
+};
+
+export type TaskHtmlPromptAssistantBootstrap = {
+  enabled: boolean;
+  providers: TaskHtmlPromptProviderOption[];
+  active_provider: TaskHtmlPromptProviderOption | null;
+  knowledge_bases: TaskHtmlPromptKnowledgeBaseOption[];
+  default_knowledge_base_ids: Record<'general' | 'lesson', string[]>;
+  capabilities: {
+    streaming?: boolean;
+    thinking?: boolean;
+  };
 };
 
 export type TaskTemplateFormState = {

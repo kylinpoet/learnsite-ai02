@@ -1,5 +1,7 @@
+import csv
 import re
 from datetime import datetime
+from io import StringIO
 from typing import Literal
 from urllib.parse import quote
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -275,6 +277,146 @@ def serialize_teacher_submission(submission: Submission) -> dict:
         "file_count": len(submission.files),
         "files": [serialize_submission_file(file) for file in submission.files],
     }
+
+
+def build_teacher_overview_task_submissions(
+    staff: User,
+    db: Session,
+) -> tuple[list[tuple[Task, list[Submission]]], list[Submission]]:
+    accessible_student_ids = accessible_student_ids_for_staff(staff, db)
+    if not accessible_student_ids:
+        return [], []
+
+    tasks = db.scalars(
+        select(Task)
+        .where(Task.submissions.any())
+        .options(
+            selectinload(Task.lesson_plan)
+            .selectinload(LessonPlan.lesson)
+            .selectinload(CurriculumLesson.unit),
+            selectinload(Task.submissions)
+            .selectinload(Submission.student)
+            .selectinload(User.student_profile)
+            .selectinload(StudentProfile.school_class),
+        )
+    ).all()
+    tasks.sort(key=lambda item: item.sort_order)
+    tasks.sort(key=lambda item: (item.lesson_plan.assigned_date, item.lesson_plan.id), reverse=True)
+
+    task_submissions: list[tuple[Task, list[Submission]]] = []
+    all_submissions: list[Submission] = []
+    for task in tasks:
+        filtered_submissions = [item for item in task.submissions if item.student_id in accessible_student_ids]
+        if not filtered_submissions:
+            continue
+        task_submissions.append((task, filtered_submissions))
+        all_submissions.extend(filtered_submissions)
+
+    return task_submissions, all_submissions
+
+
+def serialize_teacher_student_summary(submissions: list[Submission]) -> dict:
+    grouped_submissions: dict[int, list[Submission]] = {}
+    for submission in submissions:
+        grouped_submissions.setdefault(submission.student_id, []).append(submission)
+
+    items: list[dict] = []
+    for student_id, student_submissions in grouped_submissions.items():
+        student = student_submissions[0].student
+        profile = student.student_profile
+        school_class = profile.school_class if profile else None
+        student_no = profile.student_no if profile else student.username
+        latest_time = max(
+            (latest_submission_time(item) for item in student_submissions),
+            default=None,
+        )
+        reviewed_count = sum(1 for item in student_submissions if item.submit_status == "reviewed")
+        pending_count = sum(1 for item in student_submissions if item.submit_status != "reviewed")
+        scored_items = [item.score for item in student_submissions if item.score is not None]
+
+        items.append(
+            {
+                "student_id": student_id,
+                "student_name": student.display_name,
+                "student_no": student_no,
+                "class_name": school_class.class_name if school_class else "",
+                "submission_count": len(student_submissions),
+                "reviewed_count": reviewed_count,
+                "pending_count": pending_count,
+                "scored_count": len(scored_items),
+                "average_score": round(sum(scored_items) / len(scored_items), 1) if scored_items else None,
+                "latest_submitted_at": latest_time.isoformat() if latest_time else None,
+            }
+        )
+
+    items.sort(key=lambda item: (item["class_name"], item["student_no"], item["student_name"]))
+    scored_submission_scores = [item.score for item in submissions if item.score is not None]
+    scored_student_average_scores = [
+        item["average_score"]
+        for item in items
+        if item.get("average_score") is not None
+    ]
+
+    return {
+        "summary": {
+            "student_count": len(items),
+            "submission_count": len(submissions),
+            "reviewed_count": sum(1 for item in submissions if item.submit_status == "reviewed"),
+            "pending_count": sum(1 for item in submissions if item.submit_status != "reviewed"),
+            "scored_student_count": len(scored_student_average_scores),
+            "average_score": (
+                round(sum(scored_submission_scores) / len(scored_submission_scores), 1)
+                if scored_submission_scores
+                else None
+            ),
+            "average_student_score": (
+                round(sum(scored_student_average_scores) / len(scored_student_average_scores), 1)
+                if scored_student_average_scores
+                else None
+            ),
+        },
+        "items": items,
+    }
+
+
+def build_teacher_student_summary_csv(items: list[dict]) -> bytes:
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "序号",
+            "班级",
+            "学号",
+            "姓名",
+            "作品总数",
+            "已评阅",
+            "待评阅",
+            "计分作品数",
+            "平均分",
+            "最近提交时间",
+        ]
+    )
+    for index, item in enumerate(items, start=1):
+        writer.writerow(
+            [
+                index,
+                item.get("class_name") or "",
+                item.get("student_no") or "",
+                item.get("student_name") or "",
+                item.get("submission_count") or 0,
+                item.get("reviewed_count") or 0,
+                item.get("pending_count") or 0,
+                item.get("scored_count") or 0,
+                item.get("average_score") if item.get("average_score") is not None else "",
+                (item.get("latest_submitted_at") or "").replace("T", " ")[:16],
+            ]
+        )
+    return ("\ufeff" + output.getvalue()).encode("utf-8")
+
+
+def build_teacher_student_summary_filename(student_count: int) -> str:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"teacher_student_score_summary_{student_count}_{timestamp}.csv"
 
 
 def normalize_teacher_comment(teacher_comment: str | None) -> str:
@@ -610,36 +752,13 @@ def teacher_submissions_overview(
     staff: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    accessible_student_ids = accessible_student_ids_for_staff(staff, db)
-    tasks = db.scalars(
-        select(Task)
-        .where(Task.submissions.any())
-        .options(
-            selectinload(Task.lesson_plan)
-            .selectinload(LessonPlan.lesson)
-            .selectinload(CurriculumLesson.unit),
-            selectinload(Task.submissions),
-        )
-    ).all()
-    tasks.sort(key=lambda item: item.sort_order)
-    tasks.sort(key=lambda item: (item.lesson_plan.assigned_date, item.lesson_plan.id), reverse=True)
-
-    all_submissions = [
-        submission
-        for task in tasks
-        for submission in task.submissions
-        if submission.student_id in accessible_student_ids
-    ]
-    task_payloads = []
-    for task in tasks:
-        filtered_submissions = [item for item in task.submissions if item.student_id in accessible_student_ids]
-        if not filtered_submissions:
-            continue
-        task_payloads.append(serialize_teacher_task_item(task, filtered_submissions))
+    task_submissions, all_submissions = build_teacher_overview_task_submissions(staff, db)
+    task_payloads = [serialize_teacher_task_item(task, submissions) for task, submissions in task_submissions]
     reviewed_count = sum(1 for item in all_submissions if item.submit_status == "reviewed")
     pending_count = sum(1 for item in all_submissions if item.submit_status != "reviewed")
     recommended_count = sum(1 for item in all_submissions if is_recommended_submission(item))
     scored_items = [item.score for item in all_submissions if item.score is not None]
+    student_summary = serialize_teacher_student_summary(all_submissions)
 
     return ApiResponse(
         data={
@@ -652,7 +771,30 @@ def teacher_submissions_overview(
                 "average_score": round(sum(scored_items) / len(scored_items), 1) if scored_items else None,
             },
             "items": task_payloads,
+            "student_summary": student_summary,
         }
+    )
+
+
+@router.get("/teacher/students/export")
+def export_teacher_student_summary(
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> Response:
+    _, all_submissions = build_teacher_overview_task_submissions(staff, db)
+    student_summary = serialize_teacher_student_summary(all_submissions)
+    student_items = student_summary["items"]
+    if not student_items:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前没有可导出的学生成绩汇总")
+
+    filename = build_teacher_student_summary_filename(len(student_items))
+    csv_content = build_teacher_student_summary_csv(student_items)
+    return Response(
+        content=csv_content,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": build_content_disposition(filename, "attachment"),
+        },
     )
 
 

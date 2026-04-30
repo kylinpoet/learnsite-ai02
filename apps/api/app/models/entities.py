@@ -627,13 +627,13 @@ class LessonPlan(TimestampMixin, Base):
     __tablename__ = "lesson_plans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
-    lesson_id: Mapped[int] = mapped_column(ForeignKey("curriculum_lessons.id"), nullable=False)
+    lesson_id: Mapped[int | None] = mapped_column(ForeignKey("curriculum_lessons.id"), nullable=True)
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="published")
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
 
-    lesson: Mapped[CurriculumLesson] = relationship(back_populates="lesson_plans")
+    lesson: Mapped[CurriculumLesson | None] = relationship(back_populates="lesson_plans")
     tasks: Mapped[list[Task]] = relationship(back_populates="lesson_plan")
     progresses: Mapped[list[StudentLessonPlanProgress]] = relationship(back_populates="lesson_plan")
     classroom_sessions: Mapped[list[ClassroomSession]] = relationship(back_populates="lesson_plan")

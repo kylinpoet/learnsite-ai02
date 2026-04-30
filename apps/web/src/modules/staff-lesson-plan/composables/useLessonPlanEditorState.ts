@@ -373,7 +373,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
         : [createEmptyTask()];
 
     planForm.value = {
-      lesson_id: plan.lesson.id,
+      lesson_id: plan.lesson?.id ?? null,
       title: plan.title,
       content: plan.content || '',
       content_mode: shouldUseSourceMode(plan.content) ? 'source' : 'visual',

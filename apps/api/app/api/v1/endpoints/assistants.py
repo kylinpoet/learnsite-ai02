@@ -104,6 +104,7 @@ class CompanionRespondPayload(BaseModel):
     message: str = Field(default="", max_length=12000)
     provider_id: int | None = Field(default=None, ge=1)
     stream: bool = False
+    thinking_enabled: bool = False
     knowledge_base_ids: list[str] = Field(default_factory=list, max_length=10)
     course_id: int | None = Field(default=None, ge=1)
     task_id: int | None = Field(default=None, ge=1)
@@ -975,8 +976,97 @@ def extract_provider_stream_text(content: Any) -> str:
     return ""
 
 
+def extract_provider_reasoning(content: Any) -> str:
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, dict):
+        for key in ("reasoning_content", "reasoning", "thinking", "reasoning_text"):
+            value = content.get(key)
+            if value is None:
+                continue
+            text = extract_provider_reasoning(value)
+            if text:
+                return text
+        item_type = str(content.get("type") or "").strip().lower()
+        if item_type in {"reasoning", "thinking"}:
+            text = content.get("text")
+            if isinstance(text, str) and text.strip():
+                return text.strip()
+        text = content.get("text")
+        if isinstance(text, str) and text.strip() and "content" not in content:
+            return text.strip()
+        return ""
+
+    if isinstance(content, list):
+        texts: list[str] = []
+        for item in content:
+            text = extract_provider_reasoning(item)
+            if text:
+                texts.append(text)
+        return "\n".join(texts).strip()
+
+    return ""
+
+
+def extract_provider_stream_reasoning(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, dict):
+        for key in ("reasoning_content", "reasoning", "thinking", "reasoning_text"):
+            value = content.get(key)
+            if value is None:
+                continue
+            text = extract_provider_stream_reasoning(value)
+            if text:
+                return text
+        item_type = str(content.get("type") or "").strip().lower()
+        if item_type in {"reasoning", "thinking"}:
+            text = content.get("text")
+            if isinstance(text, str):
+                return text
+        text = content.get("text")
+        if isinstance(text, str) and "content" not in content:
+            return text
+        return ""
+
+    if isinstance(content, list):
+        texts: list[str] = []
+        for item in content:
+            text = extract_provider_stream_reasoning(item)
+            if text:
+                texts.append(text)
+        return "".join(texts)
+
+    return ""
+
+
 def sse_event(event_name: str, data: dict[str, Any]) -> str:
     return f"event: {event_name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def iter_stream_text_fragments(text: str, *, min_chunk_size: int = 6, max_chunk_size: int = 18):
+    normalized = text or ""
+    if not normalized:
+        return
+
+    break_chars = {" ", "\n", "\t", ",", ".", "!", "?", ";", ":", "，", "。", "！", "？", "；", "：", "、"}
+    start = 0
+    text_length = len(normalized)
+
+    while start < text_length:
+        end = min(start + max_chunk_size, text_length)
+        if end < text_length:
+            boundary = end
+            while boundary > start + min_chunk_size and normalized[boundary - 1] not in break_chars:
+                boundary -= 1
+            if boundary > start + min_chunk_size:
+                end = boundary
+        fragment = normalized[start:end]
+        if fragment:
+            yield fragment
+        start = end
 
 
 def build_runtime_generation_params(runtime_settings: dict[str, Any]) -> dict[str, Any]:
@@ -1000,8 +1090,9 @@ def build_runtime_generation_params(runtime_settings: dict[str, Any]) -> dict[st
     if isinstance(frequency_penalty, (int, float)):
         payload["frequency_penalty"] = float(frequency_penalty)
 
-    if bool(runtime_settings.get("thinking_enabled", False)):
-        payload["thinking"] = True
+    payload["thinking"] = {
+        "type": "enabled" if bool(runtime_settings.get("thinking_enabled", False)) else "disabled"
+    }
 
     return payload
 
@@ -1015,7 +1106,7 @@ def call_openai_compatible_provider(
     attachments: list[CompanionAttachmentPayload],
     runtime_settings: dict[str, Any],
     remote_proxy_url: str | None = None,
-) -> tuple[str | None, str | None]:
+) -> tuple[str | None, str | None, str | None]:
     payload = {
         "model": provider.model_name,
         "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
@@ -1058,7 +1149,7 @@ def call_openai_compatible_provider(
         reason = extract_provider_error_message(body, status_code=exc.code)
         if not reason:
             reason = str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
-        return None, reason
+        return None, reason, None
     except (urllib_error.URLError, TimeoutError, ValueError) as exc:
         logger.warning(
             "[AI_PROVIDER_REQUEST] completion_transport_error provider_id=%s provider_name=%s url=%s error=%s",
@@ -1067,17 +1158,18 @@ def call_openai_compatible_provider(
             request_url,
             str(exc),
         )
-        return None, str(exc)
+        return None, str(exc), None
 
     choices = raw_payload.get("choices") or []
     if not choices:
-        return None, "Provider returned an empty completion result"
+        return None, "Provider returned an empty completion result", None
 
     message = choices[0].get("message") or {}
     content = extract_provider_text(message.get("content"))
     if not content:
-        return None, "Provider returned an empty message"
-    return content, None
+        return None, "Provider returned an empty message", None
+    reasoning_content = extract_provider_reasoning(message)
+    return content, None, reasoning_content or None
 
 
 def call_openai_compatible_provider_stream(
@@ -1118,11 +1210,11 @@ def call_openai_compatible_provider_stream(
                 raw_payload = json.loads(response.read().decode("utf-8"))
                 choices = raw_payload.get("choices") or []
                 if not choices:
-                    return None, "Provider returned an empty completion result"
+                    return None, "Provider returned an empty completion result", None
                 message = choices[0].get("message") or {}
                 content = extract_provider_text(message.get("content"))
                 if not content:
-                    return None, "Provider returned an empty message"
+                    return None, "Provider returned an empty message", None
                 logger.warning(
                     "[AI_PROVIDER_REQUEST] stream_fallback_to_json provider_id=%s provider_name=%s mode=%s url=%s",
                     provider.id,
@@ -1130,9 +1222,11 @@ def call_openai_compatible_provider_stream(
                     request_mode,
                     request_url,
                 )
-                return content, None
+                reasoning_content = extract_provider_reasoning(message)
+                return content, None, reasoning_content or None
 
             chunks: list[str] = []
+            reasoning_chunks: list[str] = []
             for raw_line in response:
                 line = raw_line.decode("utf-8", errors="ignore").strip()
                 if not line or not line.startswith("data:"):
@@ -1155,10 +1249,15 @@ def call_openai_compatible_provider_stream(
                 if content:
                     chunks.append(content)
                     yield ("chunk", content)
+                reasoning = extract_provider_stream_reasoning(delta)
+                if reasoning:
+                    reasoning_chunks.append(reasoning)
+                    yield ("reasoning", reasoning)
 
             full_text = "".join(chunks).strip()
-            if not full_text:
-                return None, "Provider returned an empty stream completion result"
+            full_reasoning = "".join(reasoning_chunks).strip() or None
+            if not full_text and not full_reasoning:
+                return None, "Provider returned an empty stream completion result", None
             logger.warning(
                 "[AI_PROVIDER_REQUEST] stream_success provider_id=%s provider_name=%s mode=%s url=%s chunk_count=%s",
                 provider.id,
@@ -1167,7 +1266,7 @@ def call_openai_compatible_provider_stream(
                 request_url,
                 len(chunks),
             )
-            return full_text, None
+            return full_text, None, full_reasoning
     except urllib_error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="ignore")
         logger.warning(
@@ -1181,7 +1280,7 @@ def call_openai_compatible_provider_stream(
         warning = extract_provider_error_message(body, status_code=exc.code)
         if not warning:
             warning = body or str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
-        return None, warning
+        return None, warning, None
     except (urllib_error.URLError, TimeoutError, ValueError) as exc:
         logger.warning(
             "[AI_PROVIDER_REQUEST] stream_transport_error provider_id=%s provider_name=%s url=%s error=%s",
@@ -1190,7 +1289,7 @@ def call_openai_compatible_provider_stream(
             request_url,
             str(exc),
         )
-        return None, str(exc)
+        return None, str(exc), None
 
 
 def build_preview_reply(
@@ -1356,6 +1455,9 @@ def companion_respond(
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
     runtime_settings = read_assistant_runtime_settings(db)
+    thinking_requested = bool(payload.thinking_enabled)
+    effective_runtime_settings = dict(runtime_settings)
+    effective_runtime_settings["thinking_enabled"] = thinking_requested
     system_settings = read_system_settings(db)
     platform_name = str(system_settings.get("platform_name") or "OW³教学评AI平台")
     remote_proxy_url = str(system_settings.get("remote_proxy_url") or "").strip() or None
@@ -1372,20 +1474,23 @@ def companion_respond(
 
     provider_mode = "preview"
     provider_warning: str | None = None
-    reply_text: str | None = None
+    raw_reply_text: str | None = None
+    reply_text = ""
+    reasoning_content: str | None = None
 
     if provider is not None and not provider_is_demo(provider):
-        reply_text, provider_warning = call_openai_compatible_provider(
+        raw_reply_text, provider_warning, reasoning_content = call_openai_compatible_provider(
             provider,
             system_prompt=system_prompt,
             user_prompt=user_prompt,
             history=payload.conversation,
             attachments=payload.attachments,
-            runtime_settings=runtime_settings,
+            runtime_settings=effective_runtime_settings,
             remote_proxy_url=remote_proxy_url,
         )
-        if reply_text:
+        if raw_reply_text:
             provider_mode = "live"
+            reply_text = raw_reply_text
 
     if not reply_text:
         reply_text = build_preview_reply(
@@ -1397,6 +1502,7 @@ def companion_respond(
             payload.attachments,
             provider_warning,
         )
+        reasoning_content = None
 
     provider_name = provider.name if provider is not None else "内置预览学伴"
     return ApiResponse(
@@ -1408,6 +1514,7 @@ def companion_respond(
                 "provider_name": provider_name,
                 "provider_mode": provider_mode,
                 "warning": provider_warning,
+                "reasoning_content": reasoning_content,
             },
             "active_provider": serialize_provider(provider) if provider is not None else None,
             "context": context,
@@ -1463,6 +1570,9 @@ def companion_respond_stream(
         ]
 
     selected_kbs = selected_knowledge_bases(preferred_kb_ids, scope)
+    thinking_requested = bool(payload.thinking_enabled)
+    effective_runtime_settings = dict(runtime_settings)
+    effective_runtime_settings["thinking_enabled"] = thinking_requested
     system_settings = read_system_settings(db)
     platform_name = str(system_settings.get("platform_name") or "OW³教学评AI平台")
     remote_proxy_url = str(system_settings.get("remote_proxy_url") or "").strip() or None
@@ -1481,8 +1591,10 @@ def companion_respond_stream(
     def generate():
         provider_mode = "preview"
         provider_warning: str | None = None
-        reply_text: str | None = None
-        emitted_token = False
+        reply_text = ""
+        reasoning_content: str | None = None
+        visible_answer = ""
+        visible_reasoning = ""
 
         if provider is not None and not provider_is_demo(provider):
             stream_iterator = call_openai_compatible_provider_stream(
@@ -1491,26 +1603,43 @@ def companion_respond_stream(
                 user_prompt=user_prompt,
                 history=payload.conversation,
                 attachments=payload.attachments,
-                runtime_settings=runtime_settings,
+                runtime_settings=effective_runtime_settings,
                 remote_proxy_url=remote_proxy_url,
             )
             while True:
                 try:
                     event_type, event_payload = next(stream_iterator)
                     if event_type == "chunk" and isinstance(event_payload, str) and event_payload:
-                        emitted_token = True
-                        yield sse_event("token", {"text": event_payload})
+                        reply_text = f"{reply_text}{event_payload}"
+                        visible_answer = reply_text
+                        for fragment in iter_stream_text_fragments(event_payload):
+                            yield sse_event("token", {"text": fragment})
+                    if event_type == "reasoning" and isinstance(event_payload, str) and event_payload:
+                        reasoning_content = f"{reasoning_content or ''}{event_payload}"
+                        visible_reasoning = reasoning_content
+                        for fragment in iter_stream_text_fragments(event_payload):
+                            yield sse_event("reasoning", {"text": fragment})
                 except StopIteration as stop:
-                    if isinstance(stop.value, tuple) and len(stop.value) == 2:
-                        reply_text, provider_warning = stop.value
+                    if isinstance(stop.value, tuple) and len(stop.value) == 3:
+                        final_reply_text, provider_warning, final_reasoning = stop.value
                     else:
-                        reply_text, provider_warning = None, "Provider stream terminated unexpectedly"
+                        final_reply_text, provider_warning, final_reasoning = (
+                            None,
+                            "Provider stream terminated unexpectedly",
+                            None,
+                        )
+                    reply_text = final_reply_text or reply_text
+                    reasoning_content = final_reasoning or reasoning_content
                     break
 
             if reply_text:
                 provider_mode = "live"
-                if not emitted_token:
-                    yield sse_event("token", {"text": reply_text})
+                if reply_text and len(reply_text) > len(visible_answer):
+                    for fragment in iter_stream_text_fragments(reply_text[len(visible_answer):]):
+                        yield sse_event("token", {"text": fragment})
+                if reasoning_content and len(reasoning_content) > len(visible_reasoning):
+                    for fragment in iter_stream_text_fragments(reasoning_content[len(visible_reasoning):]):
+                        yield sse_event("reasoning", {"text": fragment})
 
         if not reply_text:
             reply_text = build_preview_reply(
@@ -1522,7 +1651,9 @@ def companion_respond_stream(
                 payload.attachments,
                 provider_warning,
             )
-            yield sse_event("token", {"text": reply_text})
+            for fragment in iter_stream_text_fragments(reply_text):
+                yield sse_event("token", {"text": fragment})
+            reasoning_content = None
 
         done_payload = {
             "reply": {
@@ -1532,6 +1663,7 @@ def companion_respond_stream(
                 "provider_name": provider_name,
                 "provider_mode": provider_mode,
                 "warning": provider_warning,
+                "reasoning_content": reasoning_content,
             },
             "active_provider": serialize_provider(provider) if provider is not None else None,
             "context": context,

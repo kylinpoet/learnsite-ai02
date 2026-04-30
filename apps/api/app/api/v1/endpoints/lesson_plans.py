@@ -91,7 +91,7 @@ class LessonPlanTaskPayload(BaseModel):
 
 
 class LessonPlanUpsertPayload(BaseModel):
-    lesson_id: int = Field(ge=1)
+    lesson_id: int | None = Field(default=None, ge=1)
     title: str = Field(min_length=1, max_length=120)
     content: str | None = Field(default=None, max_length=RICH_TEXT_MAX_LENGTH)
     assigned_date: date
@@ -639,12 +639,18 @@ def apply_plan_payload(plan: LessonPlan, payload: LessonPlanUpsertPayload) -> No
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="请填写学案标题",
         )
+    normalized_status = normalize_status(payload.status)
+    if payload.lesson_id is None and normalized_status != "draft":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="暂未绑定课次的学案只能保存为草稿，请先绑定课次后再发布或开课。",
+        )
 
     plan.title = title
     plan.content = normalize_rich_text(payload.content)
     plan.lesson_id = payload.lesson_id
     plan.assigned_date = payload.assigned_date
-    plan.status = normalize_status(payload.status)
+    plan.status = normalized_status
 
 
 def delete_task_related_records(task_ids: list[int], db: Session) -> None:
@@ -743,6 +749,15 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
     completed_count = sum(1 for item in plan.progresses if item.progress_status == "completed")
     preview_image_url = extract_plan_preview_image_url(plan.content)
     content_excerpt = build_plan_content_excerpt(plan.content)
+    lesson_payload = None
+    if plan.lesson is not None:
+        lesson_payload = {
+            "id": plan.lesson.id,
+            "title": plan.lesson.title,
+            "lesson_no": plan.lesson.lesson_no,
+            "unit_title": plan.lesson.unit.title,
+            "book_name": plan.lesson.unit.book.name,
+        }
     return {
         "id": plan.id,
         "title": plan.title,
@@ -751,13 +766,7 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
         "task_count": len(plan.tasks),
         "preview_image_url": preview_image_url,
         "content_excerpt": content_excerpt,
-        "lesson": {
-            "id": plan.lesson.id,
-            "title": plan.lesson.title,
-            "lesson_no": plan.lesson.lesson_no,
-            "unit_title": plan.lesson.unit.title,
-            "book_name": plan.lesson.unit.book.name,
-        },
+        "lesson": lesson_payload,
         "progress": {
             "pending_count": pending_count,
             "completed_count": completed_count,
@@ -785,6 +794,11 @@ def serialize_staff_plan_detail(plan: LessonPlan, request: Request | None = None
 
 
 def build_default_plan_content(plan: LessonPlan) -> str:
+    if plan.lesson is None:
+        return (
+            f"<p>欢迎进入《{plan.title}》。</p>"
+            "<p>这份学案暂未绑定课次，教师可以先保存草稿，后续再绑定到课程体系中。</p>"
+        )
     return (
         f"<p>欢迎进入《{plan.title}》。</p>"
         f"<p>本课次属于“{plan.lesson.unit.title} / {plan.lesson.title}”，教师可以在这里发布导读、步骤说明、图片或参考资料。</p>"
@@ -1055,7 +1069,8 @@ def create_lesson_plan(
     _: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    load_lesson(payload.lesson_id, db)
+    if payload.lesson_id is not None:
+        load_lesson(payload.lesson_id, db)
 
     plan = LessonPlan(
         id=next_plan_id(db),
@@ -1094,7 +1109,8 @@ def update_lesson_plan(
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
 
-    load_lesson(payload.lesson_id, db)
+    if payload.lesson_id is not None:
+        load_lesson(payload.lesson_id, db)
     apply_plan_payload(plan, payload)
     sync_plan_tasks(plan, payload.tasks, db)
     db.commit()
@@ -1137,6 +1153,11 @@ def publish_lesson_plan(
     plan = load_plan(plan_id, db)
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
+    if plan.lesson_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="暂未绑定课次的学案只能保存为草稿，请先绑定课次后再发布或开课。",
+        )
     if not plan.tasks:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1804,7 +1825,7 @@ def lesson_plan_detail(
             "title": plan.title,
             "content": plan.content or build_default_plan_content(plan),
             "lesson_id": plan.lesson_id,
-            "lesson_title": plan.lesson.title,
+            "lesson_title": plan.lesson.title if plan.lesson else "暂未绑定课次",
             "tasks": [
                 {
                     "id": task.id,

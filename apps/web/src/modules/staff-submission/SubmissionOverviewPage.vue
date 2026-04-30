@@ -52,7 +52,62 @@
               <p class="metric-value">{{ overview?.summary.pending_count || 0 }}</p>
               <p class="metric-note">学生已提交但教师尚未完成评阅的作品数量。</p>
             </article>
+            <article class="metric-tile">
+              <p class="metric-label">提交学生数</p>
+              <p class="metric-value">{{ overview?.student_summary?.summary.student_count || 0 }}</p>
+              <p class="metric-note">按学生聚合统计作品与评分，便于快速查看班级学习表现。</p>
+            </article>
           </div>
+
+          <el-card class="soft-card">
+            <template #header>
+              <div class="toolbar-row">
+                <div class="info-row">
+                  <span>学生成绩汇总</span>
+                  <el-tag round type="info">
+                    计分学生 {{ overview?.student_summary?.summary.scored_student_count || 0 }} / {{
+                      overview?.student_summary?.summary.student_count || 0
+                    }}
+                  </el-tag>
+                  <el-tag round type="success">
+                    人均 {{ overview?.student_summary?.summary.average_student_score ?? '--' }}
+                  </el-tag>
+                </div>
+                <el-button
+                  :disabled="!studentSummaryItems.length"
+                  :loading="isExportingStudentSummary"
+                  plain
+                  @click="downloadStudentSummary"
+                >
+                  导出学生成绩汇总
+                </el-button>
+              </div>
+            </template>
+
+            <el-empty
+              v-if="!studentSummaryItems.length"
+              description="当前还没有可汇总的学生作品记录。"
+            />
+
+            <el-table v-else :data="studentSummaryItems" stripe>
+              <el-table-column label="班级" min-width="140" prop="class_name" />
+              <el-table-column label="学号" min-width="120" prop="student_no" />
+              <el-table-column label="学生" min-width="120" prop="student_name" />
+              <el-table-column label="作品数" min-width="88" prop="submission_count" />
+              <el-table-column label="已评阅" min-width="88" prop="reviewed_count" />
+              <el-table-column label="待评阅" min-width="88" prop="pending_count" />
+              <el-table-column label="平均分" min-width="100">
+                <template #default="{ row }">
+                  {{ row.average_score ?? '--' }}
+                </template>
+              </el-table-column>
+              <el-table-column label="最近提交" min-width="170">
+                <template #default="{ row }">
+                  {{ formatDateTime(row.latest_submitted_at) }}
+                </template>
+              </el-table-column>
+            </el-table>
+          </el-card>
 
           <el-card class="soft-card">
             <template #header>
@@ -158,8 +213,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
+import { ElMessage } from 'element-plus';
 
-import { apiGet } from '@/api/http';
+import { apiGet, apiGetBlob } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 
 defineProps<{
@@ -185,6 +241,32 @@ type OverviewItem = {
   latest_submitted_at: string | null;
 };
 
+type StudentSummaryItem = {
+  student_id: number;
+  student_name: string;
+  student_no: string;
+  class_name: string;
+  submission_count: number;
+  reviewed_count: number;
+  pending_count: number;
+  scored_count: number;
+  average_score: number | null;
+  latest_submitted_at: string | null;
+};
+
+type StudentSummaryPayload = {
+  summary: {
+    student_count: number;
+    submission_count: number;
+    reviewed_count: number;
+    pending_count: number;
+    scored_student_count: number;
+    average_score: number | null;
+    average_student_score: number | null;
+  };
+  items: StudentSummaryItem[];
+};
+
 type OverviewPayload = {
   summary: {
     task_count: number;
@@ -194,6 +276,7 @@ type OverviewPayload = {
     average_score: number | null;
   };
   items: OverviewItem[];
+  student_summary: StudentSummaryPayload;
 };
 
 const router = useRouter();
@@ -203,9 +286,11 @@ const onlyPendingTasks = ref(true);
 const selectedCourse = ref('');
 const selectedLesson = ref('');
 const isLoading = ref(true);
+const isExportingStudentSummary = ref(false);
 const errorMessage = ref('');
 
 const overviewItems = computed(() => overview.value?.items || []);
+const studentSummaryItems = computed(() => overview.value?.student_summary?.items || []);
 
 const courseOptions = computed(() => {
   const options = new Set<string>();
@@ -258,6 +343,54 @@ function resetFilters() {
   onlyPendingTasks.value = true;
   selectedCourse.value = '';
   selectedLesson.value = '';
+}
+
+function extractFilename(disposition: string | null, fallback: string) {
+  if (!disposition) {
+    return fallback;
+  }
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch {
+      return utf8Match[1];
+    }
+  }
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch?.[1] || fallback;
+}
+
+async function downloadStudentSummary() {
+  if (!authStore.token) {
+    ElMessage.warning('请先登录教师账号');
+    return;
+  }
+  if (!studentSummaryItems.value.length) {
+    ElMessage.info('当前没有可导出的学生成绩汇总');
+    return;
+  }
+
+  isExportingStudentSummary.value = true;
+  try {
+    const response = await apiGetBlob('/submissions/teacher/students/export', authStore.token);
+    const blob = await response.blob();
+    const filename = extractFilename(
+      response.headers.get('content-disposition'),
+      'teacher_student_score_summary.csv'
+    );
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success('学生成绩汇总已导出');
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '导出学生成绩汇总失败');
+  } finally {
+    isExportingStudentSummary.value = false;
+  }
 }
 
 async function loadOverview() {

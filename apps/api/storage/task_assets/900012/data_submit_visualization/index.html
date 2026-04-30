@@ -1,0 +1,54 @@
+<main class="shell"><section class="api-box"><p><strong>读取接口：</strong> <span>http://127.0.0.1:5173/api/v1/tasks/900012/data-submit/77a6de7a98396a82e6cf727db050c295b984/records</span></p></section><section class="metrics"><article class="card"><p>提交总数</p><h2 id="record-count">0</h2></article><article class="card"><p>平均分</p><h2 id="average-score">--</h2></article></section><section class="card"><h1>数据提交任务</h1><p id="status">保存学案并进入学生端后，这里会自动读取最新提交记录。</p><table><thead><tr><th><p>提交时间</p></th><th><p>提交者</p></th><th><p>姓名</p></th><th><p>分数</p></th><th><p>备注</p></th></tr></thead><tbody id="records-body"><tr><td colspan="5"><p>暂无数据</p></td></tr></tbody></table></section></main><script>
+      const RECORDS_API_URL = "http://127.0.0.1:5173/api/v1/tasks/900012/data-submit/77a6de7a98396a82e6cf727db050c295b984/records";
+      const statusElement = document.getElementById('status');
+      const bodyElement = document.getElementById('records-body');
+      const countElement = document.getElementById('record-count');
+      const averageElement = document.getElementById('average-score');
+
+      async function loadRecords() {
+        if (!RECORDS_API_URL) {
+          statusElement.textContent = '读取接口尚未生成';
+          return;
+        }
+
+        try {
+          const response = await fetch(RECORDS_API_URL);
+          if (!response.ok) {
+            throw new Error((await response.text()) || '读取失败');
+          }
+          const payload = await response.json();
+          const items = payload.data?.items || [];
+          countElement.textContent = String(items.length);
+          const scores = items
+            .map((item) => Number(item.payload?.score))
+            .filter((value) => !Number.isNaN(value));
+          averageElement.textContent = scores.length
+            ? String((scores.reduce((sum, value) => sum + value, 0) / scores.length).toFixed(1))
+            : '--';
+
+          if (!items.length) {
+            bodyElement.innerHTML = '<tr><td colspan="5">暂无数据</td></tr>';
+            statusElement.textContent = '暂时还没有提交数据';
+            return;
+          }
+
+          bodyElement.innerHTML = items
+            .map((item) => {
+              const payload = item.payload || {};
+              return '<tr>' +
+                '<td>' + (item.created_at || '--') + '</td>' +
+                '<td>' + (item.submitted_by?.display_name || '--') + '</td>' +
+                '<td>' + (payload.student_name || '--') + '</td>' +
+                '<td>' + (payload.score ?? '--') + '</td>' +
+                '<td>' + (payload.note || '--') + '</td>' +
+              '</tr>';
+            })
+            .join('');
+          statusElement.textContent = '已读取最新数据';
+        } catch (error) {
+          statusElement.textContent = error instanceof Error ? error.message : '读取失败，请稍后再试';
+        }
+      }
+
+      loadRecords();
+    </script>

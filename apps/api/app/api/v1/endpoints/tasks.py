@@ -5,6 +5,7 @@ import re
 from datetime import date, datetime
 from math import ceil
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
@@ -648,6 +649,26 @@ def task_request_base_path(request: Request, task_id: int) -> str:
     return f"/api/v1/tasks/{task_id}"
 
 
+def extract_request_origin(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        parsed = urlsplit(value.strip())
+    except ValueError:
+        return None
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+    return f"{parsed.scheme}://{parsed.netloc}"
+
+
+def task_runtime_parent_origin(request: Request) -> str:
+    return (
+        extract_request_origin(request.headers.get("referer"))
+        or extract_request_origin(request.headers.get("origin"))
+        or str(request.base_url).rstrip("/")
+    )
+
+
 def build_task_runtime_context(task: Task, slot: str, asset_path: str, request: Request) -> dict[str, object]:
     config = serialize_task_config(task, request) or {}
     task_base_path = task_request_base_path(request, task.id)
@@ -663,7 +684,7 @@ def build_task_runtime_context(task: Task, slot: str, asset_path: str, request: 
         "taskBasePath": task_base_path,
         "apiBasePath": api_base_path,
         "previewKey": f"task:{task.id}:{slot}",
-        "previewParentOrigin": str(request.base_url).rstrip("/"),
+        "previewParentOrigin": task_runtime_parent_origin(request),
         "config": config,
         "dataSubmit": {
             "endpointToken": str(config.get("endpoint_token") or ""),
@@ -738,13 +759,14 @@ def inject_task_runtime_context(html_text: str, context: dict[str, object]) -> s
         "const nativeFetch=window.fetch.bind(window);"
         "const toAbsoluteUrl=(input)=>{try{if(typeof input==='string'){return new URL(input,window.location.href).toString();}if(input&&typeof input.url==='string'){return new URL(input.url,window.location.href).toString();}}catch(error){}return String(input||'');};"
         "const taskBaseUrl=toAbsoluteUrl(String(context.taskBasePath||''));"
+        "const isTaskRuntimeTarget=(value)=>{try{const targetUrl=new URL(value,window.location.href);const baseUrl=new URL(taskBaseUrl||window.location.href,window.location.href);return Boolean(baseUrl.pathname)&&targetUrl.pathname.startsWith(baseUrl.pathname);}catch(error){return Boolean(taskBaseUrl)&&String(value||'').startsWith(taskBaseUrl);}};"
         "const pendingRuntimeRequests=new Map();"
         "let runtimeRequestSeq=0;"
         "const decodeBase64Bytes=(value)=>{const normalized=String(value||'');if(!normalized){return new Uint8Array();}const binary=window.atob(normalized);const bytes=new Uint8Array(binary.length);for(let index=0;index<binary.length;index+=1){bytes[index]=binary.charCodeAt(index);}return bytes;};"
         "const encodeBodyValue=async (body)=>{if(body==null){return {kind:'empty',value:'',mimeType:''};}if(typeof body==='string'){return {kind:'text',value:body,mimeType:''};}if(typeof URLSearchParams!=='undefined'&&body instanceof URLSearchParams){return {kind:'text',value:body.toString(),mimeType:'application/x-www-form-urlencoded;charset=UTF-8'};}if(typeof Blob!=='undefined'&&body instanceof Blob){const buffer=await body.arrayBuffer();const bytes=new Uint8Array(buffer);let binary='';for(let index=0;index<bytes.length;index+=1){binary+=String.fromCharCode(bytes[index]);}return {kind:'base64',value:window.btoa(binary),mimeType:body.type||''};}return {kind:'text',value:String(body),mimeType:''};};"
         "window.addEventListener('message',(event)=>{const payload=event.data;if(!payload||payload.source!=='learnsite-task-runtime-response'||typeof payload.requestId!=='string'){return;}const pending=pendingRuntimeRequests.get(payload.requestId);if(!pending){return;}pendingRuntimeRequests.delete(payload.requestId);if(payload.error){pending.reject(new Error(String(payload.error||'Runtime request failed')));return;}const bodyBytes=decodeBase64Bytes(payload.bodyBase64||'');const headers=new Headers(payload.headers||{});pending.resolve(new Response(bodyBytes.byteLength?bodyBytes:null,{status:Number(payload.status||200),statusText:String(payload.statusText||''),headers}));});"
-        "const requestParentFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const requestInit=Object.assign({},init||{});const method=String(requestInit.method||((typeof Request!=='undefined'&&input instanceof Request)?input.method:'GET')||'GET').toUpperCase();const baseHeaders=requestInit.headers||((typeof Request!=='undefined'&&input instanceof Request)?input.headers:undefined)||{};const headers=new Headers(baseHeaders);const bodyPayload=await encodeBodyValue(requestInit.body);const requestId=`task-runtime:${previewKey}:${Date.now()}:${runtimeRequestSeq+=1}`;return await new Promise((resolve,reject)=>{pendingRuntimeRequests.set(requestId,{resolve,reject});try{if(window.parent&&window.parent!==window){window.parent.postMessage({source:'learnsite-task-runtime-request',requestId,previewKey,taskId:Number(context.taskId||0),url:absoluteUrl,method,headers:Object.fromEntries(headers.entries()),bodyKind:bodyPayload.kind,bodyValue:bodyPayload.value,bodyMimeType:bodyPayload.mimeType||''},previewParentOrigin||'*');return;}pendingRuntimeRequests.delete(requestId);reject(new Error('Preview parent is unavailable'));}catch(error){pendingRuntimeRequests.delete(requestId);reject(error instanceof Error?error:new Error('Preview parent is unavailable'));}});};"
-        "const runtimeFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const target=typeof input==='string'?input:((input&&input.url)||absoluteUrl);try{const response=taskBaseUrl&&absoluteUrl.startsWith(taskBaseUrl)?await requestParentFetch(input,init):await nativeFetch(input,init);if(response&&response.status>=400){reportPreviewIssue('http_error',`Request returned ${response.status}`,target);}return response;}catch(error){const message=error instanceof Error?error.message:String(error||'Request failed');reportPreviewIssue('fetch_error',message,target);throw error;}};"
+        "const requestParentFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const requestInit=Object.assign({},init||{});const method=String(requestInit.method||((typeof Request!=='undefined'&&input instanceof Request)?input.method:'GET')||'GET').toUpperCase();const baseHeaders=requestInit.headers||((typeof Request!=='undefined'&&input instanceof Request)?input.headers:undefined)||{};const headers=new Headers(baseHeaders);requestInit.headers=headers;if(!(window.parent&&window.parent!==window)){requestInit.credentials=requestInit.credentials||'include';return nativeFetch(input,requestInit);}const bodyPayload=await encodeBodyValue(requestInit.body);const requestId=`task-runtime:${previewKey}:${Date.now()}:${runtimeRequestSeq+=1}`;return await new Promise((resolve,reject)=>{pendingRuntimeRequests.set(requestId,{resolve,reject});try{window.parent.postMessage({source:'learnsite-task-runtime-request',requestId,previewKey,taskId:Number(context.taskId||0),url:absoluteUrl,method,headers:Object.fromEntries(headers.entries()),bodyKind:bodyPayload.kind,bodyValue:bodyPayload.value,bodyMimeType:bodyPayload.mimeType||''},previewParentOrigin||'*');return;}catch(error){pendingRuntimeRequests.delete(requestId);requestInit.credentials=requestInit.credentials||'include';nativeFetch(input,requestInit).then(resolve).catch(reject);}});};"
+        "const runtimeFetch=async (input,init)=>{const absoluteUrl=toAbsoluteUrl(input);const target=typeof input==='string'?input:((input&&input.url)||absoluteUrl);try{const response=isTaskRuntimeTarget(absoluteUrl)?await requestParentFetch(input,init):await nativeFetch(input,init);if(response&&response.status>=400){reportPreviewIssue('http_error',`Request returned ${response.status}`,target);}return response;}catch(error){const message=error instanceof Error?error.message:String(error||'Request failed');reportPreviewIssue('fetch_error',message,target);throw error;}};"
         "window.__LEARNSITE_TASK_HELPERS__={"
         "fetch:runtimeFetch,"
         "async getJson(input,init){"

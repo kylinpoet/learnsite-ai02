@@ -368,12 +368,54 @@ def ensure_seed_student_groups(session) -> None:
 
 def ensure_runtime_schema() -> None:
     inspector = inspect(engine)
+    table_names = inspector.get_table_names()
 
     task_columns = {column["name"] for column in inspector.get_columns("tasks")}
     submission_columns = {column["name"] for column in inspector.get_columns("submissions")}
     student_profile_columns = {column["name"] for column in inspector.get_columns("student_profiles")}
     profile_change_audit_columns = {column["name"] for column in inspector.get_columns("profile_change_audit_logs")}
-    task_template_columns = {column["name"] for column in inspector.get_columns("task_templates")} if "task_templates" in inspector.get_table_names() else set()
+    task_template_columns = {column["name"] for column in inspector.get_columns("task_templates")} if "task_templates" in table_names else set()
+    lesson_plan_columns = inspector.get_columns("lesson_plans") if "lesson_plans" in table_names else []
+    lesson_id_column = next((column for column in lesson_plan_columns if column["name"] == "lesson_id"), None)
+
+    if engine.dialect.name == "sqlite" and lesson_id_column and not lesson_id_column.get("nullable", True):
+        with engine.connect() as connection:
+            connection.execute(text("PRAGMA foreign_keys=OFF"))
+            connection.commit()
+            with connection.begin():
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE lesson_plans_runtime_new (
+                            id INTEGER NOT NULL,
+                            lesson_id INTEGER,
+                            title VARCHAR(120) NOT NULL,
+                            content TEXT,
+                            status VARCHAR(30) NOT NULL,
+                            assigned_date DATE NOT NULL,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                            PRIMARY KEY (id),
+                            FOREIGN KEY(lesson_id) REFERENCES curriculum_lessons (id)
+                        )
+                        """
+                    )
+                )
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO lesson_plans_runtime_new (
+                            id, lesson_id, title, content, status, assigned_date, created_at, updated_at
+                        )
+                        SELECT id, lesson_id, title, content, status, assigned_date, created_at, updated_at
+                        FROM lesson_plans
+                        """
+                    )
+                )
+                connection.execute(text("DROP TABLE lesson_plans"))
+                connection.execute(text("ALTER TABLE lesson_plans_runtime_new RENAME TO lesson_plans"))
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            connection.commit()
 
     with engine.begin() as connection:
         if "submission_scope" not in task_columns:

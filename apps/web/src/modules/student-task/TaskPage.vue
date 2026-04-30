@@ -1606,16 +1606,19 @@ function postTaskRuntimeResponse(target: MessageEventSource | null, message: Tas
   (target as WindowProxy).postMessage(message, '*');
 }
 
-function isAllowedTaskRuntimeUrl(rawUrl: string) {
+function normalizeTaskRuntimeUrl(rawUrl: string) {
   if (!taskDetail.value?.id) {
-    return false;
+    return '';
   }
   try {
     const targetUrl = new URL(rawUrl, window.location.href);
     const taskBaseUrl = new URL(buildAbsoluteApiUrl(`${apiBaseUrl}/tasks/${taskDetail.value.id}/`));
-    return targetUrl.origin === taskBaseUrl.origin && targetUrl.pathname.startsWith(taskBaseUrl.pathname);
+    if (!targetUrl.pathname.startsWith(taskBaseUrl.pathname)) {
+      return '';
+    }
+    return new URL(`${targetUrl.pathname}${targetUrl.search}`, taskBaseUrl.origin).toString();
   } catch {
-    return false;
+    return '';
   }
 }
 
@@ -1642,12 +1645,16 @@ async function encodeTaskRuntimeResponseBody(response: Response) {
 }
 
 async function forwardTaskRuntimeRequest(message: TaskRuntimeRequestMessage) {
+  const normalizedUrl = normalizeTaskRuntimeUrl(message.url);
+  if (!normalizedUrl) {
+    throw new Error('Task runtime request is not allowed');
+  }
   const requestHeaders = new Headers(message.headers || {});
   requestHeaders.delete('authorization');
   requestHeaders.delete('cookie');
 
   const executeFetch = async () =>
-    fetch(message.url, {
+    fetch(normalizedUrl, {
       method: message.method || 'GET',
       headers: requestHeaders,
       body: decodeTaskRuntimeBody(message),
@@ -1673,7 +1680,7 @@ async function handleTaskRuntimeMessage(event: MessageEvent) {
     );
     return;
   }
-  if (!isAllowedTaskRuntimeUrl(message.url)) {
+  if (!normalizeTaskRuntimeUrl(message.url)) {
     postTaskRuntimeResponse(
       event.source,
       toTaskRuntimeResponseMessage(message.requestId, { error: 'Task runtime request is not allowed' })

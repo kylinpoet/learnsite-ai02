@@ -92,12 +92,12 @@
             </el-table-column>
             <el-table-column label="绑定课次" min-width="190">
               <template #default="{ row }">
-                {{ row.lesson.title }}
+                {{ planLessonDisplayLabel(row) }}
               </template>
             </el-table-column>
             <el-table-column label="所属单元" min-width="220">
               <template #default="{ row }">
-                {{ row.lesson.unit_title }}
+                {{ row.lesson?.unit_title || '暂未绑定' }}
               </template>
             </el-table-column>
             <el-table-column label="发布时间" min-width="120" prop="assigned_date" />
@@ -123,6 +123,7 @@
                     v-if="row.status === 'draft'"
                     link
                     type="success"
+                    :disabled="!row.lesson"
                     @click.stop="publishPlan(row.id)"
                   >
                     发布
@@ -154,15 +155,16 @@
               {{
                 editingPlanId
                   ? '可以直接在当前页面修改学案导读、任务与资源，保存后立即同步。'
-                  : '先绑定课次，再补充学案导读与任务，保存后即可继续发布或开课。'
+                  : '可以先不绑定课次保存草稿；绑定课次后即可继续发布或开课。'
               }}
             </p>
           </div>
           <el-space wrap>
             <el-tag round type="info">{{ editingPlanId ? '编辑中' : '新建中' }}</el-tag>
-            <el-tag v-if="editingPlanId && selectedPlanDetail" round>
-              {{ selectedPlanDetail.lesson.title }}
+            <el-tag v-if="editingPlanId && selectedPlanDetail?.lesson" round>
+              {{ selectedPlanDetail.lesson?.title }}
             </el-tag>
+            <el-tag v-else-if="editingPlanId && selectedPlanDetail" round type="warning">未绑定课次</el-tag>
             <el-tag v-if="hasUnsavedChanges" round type="warning">未保存</el-tag>
           </el-space>
         </div>
@@ -188,16 +190,16 @@
             <el-form-item label="保存状态">
               <el-select v-model="planForm.status" class="full-width">
                 <el-option label="草稿" value="draft" />
-                <el-option label="已发布" value="published" />
-                <el-option :disabled="!editingPlanId" label="上课中" value="active" />
-                <el-option :disabled="!editingPlanId" label="已完成" value="completed" />
+                <el-option :disabled="!planForm.lesson_id" label="已发布" value="published" />
+                <el-option :disabled="!editingPlanId || !planForm.lesson_id" label="上课中" value="active" />
+                <el-option :disabled="!editingPlanId || !planForm.lesson_id" label="已完成" value="completed" />
               </el-select>
             </el-form-item>
           </el-col>
         </el-row>
 
         <el-form-item label="绑定课次">
-          <el-select v-model="planForm.lesson_id" class="full-width" filterable placeholder="请选择课次">
+          <el-select v-model="planForm.lesson_id" class="full-width" clearable filterable placeholder="可暂不选择课次">
             <el-option-group
               v-for="group in lessonOptions"
               :key="group.label"
@@ -211,6 +213,13 @@
               />
             </el-option-group>
           </el-select>
+          <p class="section-note">
+            {{
+              planForm.lesson_id
+                ? '已绑定课次，保存后可以发布并用于开课。'
+                : '暂不绑定课次也可以保存草稿；绑定课次后才能发布、开课和进入学生端。'
+            }}
+          </p>
         </el-form-item>
 
         <div class="dialog-task-head editor-task-toolbar">
@@ -285,6 +294,14 @@
 
       </el-form>
 
+      <el-alert
+        v-if="errorMessage"
+        class="editor-save-alert"
+        :closable="false"
+        :title="errorMessage"
+        type="error"
+      />
+
       <div class="plan-editor-actions">
         <el-space wrap>
           <el-button @click="cancelPlanEditing">
@@ -306,10 +323,21 @@
       :selected-template-description="selectedTaskHtmlPromptTemplateDescription"
       :preview-text="taskHtmlPromptPreview"
       :is-generating="generatingTaskHtmlKey === currentTaskHtmlPromptGenerationKey"
+      :is-continuing="continuingTaskHtmlPrompt"
       :generation-status="taskHtmlPromptGenerationStatus"
-      :submit-api-path="taskHtmlPromptDialogSubmitApiPath"
-      :records-api-path="taskHtmlPromptDialogRecordsApiPath"
+      :generated-html-applied="taskHtmlPromptGeneratedHtmlApplied"
+      v-model:followup-prompt="taskHtmlPromptFollowupPrompt"
+      :conversation="taskHtmlPromptConversation"
+      :assistant-bootstrap-loading="taskHtmlPromptAssistantBootstrapLoading"
+      :assistant-bootstrap-error="taskHtmlPromptAssistantBootstrapError"
+      :assistant-providers="taskHtmlPromptAssistantBootstrap?.providers || []"
+      :assistant-knowledge-bases="taskHtmlPromptGeneralKnowledgeBases"
+      :assistant-active-provider="taskHtmlPromptAssistantBootstrap?.active_provider || null"
+      :stream-capability-enabled="taskHtmlPromptStreamCapabilityEnabled"
       @submit="submitTaskHtmlPromptDialog"
+      @continue="continueTaskHtmlPromptDialog"
+      @copy="copyTaskHtmlPromptGeneratedSource"
+      @apply="applyTaskHtmlPromptGeneratedSource"
     />
 
     <TaskTemplateSaveDialog
@@ -429,7 +457,9 @@ import type {
   TaskAssetEditorBindings,
   TaskAssetSlot,
   TaskDataSubmitEndpointBindings,
+  TaskHtmlPromptAssistantBootstrap,
   TaskHtmlPromptBuildOptions,
+  TaskHtmlPromptConversationMessage,
   TaskHtmlPromptDialogState,
   TaskHtmlPromptGenerationStatus,
   TaskSlotEditorTab,
@@ -440,6 +470,8 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
+const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
 
 function generateTaskEndpointToken() {
   const bytes = new Uint8Array(18);
@@ -483,15 +515,25 @@ const taskHtmlPromptCustomizations = ref<Record<TaskAssetSlot, string>>({
   data_submit_form: '',
   data_submit_visualization: '',
 });
+const taskHtmlPromptFollowupPrompt = ref('');
+const taskHtmlPromptConversation = ref<TaskHtmlPromptConversationMessage[]>([]);
+const continuingTaskHtmlPrompt = ref(false);
 const taskHtmlPromptDialogState = ref<TaskHtmlPromptDialogState>({
   task_key: '',
   slot: 'web',
   template_id: 'web_interactive_guide',
   custom_prompt: '',
+  provider_id: null,
+  stream_enabled: true,
+  thinking_enabled: false,
+  knowledge_base_ids: [],
 });
 const taskHtmlDraftRetryCount = 1;
 const reservingTaskIdKeys = ref<string[]>([]);
 const reservingTaskIdPromises = new Map<string, Promise<number | null>>();
+const taskHtmlPromptAssistantBootstrap = ref<TaskHtmlPromptAssistantBootstrap | null>(null);
+const taskHtmlPromptAssistantBootstrapLoading = ref(false);
+const taskHtmlPromptAssistantBootstrapError = ref('');
 
 type TaskIdReservationResponse = {
   task_ids: number[];
@@ -503,11 +545,13 @@ type AssistantHtmlDraftResponse = {
     provider_name?: string | null;
     provider_mode?: string | null;
     warning?: string | null;
+    reasoning_content?: string | null;
   };
-  active_provider?: {
-    name?: string | null;
-    model_name?: string | null;
-  } | null;
+  active_provider?: TaskHtmlPromptAssistantBootstrap['active_provider'];
+};
+
+type StreamTokenPayload = {
+  text?: string;
 };
 
 type HtmlDraftRequestOptions = {
@@ -515,6 +559,11 @@ type HtmlDraftRequestOptions = {
   attempt?: number;
   totalAttempts?: number;
   onStatusChange?: (status: TaskHtmlPromptGenerationStatus) => void;
+  providerId?: number | null;
+  streamEnabled?: boolean;
+  thinkingEnabled?: boolean;
+  knowledgeBaseIds?: string[];
+  conversation?: TaskHtmlPromptConversationMessage[];
 };
 
 function createTaskHtmlPromptGenerationStatus(
@@ -526,8 +575,12 @@ function createTaskHtmlPromptGenerationStatus(
     provider_mode: '',
     warning: '',
     error_message: '',
+    html_source: '',
     attempt: 0,
     total_attempts: taskHtmlDraftRetryCount + 1,
+    stream_enabled: taskHtmlPromptDialogState.value.stream_enabled,
+    thinking_enabled: taskHtmlPromptDialogState.value.thinking_enabled,
+    received_chars: 0,
     ...overrides,
   };
 }
@@ -684,7 +737,6 @@ const {
   taskInlinePreviewSrcdoc,
   handleTaskAssetChange,
   uploadTaskHtmlSource,
-  generateTaskHtmlAndUpload,
 } = useTaskPreviewAssets({
   authToken: computed(() => authStore.token),
   apiBaseUrl,
@@ -770,17 +822,22 @@ const heroSummaryTitle = computed(() => {
 const heroSummarySubtitle = computed(() => {
   if (!isEditorRoute.value) {
     return plans.value[0]
-      ? `${plans.value[0].lesson.title} · ${planStatusLabel(plans.value[0].status)}`
-      : '先绑定课次，再添加学案导读和任务。';
+      ? `${planLessonDisplayLabel(plans.value[0])} · ${planStatusLabel(plans.value[0].status)}`
+      : '可以先创建草稿，再按需要绑定课次。';
   }
   if (isCreateRoute.value) {
-    return '先选择课次，再补充学案导读和任务内容。';
+    return '可先保存草稿；绑定课次后再发布或开课。';
   }
   if (selectedPlanDetail.value) {
-    return `${selectedPlanDetail.value.lesson.title} · ${planStatusLabel(selectedPlanDetail.value.status)}`;
+    return `${planLessonDisplayLabel(selectedPlanDetail.value)} · ${planStatusLabel(selectedPlanDetail.value.status)}`;
   }
   return '正在加载学案详情...';
 });
+
+function planLessonDisplayLabel(plan: Pick<PlanSummary, 'lesson'>) {
+  return plan.lesson?.title || '暂未绑定课次';
+}
+
 const totalTaskCount = computed(() => plans.value.reduce((sum, item) => sum + item.task_count, 0));
 const totalPendingCount = computed(() =>
   plans.value.reduce((sum, item) => sum + item.progress.pending_count, 0)
@@ -857,20 +914,6 @@ const editorTaskTabKey = computed({
     activeTaskEditorKey.value = taskKey;
   },
 });
-const taskHtmlPromptDialogSubmitApiPath = computed(() => {
-  const task = taskHtmlPromptDialogTask.value;
-  if (!task || task.task_type !== 'data_submit') {
-    return '';
-  }
-  return taskDataSubmitPromptApiPath(task);
-});
-const taskHtmlPromptDialogRecordsApiPath = computed(() => {
-  const task = taskHtmlPromptDialogTask.value;
-  if (!task || task.task_type !== 'data_submit') {
-    return '';
-  }
-  return taskDataSubmitPromptRecordsPath(task);
-});
 const taskHtmlPromptPreview = computed(() => {
   const task = taskHtmlPromptDialogTask.value;
   if (!task) {
@@ -880,6 +923,20 @@ const taskHtmlPromptPreview = computed(() => {
     template_prompt: selectedTaskHtmlPromptTemplate.value?.prompt,
     custom_prompt: taskHtmlPromptDialogState.value.custom_prompt,
   });
+});
+const taskHtmlPromptStreamCapabilityEnabled = computed(
+  () => taskHtmlPromptAssistantBootstrap.value?.capabilities.streaming ?? true
+);
+const taskHtmlPromptGeneralKnowledgeBases = computed(() =>
+  (taskHtmlPromptAssistantBootstrap.value?.knowledge_bases || []).filter((item) => item.scopes.includes('general'))
+);
+const taskHtmlPromptGeneratedHtmlApplied = computed(() => {
+  const task = taskHtmlPromptDialogTask.value;
+  const generatedHtml = taskHtmlPromptGenerationStatus.value.html_source.trim();
+  if (!task || !generatedHtml) {
+    return false;
+  }
+  return getTaskHtmlSource(task, taskHtmlPromptDialogState.value.slot).trim() === generatedHtml;
 });
 
 function resetTaskHtmlPromptGenerationStatus() {
@@ -1196,7 +1253,7 @@ async function handleTaskTypeChange(task: PlanFormTask) {
 
 function currentLessonLabel() {
   if (!planForm.value.lesson_id) {
-    return '';
+    return '暂未绑定课次';
   }
   for (const book of curriculumBooks.value) {
     for (const unit of book.units) {
@@ -1284,9 +1341,94 @@ async function copyPlainText(value: string, label: string) {
   }
 }
 
+function applyTaskHtmlPromptAssistantBootstrap(payload: TaskHtmlPromptAssistantBootstrap) {
+  taskHtmlPromptAssistantBootstrap.value = payload;
+  if (payload.capabilities.streaming === false && taskHtmlPromptDialogState.value.stream_enabled) {
+    taskHtmlPromptDialogState.value = {
+      ...taskHtmlPromptDialogState.value,
+      stream_enabled: false,
+    };
+  }
+  const providerIds = new Set(payload.providers.map((item) => item.id));
+  if (taskHtmlPromptDialogState.value.provider_id !== null && !providerIds.has(taskHtmlPromptDialogState.value.provider_id)) {
+    taskHtmlPromptDialogState.value = {
+      ...taskHtmlPromptDialogState.value,
+      provider_id: null,
+    };
+  }
+  const availableKnowledgeBaseIds = new Set(
+    payload.knowledge_bases.filter((item) => item.scopes.includes('general')).map((item) => item.id)
+  );
+  const currentKnowledgeBaseIds = taskHtmlPromptDialogState.value.knowledge_base_ids.filter(
+    (item, index, source) => availableKnowledgeBaseIds.has(item) && source.indexOf(item) === index
+  );
+  taskHtmlPromptDialogState.value = {
+    ...taskHtmlPromptDialogState.value,
+    knowledge_base_ids: currentKnowledgeBaseIds.length
+      ? currentKnowledgeBaseIds
+      : payload.default_knowledge_base_ids.general.filter((item) => availableKnowledgeBaseIds.has(item)),
+  };
+}
 
+async function loadTaskHtmlPromptAssistantBootstrap() {
+  if (!authStore.token) {
+    return;
+  }
+
+  taskHtmlPromptAssistantBootstrapLoading.value = true;
+  taskHtmlPromptAssistantBootstrapError.value = '';
+  try {
+    const payload = await apiGet<TaskHtmlPromptAssistantBootstrap>('/assistants/companion/bootstrap', authStore.token);
+    applyTaskHtmlPromptAssistantBootstrap(payload);
+  } catch (error) {
+    taskHtmlPromptAssistantBootstrapError.value =
+      error instanceof Error ? error.message : '加载 AI 模型服务配置失败';
+  } finally {
+    taskHtmlPromptAssistantBootstrapLoading.value = false;
+  }
+}
+
+async function ensureTaskHtmlPromptAssistantBootstrap() {
+  if (taskHtmlPromptAssistantBootstrap.value || taskHtmlPromptAssistantBootstrapLoading.value) {
+    return;
+  }
+  await loadTaskHtmlPromptAssistantBootstrap();
+}
+
+async function readAssistantStreamError(response: Response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    const payload = await response.json();
+    return payload.detail || payload.message || `请求失败：${response.status}`;
+  }
+  const text = await response.text();
+  return text || `请求失败：${response.status}`;
+}
+
+function parseSseBlock(block: string) {
+  const lines = block.replace(/\r/g, '').split('\n');
+  let eventName = 'message';
+  const dataLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('event:')) {
+      eventName = line.slice(6).trim() || 'message';
+      continue;
+    }
+    if (line.startsWith('data:')) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (!dataLines.length) {
+    return null;
+  }
+  return {
+    event: eventName,
+    data: dataLines.join('\n'),
+  };
+}
 
 async function openTaskHtmlPromptDialog(task: PlanFormTask, slot: TaskAssetSlot) {
+  void ensureTaskHtmlPromptAssistantBootstrap();
   if (task.task_type === 'data_submit') {
     await ensureTaskIdReserved(task);
     if (!task.id) {
@@ -1306,7 +1448,13 @@ async function openTaskHtmlPromptDialog(task: PlanFormTask, slot: TaskAssetSlot)
     slot,
     template_id: templateId,
     custom_prompt: taskHtmlPromptCustomizations.value[slot] || '',
+    provider_id: taskHtmlPromptDialogState.value.provider_id,
+    stream_enabled: taskHtmlPromptDialogState.value.stream_enabled && taskHtmlPromptStreamCapabilityEnabled.value,
+    thinking_enabled: taskHtmlPromptDialogState.value.thinking_enabled,
+    knowledge_base_ids: [...taskHtmlPromptDialogState.value.knowledge_base_ids],
   };
+  taskHtmlPromptFollowupPrompt.value = '';
+  taskHtmlPromptConversation.value = [];
   resetTaskHtmlPromptGenerationStatus();
   taskHtmlPromptDialogVisible.value = true;
 }
@@ -1443,14 +1591,125 @@ function mergeTaskConfigFromServer(task: PlanFormTask, serverConfig: Record<stri
   ensureDataSubmitTaskConfig(task);
 }
 
+function buildHtmlDraftAssistantRequestBody(
+  prompt: string,
+  options: Required<Pick<HtmlDraftRequestOptions, 'providerId' | 'thinkingEnabled' | 'knowledgeBaseIds'>> &
+    Pick<HtmlDraftRequestOptions, 'conversation'>
+) {
+  return {
+    scope: 'general',
+    message: `${prompt}\n\n请直接返回 HTML 内容，不要附带解释、Markdown 代码块或额外说明。如需外部资源，请使用稳定 CDN。`,
+    provider_id: options.providerId ?? undefined,
+    thinking_enabled: options.thinkingEnabled,
+    knowledge_base_ids: options.knowledgeBaseIds,
+    conversation: (options.conversation || []).map((item) => ({
+      role: item.role,
+      content: item.content,
+    })),
+  };
+}
+
+async function requestHtmlDraftStream(
+  prompt: string,
+  options: {
+    providerId: number | null;
+    thinkingEnabled: boolean;
+    knowledgeBaseIds: string[];
+    conversation?: TaskHtmlPromptConversationMessage[];
+    onToken?: (text: string) => void;
+  }
+) {
+  if (!authStore.token) {
+    throw new Error('请先登录后再使用 AI 生成功能');
+  }
+
+  const response = await fetch(`${apiBaseUrl}/assistants/companion/respond/stream`, {
+    method: 'POST',
+    headers: {
+      Accept: 'text/event-stream',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${authStore.token}`,
+    },
+    body: JSON.stringify({
+      ...buildHtmlDraftAssistantRequestBody(prompt, {
+        providerId: options.providerId,
+        thinkingEnabled: options.thinkingEnabled,
+        knowledgeBaseIds: options.knowledgeBaseIds,
+        conversation: options.conversation,
+      }),
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readAssistantStreamError(response));
+  }
+  if (!response.body) {
+    throw new Error('流式响应不可用，请稍后重试');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8');
+  let buffer = '';
+  let accumulatedText = '';
+  let donePayload: AssistantHtmlDraftResponse | null = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary !== -1) {
+      const rawBlock = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const parsed = parseSseBlock(rawBlock);
+      if (parsed?.event === 'token') {
+        try {
+          const tokenPayload = JSON.parse(parsed.data) as StreamTokenPayload;
+          if (tokenPayload.text) {
+            accumulatedText += tokenPayload.text;
+            options.onToken?.(accumulatedText);
+          }
+        } catch {
+          // Ignore malformed token events from upstream streams.
+        }
+      }
+      if (parsed?.event === 'done') {
+        try {
+          donePayload = JSON.parse(parsed.data) as AssistantHtmlDraftResponse;
+        } catch {
+          donePayload = null;
+        }
+      }
+      boundary = buffer.indexOf('\n\n');
+    }
+
+    if (done) {
+      break;
+    }
+  }
+
+  if (!donePayload) {
+    throw new Error('流式响应中断，请稍后重试');
+  }
+  return donePayload;
+}
+
 async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions = {}): Promise<string> {
   if (!authStore.token) {
     throw new Error('请先登录后再使用 AI 生成功能');
   }
 
+  void ensureTaskHtmlPromptAssistantBootstrap();
   const remainingRetries = options.remainingRetries ?? taskHtmlDraftRetryCount;
   const attempt = options.attempt ?? 1;
   const totalAttempts = options.totalAttempts ?? remainingRetries + attempt;
+  const providerId = options.providerId ?? taskHtmlPromptDialogState.value.provider_id ?? null;
+  const streamEnabled =
+    options.streamEnabled ?? (taskHtmlPromptDialogState.value.stream_enabled && taskHtmlPromptStreamCapabilityEnabled.value);
+  const thinkingEnabled = options.thinkingEnabled ?? taskHtmlPromptDialogState.value.thinking_enabled;
+  const knowledgeBaseIds = options.knowledgeBaseIds ?? [...taskHtmlPromptDialogState.value.knowledge_base_ids];
+  const conversation = options.conversation || [];
 
   options.onStatusChange?.(
     createTaskHtmlPromptGenerationStatus({
@@ -1458,22 +1717,50 @@ async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions
       provider_mode: 'pending',
       attempt,
       total_attempts: totalAttempts,
+      stream_enabled: streamEnabled,
+      thinking_enabled: thinkingEnabled,
+      received_chars: 0,
       error_message: attempt > 1 ? '上一次返回的不是可渲染 HTML，正在自动重试。' : '',
     })
   );
 
   let response: AssistantHtmlDraftResponse;
   try {
-    response = await apiPost<AssistantHtmlDraftResponse>(
-      '/assistants/companion/respond',
-      {
-        scope: 'general',
-        message: `${prompt}\n\n请直接返回 HTML 内容，不要附带解释、Markdown 代码块或额外说明。如需外部资源，请使用稳定 CDN。`,
-        provider_id: null,
-        conversation: [],
-      },
-      authStore.token
-    );
+    if (streamEnabled) {
+      response = await requestHtmlDraftStream(prompt, {
+        providerId,
+        thinkingEnabled,
+        knowledgeBaseIds,
+        conversation,
+        onToken: (text) => {
+          const htmlSource = extractHtmlDraft(text) || text;
+          options.onStatusChange?.(
+            createTaskHtmlPromptGenerationStatus({
+              ...taskHtmlPromptGenerationStatus.value,
+              state: 'loading',
+              provider_mode: taskHtmlPromptGenerationStatus.value.provider_mode || 'pending',
+              attempt,
+              total_attempts: totalAttempts,
+              stream_enabled: streamEnabled,
+              thinking_enabled: thinkingEnabled,
+              received_chars: text.length,
+              html_source: htmlSource,
+            })
+          );
+        },
+      });
+    } else {
+      response = await apiPost<AssistantHtmlDraftResponse>(
+        '/assistants/companion/respond',
+        buildHtmlDraftAssistantRequestBody(prompt, {
+          providerId,
+          thinkingEnabled,
+          knowledgeBaseIds,
+          conversation,
+        }),
+        authStore.token
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : '请求 AI 生成失败';
     options.onStatusChange?.(
@@ -1482,9 +1769,24 @@ async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions
         error_message: message,
         attempt,
         total_attempts: totalAttempts,
+        stream_enabled: streamEnabled,
+        thinking_enabled: thinkingEnabled,
       })
     );
     throw new Error(message);
+  }
+
+  if (taskHtmlPromptAssistantBootstrap.value) {
+    taskHtmlPromptAssistantBootstrap.value.active_provider = response.active_provider || null;
+    if (
+      taskHtmlPromptDialogState.value.provider_id !== null &&
+      response.active_provider?.id !== taskHtmlPromptDialogState.value.provider_id
+    ) {
+      taskHtmlPromptDialogState.value = {
+        ...taskHtmlPromptDialogState.value,
+        provider_id: response.active_provider?.id ?? null,
+      };
+    }
   }
 
   const providerName = resolveAssistantProviderName(response);
@@ -1498,8 +1800,12 @@ async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions
         provider_name: providerName,
         provider_mode: providerMode,
         warning,
+        html_source: html,
         attempt,
         total_attempts: totalAttempts,
+        stream_enabled: streamEnabled,
+        thinking_enabled: thinkingEnabled,
+        received_chars: html.length,
       })
     );
     return html;
@@ -1515,10 +1821,16 @@ async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions
       attempt: attempt + 1,
       totalAttempts,
       onStatusChange: options.onStatusChange,
+      providerId,
+      streamEnabled,
+      thinkingEnabled,
+      knowledgeBaseIds,
+      conversation,
     });
   }
 
   const message = buildHtmlDraftErrorMessage(providerMode, warning);
+  const failedHtmlSource = extractHtmlDraft(response.reply?.content || '') || String(response.reply?.content || '');
   options.onStatusChange?.(
     createTaskHtmlPromptGenerationStatus({
       state: 'error',
@@ -1526,8 +1838,11 @@ async function requestHtmlDraft(prompt: string, options: HtmlDraftRequestOptions
       provider_mode: providerMode,
       warning,
       error_message: message,
+      html_source: failedHtmlSource,
       attempt,
       total_attempts: totalAttempts,
+      stream_enabled: streamEnabled,
+      thinking_enabled: thinkingEnabled,
     })
   );
   throw new Error(message);
@@ -1560,7 +1875,7 @@ function buildTaskHtmlPrompt(task: PlanFormTask, slot: TaskAssetSlot, options?: 
   const recordsApiPath = taskDataSubmitPromptRecordsPath(task);
   const runtimeHint =
     '生成页面时请只使用浏览器原生能力；如需请求数据，请使用原生 fetch 并处理失败情况。';
-  const previewHint = '生成结果会直接写入当前任务的 HTML 源码区域，页面应能在 iframe 中独立运行。';
+  const previewHint = '生成结果需要教师确认后写入当前任务的 HTML 源码区域，页面应能在 iframe 中独立运行。';
   const templatePrompt = options?.template_prompt?.trim();
   const customPrompt = richTextToPlainText(options?.custom_prompt).trim();
 
@@ -1662,28 +1977,139 @@ async function submitTaskHtmlPromptDialog() {
   const { slot, template_id, custom_prompt } = taskHtmlPromptDialogState.value;
   taskHtmlPromptSelections.value[slot] = template_id;
   taskHtmlPromptCustomizations.value[slot] = custom_prompt;
+  taskHtmlPromptConversation.value = [];
+  taskHtmlPromptFollowupPrompt.value = '';
   resetTaskHtmlPromptGenerationStatus();
-  const requestHtmlDraftWithDialogStatus = (prompt: string) =>
-    requestHtmlDraft(prompt, {
+  const promptText = buildTaskHtmlPrompt(task, slot, {
+    template_prompt: template?.prompt,
+    custom_prompt,
+  });
+  const loadingKey = taskAssetGenerationKey(task, slot);
+  generatingTaskHtmlKey.value = loadingKey;
+  try {
+    const generatedHtml = await requestHtmlDraft(promptText, {
       remainingRetries: taskHtmlDraftRetryCount,
       onStatusChange: (status) => {
         taskHtmlPromptGenerationStatus.value = status;
       },
     });
-  const succeeded = await generateTaskHtmlAndUpload(task, slot, {
-    template_prompt: template?.prompt,
-    custom_prompt,
-  }, requestHtmlDraftWithDialogStatus);
-  if (succeeded) {
-    resetTaskHtmlPromptGenerationStatus();
-    taskHtmlPromptDialogVisible.value = false;
+    taskHtmlPromptConversation.value = [
+      { role: 'user', content: promptText, created_at: new Date().toISOString() },
+      { role: 'assistant', content: generatedHtml, created_at: new Date().toISOString() },
+    ];
+    setTaskHtmlPromptGenerationStatus({
+      html_source: generatedHtml,
+      received_chars: generatedHtml.length,
+    });
+    ElMessage.success('任务页面源码已生成，请确认后更新到下方源码编辑区');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '任务网页生成失败，请稍后重试。';
+    errorMessage.value = message;
+    ElMessage.error(message);
+    if (taskHtmlPromptGenerationStatus.value.state !== 'error') {
+      setTaskHtmlPromptGenerationStatus({
+        state: 'error',
+        error_message: message,
+      });
+    }
+  } finally {
+    if (generatingTaskHtmlKey.value === loadingKey) {
+      generatingTaskHtmlKey.value = null;
+    }
+  }
+}
+
+async function copyTaskHtmlPromptGeneratedSource() {
+  const generatedHtml = taskHtmlPromptGenerationStatus.value.html_source.trim();
+  if (!generatedHtml) {
+    ElMessage.warning('请先生成 HTML 源码');
     return;
   }
-  if (taskHtmlPromptGenerationStatus.value.state !== 'error') {
-    setTaskHtmlPromptGenerationStatus({
-      state: 'error',
-      error_message: errorMessage.value || '任务网页生成失败，请稍后重试。',
+  await copyPlainText(generatedHtml, '生成源码');
+}
+
+function applyTaskHtmlPromptGeneratedSource(closeAfterApply = false) {
+  const task = taskHtmlPromptDialogTask.value;
+  const generatedHtml = taskHtmlPromptGenerationStatus.value.html_source.trim();
+  if (!task || !generatedHtml) {
+    ElMessage.warning('请先生成 HTML 源码');
+    return;
+  }
+
+  const slot = taskHtmlPromptDialogState.value.slot;
+  const alreadyApplied = getTaskHtmlSource(task, slot).trim() === generatedHtml;
+  if (!alreadyApplied) {
+    setTaskHtmlSource(task, slot, generatedHtml);
+    revealTaskPreview(task, slot);
+    ElMessage.success('已更新到下方源码编辑区');
+  }
+  if (closeAfterApply) {
+    taskHtmlPromptDialogVisible.value = false;
+  } else if (alreadyApplied) {
+    ElMessage.info('生成源码已在下方源码编辑区');
+  }
+}
+
+async function continueTaskHtmlPromptDialog() {
+  const task = taskHtmlPromptDialogTask.value;
+  if (!task || continuingTaskHtmlPrompt.value) {
+    return;
+  }
+
+  const slot = taskHtmlPromptDialogState.value.slot;
+  const followupText = richTextToPlainText(taskHtmlPromptFollowupPrompt.value).trim();
+  if (!followupText) {
+    ElMessage.warning('请先输入修改要求');
+    return;
+  }
+
+  const currentHtml = taskHtmlPromptGenerationStatus.value.html_source.trim() || getTaskHtmlSource(task, slot).trim();
+  if (!currentHtml) {
+    ElMessage.warning('请先生成一版 HTML 后再继续对话修改');
+    return;
+  }
+
+  const loadingKey = taskAssetGenerationKey(task, slot);
+  generatingTaskHtmlKey.value = loadingKey;
+  continuingTaskHtmlPrompt.value = true;
+  const previousConversation = [...taskHtmlPromptConversation.value];
+  const followupPrompt = [
+    '你正在继续修改一个已经生成的 HTML 页面。',
+    '请根据新的修改要求返回完整、可直接运行的 HTML 源码。',
+    '不要只返回差异说明，不要输出 Markdown 代码块。',
+    `当前 HTML：\n${currentHtml}`,
+    `新的修改要求：\n${followupText}`,
+  ].join('\n\n');
+
+  try {
+    const html = await requestHtmlDraft(followupPrompt, {
+      remainingRetries: taskHtmlDraftRetryCount,
+      conversation: previousConversation,
+      onStatusChange: (status) => {
+        taskHtmlPromptGenerationStatus.value = status;
+      },
     });
+    const now = new Date().toISOString();
+    taskHtmlPromptConversation.value = [
+      ...previousConversation,
+      { role: 'user', content: followupText, created_at: now },
+      { role: 'assistant', content: html, created_at: new Date().toISOString() },
+    ];
+    taskHtmlPromptFollowupPrompt.value = '';
+    setTaskHtmlPromptGenerationStatus({
+      html_source: html,
+      received_chars: html.length,
+    });
+    ElMessage.success('修改版 HTML 已生成，请确认后更新到下方源码编辑区');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '继续生成失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
+  } finally {
+    continuingTaskHtmlPrompt.value = false;
+    if (generatingTaskHtmlKey.value === loadingKey) {
+      generatingTaskHtmlKey.value = null;
+    }
   }
 }
 
@@ -1770,6 +2196,14 @@ function handleWindowBeforeUnload(event: BeforeUnloadEvent) {
   event.returnValue = '';
 }
 
+function handleTaskHtmlPromptAssistantConfigUpdated() {
+  taskHtmlPromptAssistantBootstrap.value = null;
+  if (!authStore.token) {
+    return;
+  }
+  void loadTaskHtmlPromptAssistantBootstrap();
+}
+
 async function selectPlan(planId: number | null) {
   if (!planId) {
     return;
@@ -1800,11 +2234,11 @@ async function goToPlanList() {
 }
 
 function buildPayload() {
-  if (!planForm.value.lesson_id) {
-    throw new Error('请先选择绑定课次');
-  }
   if (!planForm.value.title.trim()) {
     throw new Error('请先填写学案标题');
+  }
+  if (!planForm.value.lesson_id && planForm.value.status !== 'draft') {
+    throw new Error('暂未绑定课次的学案只能保存为草稿，请先绑定课次后再发布或开课。');
   }
 
   const tasks = planForm.value.tasks.map((task, index) => {
@@ -1824,7 +2258,7 @@ function buildPayload() {
   });
 
   return {
-    lesson_id: planForm.value.lesson_id,
+    lesson_id: planForm.value.lesson_id ?? null,
     title: planForm.value.title.trim(),
     content: normalizeHtmlValue(planForm.value.content, 'visual'),
     assigned_date: planForm.value.assigned_date,
@@ -1869,7 +2303,9 @@ async function savePlan() {
     await selectPlan(response.plan.id);
     await loadPlanDetail(response.plan.id);
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '保存学案失败';
+    const message = error instanceof Error ? error.message : '保存学案失败';
+    errorMessage.value = message;
+    ElMessage.error(message);
   } finally {
     isSavingPlan.value = false;
   }
@@ -2002,6 +2438,15 @@ watch(
   { deep: false }
 );
 
+watch(
+  () => planForm.value.lesson_id,
+  (lessonId) => {
+    if (!lessonId && planForm.value.status !== 'draft') {
+      planForm.value.status = 'draft';
+    }
+  }
+);
+
 watch(taskHtmlPromptDialogVisible, (visible) => {
   if (visible) {
     return;
@@ -2027,6 +2472,8 @@ watch(currentEditorSnapshot, () => {
 
 onMounted(() => {
   window.addEventListener('beforeunload', handleWindowBeforeUnload);
+  window.addEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
+  window.addEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
   resetPlanForm();
   markEditorCommitted();
   void loadPage();
@@ -2035,6 +2482,8 @@ onMounted(() => {
 onBeforeUnmount(() => {
   clearDraftAutoSaveTimer();
   window.removeEventListener('beforeunload', handleWindowBeforeUnload);
+  window.removeEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
+  window.removeEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
 });
 </script>
 
@@ -2226,6 +2675,10 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: flex-end;
   margin-top: 20px;
+}
+
+.editor-save-alert {
+  margin-top: 8px;
 }
 
 .full-width {

@@ -3066,6 +3066,68 @@ def test_teacher_can_update_and_delete_draft_lesson_plan():
         assert detail_after_delete.status_code == 404
 
 
+def test_teacher_can_save_unbound_lesson_plan_draft_but_not_publish():
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+
+        create_response = client.post(
+            f"{API_PREFIX}/lesson-plans/staff",
+            headers=teacher,
+            json={
+                "lesson_id": None,
+                "title": "暂未绑定课次的草稿",
+                "content": "<p>先整理学案内容。</p>",
+                "assigned_date": "2026-04-01",
+                "status": "draft",
+                "tasks": [
+                    {
+                        "title": "先写任务",
+                        "task_type": "reading",
+                        "description": "<p>后续再绑定课次。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                    }
+                ],
+            },
+        )
+        assert create_response.status_code == 200
+        created_plan = create_response.json()["data"]["plan"]
+        assert created_plan["lesson"] is None
+
+        list_response = client.get(f"{API_PREFIX}/lesson-plans/staff/list", headers=teacher)
+        assert list_response.status_code == 200
+        listed_plan = next(item for item in list_response.json()["data"]["plans"] if item["id"] == created_plan["id"])
+        assert listed_plan["lesson"] is None
+
+        publish_response = client.post(f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}/publish", headers=teacher)
+        assert publish_response.status_code == 400
+        assert "只能保存为草稿" in publish_response.json()["detail"]
+
+        publish_update_response = client.put(
+            f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
+            headers=teacher,
+            json={
+                "lesson_id": None,
+                "title": "暂未绑定课次的草稿",
+                "content": "<p>先整理学案内容。</p>",
+                "assigned_date": "2026-04-01",
+                "status": "published",
+                "tasks": [
+                    {
+                        "id": created_plan["tasks"][0]["id"],
+                        "title": "先写任务",
+                        "task_type": "reading",
+                        "description": "<p>后续再绑定课次。</p>",
+                        "sort_order": 1,
+                        "is_required": True,
+                    }
+                ],
+            },
+        )
+        assert publish_update_response.status_code == 400
+        assert "只能保存为草稿" in publish_update_response.json()["detail"]
+
+
 def test_teacher_can_update_and_delete_active_plan_with_progress():
     with TestClient(app) as client:
         teacher = staff_headers(client, "t1")
@@ -3549,12 +3611,17 @@ def test_data_submit_task_assets_bootstrap_runtime_cookie_and_records():
         assert upload_response.status_code == 200
 
         entry_response = client.get(
-            f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/index.html?access_token={student_token}"
+            f"{API_PREFIX}/tasks/{task_id}/assets/data_submit_form/index.html?access_token={student_token}",
+            headers={"referer": "http://learnsite.local/student/tasks/900001"},
         )
         assert entry_response.status_code == 200
         assert "window.__LEARNSITE_TASK_CONTEXT__" in entry_response.text
         assert f"http://testserver/api/v1/tasks/{task_id}/data-submit/{endpoint_token}" in entry_response.text
         assert "window.__LEARNSITE_TASK_HELPERS__" in entry_response.text
+        assert '"previewParentOrigin": "http://learnsite.local"' in entry_response.text
+        assert "const isTaskRuntimeTarget=" in entry_response.text
+        assert "Preview parent is unavailable" not in entry_response.text
+        assert "return nativeFetch(input,requestInit)" in entry_response.text
 
         cookie_header = entry_response.headers.get("set-cookie", "")
         assert "learnsite_task_token=" in cookie_header
@@ -4198,6 +4265,41 @@ def test_ai_companion_bootstrap_context_and_preview_reply():
         )
         assert invalid_provider_response.status_code == 400
         assert "provider" in invalid_provider_response.json()["detail"].lower()
+
+
+def test_ai_companion_preview_reply_does_not_fabricate_reasoning_content():
+    with TestClient(app) as client:
+        student = student_headers(client, "70101")
+
+        thinking_response = client.post(
+            f"{API_PREFIX}/assistants/companion/respond",
+            headers=student,
+            json={
+                "scope": "general",
+                "message": "帮我整理这节课的复习步骤",
+                "conversation": [],
+                "thinking_enabled": True,
+            },
+        )
+        assert thinking_response.status_code == 200
+        thinking_reply = thinking_response.json()["data"]["reply"]
+        assert thinking_reply["content"]
+        assert thinking_reply["reasoning_content"] is None
+
+        plain_response = client.post(
+            f"{API_PREFIX}/assistants/companion/respond",
+            headers=student,
+            json={
+                "scope": "general",
+                "message": "帮我整理这节课的复习步骤",
+                "conversation": [],
+                "thinking_enabled": False,
+            },
+        )
+        assert plain_response.status_code == 200
+        plain_reply = plain_response.json()["data"]["reply"]
+        assert plain_reply["content"]
+        assert plain_reply["reasoning_content"] is None
 
 
 def test_ai_companion_bootstrap_reflects_latest_default_provider():
@@ -5050,7 +5152,15 @@ def test_ai_companion_provider_request_uses_browser_compatible_headers(monkeypat
         captured["timeout"] = str(timeout)
         return DummyResponse()
 
-    monkeypatch.setattr(assistants_endpoints.urllib_request, "urlopen", fake_urlopen)
+    class DummyOpener:
+        def open(self, request, timeout=0):
+            return fake_urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr(
+        assistants_endpoints,
+        "build_remote_request_opener",
+        lambda proxy_url: (DummyOpener(), "no_proxy"),
+    )
 
     provider = AIProvider(
         name="Header Test Provider",
@@ -5061,7 +5171,7 @@ def test_ai_companion_provider_request_uses_browser_compatible_headers(monkeypat
         is_default=True,
         is_enabled=True,
     )
-    reply, warning = assistants_endpoints.call_openai_compatible_provider(
+    reply, warning, reasoning_content = assistants_endpoints.call_openai_compatible_provider(
         provider,
         system_prompt="system",
         user_prompt="user",
@@ -5073,11 +5183,13 @@ def test_ai_companion_provider_request_uses_browser_compatible_headers(monkeypat
             "max_tokens": 1024,
             "presence_penalty": 0.2,
             "frequency_penalty": 0.1,
+            "thinking_enabled": True,
         },
     )
 
     assert warning is None
     assert reply == "hello from provider"
+    assert reasoning_content is None
     assert captured["url"] == "https://example.com/v1/chat/completions"
     assert captured["accept"] == "application/json, text/plain, */*"
     assert captured["accept_language"] == "zh-CN,zh;q=0.9,en;q=0.8"
@@ -5089,6 +5201,7 @@ def test_ai_companion_provider_request_uses_browser_compatible_headers(monkeypat
     assert '"max_tokens": 1024' in captured["body"]
     assert '"presence_penalty": 0.2' in captured["body"]
     assert '"frequency_penalty": 0.1' in captured["body"]
+    assert '"thinking": {"type": "enabled"}' in captured["body"]
     assert captured["timeout"] == "20"
 
 
@@ -5124,7 +5237,15 @@ def test_ai_companion_provider_stream_request_uses_browser_compatible_headers(mo
         captured["timeout"] = str(timeout)
         return DummyStreamResponse()
 
-    monkeypatch.setattr(assistants_endpoints.urllib_request, "urlopen", fake_urlopen)
+    class DummyOpener:
+        def open(self, request, timeout=0):
+            return fake_urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr(
+        assistants_endpoints,
+        "build_remote_request_opener",
+        lambda proxy_url: (DummyOpener(), "no_proxy"),
+    )
 
     provider = AIProvider(
         name="Header Stream Provider",
@@ -5145,6 +5266,7 @@ def test_ai_companion_provider_stream_request_uses_browser_compatible_headers(mo
             "temperature": 0.6,
             "top_p": 0.8,
             "max_tokens": 512,
+            "thinking_enabled": True,
         },
     )
     chunks = []
@@ -5155,7 +5277,7 @@ def test_ai_companion_provider_stream_request_uses_browser_compatible_headers(mo
         result = stop.value
 
     assert chunks == [("chunk", "hello "), ("chunk", "stream")]
-    assert result == ("hello stream", None)
+    assert result == ("hello stream", None, None)
     assert captured["url"] == "https://example.com/v1/chat/completions"
     assert captured["accept"] == "text/event-stream, application/json, text/plain, */*"
     assert captured["accept_language"] == "zh-CN,zh;q=0.9,en;q=0.8"
@@ -5165,8 +5287,50 @@ def test_ai_companion_provider_stream_request_uses_browser_compatible_headers(mo
     assert '"temperature": 0.6' in captured["body"]
     assert '"top_p": 0.8' in captured["body"]
     assert '"max_tokens": 512' in captured["body"]
+    assert '"thinking": {"type": "enabled"}' in captured["body"]
     assert '"stream": true' in captured["body"]
     assert captured["timeout"] == "35"
+
+
+def test_ai_companion_runtime_generation_params_emit_object_thinking_flag():
+    enabled = assistants_endpoints.build_runtime_generation_params({"thinking_enabled": True})
+    disabled = assistants_endpoints.build_runtime_generation_params({"thinking_enabled": False})
+
+    assert enabled["thinking"] == {"type": "enabled"}
+    assert disabled["thinking"] == {"type": "disabled"}
+
+
+def test_ai_companion_stream_text_fragments_preserve_text_and_split_large_reply():
+    text = "第一步先理解题目要求。第二步拆成更小的任务。第三步再开始动手完成。"
+
+    fragments = list(assistants_endpoints.iter_stream_text_fragments(text, min_chunk_size=4, max_chunk_size=10))
+
+    assert "".join(fragments) == text
+    assert len(fragments) >= 3
+    assert all(fragment for fragment in fragments)
+    assert max(len(fragment) for fragment in fragments) <= 10
+
+
+def test_ai_companion_extracts_native_provider_reasoning_fields():
+    message = {
+        "content": "这是最终回答。",
+        "reasoning_content": [
+            {"text": "先识别任务目标"},
+            {"text": "再确认关键约束"},
+        ],
+    }
+    delta = {
+        "reasoning": [
+            {"text": "先看题目"},
+            {"text": "再拆步骤"},
+        ]
+    }
+
+    reasoning = assistants_endpoints.extract_provider_reasoning(message)
+    stream_reasoning = assistants_endpoints.extract_provider_stream_reasoning(delta)
+
+    assert reasoning == "先识别任务目标\n再确认关键约束"
+    assert stream_reasoning == "先看题目再拆步骤"
 
 
 def test_ai_provider_http_403_keeps_full_service_response():

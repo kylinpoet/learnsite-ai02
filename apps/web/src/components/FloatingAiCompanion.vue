@@ -86,71 +86,103 @@
           </section>
 
           <section class="soft-card ai-settings-card">
-            <div class="ai-settings-card__head">
-              <div>
-                <h4>知识库</h4>
-                <p class="section-note">当前回复会优先参考你选择的知识库。</p>
-              </div>
-              <el-tag round type="info">
-                {{ activeScope === 'lesson' ? '学案模式' : '通用模式' }}
-              </el-tag>
-            </div>
-            <div class="ai-provider-field">
-              <div class="ai-provider-field__head">
-                <h4>模型服务</h4>
-                <p class="section-note">默认跟随系统配置，也可临时切换当前会话使用的模型。</p>
-              </div>
-              <el-select
-                v-model="selectedProviderId"
-                class="full-width"
-                clearable
-                :disabled="!bootstrap.providers.length"
-                :value-on-clear="null"
-                placeholder="跟随系统默认模型服务"
-              >
-                <el-option
-                  v-for="item in bootstrap.providers"
-                  :key="item.id"
-                  :label="`${item.name} · ${item.model_name}`"
-                  :value="item.id"
-                />
-              </el-select>
-              <p v-if="!bootstrap.providers.length" class="section-note">
-                当前未启用外部模型服务，将使用系统默认学伴。
-              </p>
-            </div>
-            <div class="ai-provider-field">
-              <div class="ai-provider-field__head">
-                <h4>回复模式</h4>
-                <p class="section-note">可切换流式输出（逐段生成）或标准输出（一次返回）。</p>
-              </div>
-              <el-switch
-                v-model="streamModeEnabled"
-                :disabled="!streamCapabilityEnabled"
-                active-text="流式"
-                inactive-text="标准"
-              />
-            </div>
-            <el-select
-              v-model="activeKnowledgeBaseIds"
-              class="full-width"
-              collapse-tags
-              collapse-tags-tooltip
-              multiple
-              placeholder="请选择知识库"
+            <button
+              class="ai-settings-card__toggle"
+              type="button"
+              @click="settingsExpanded = !settingsExpanded"
             >
-              <el-option
-                v-for="item in visibleKnowledgeBases"
-                :key="item.id"
-                :label="item.name"
-                :value="item.id"
-              >
-                <div class="ai-knowledge-option">
-                  <strong>{{ item.name }}</strong>
-                  <span>{{ item.description }}</span>
+              <div class="ai-settings-card__toggle-copy">
+                <div class="ai-settings-card__head">
+                  <div>
+                    <h4>会话设置</h4>
+                    <p class="section-note">模型服务、对话模式、推理模式和知识库默认收起，需要时再展开。</p>
+                  </div>
+                  <el-tag round type="info">
+                    {{ activeScope === 'lesson' ? '学案模式' : '通用模式' }}
+                  </el-tag>
                 </div>
-              </el-option>
-            </el-select>
+                <p class="ai-settings-card__summary">{{ settingsSummary }}</p>
+              </div>
+              <span class="ai-settings-card__toggle-action">{{ settingsExpanded ? '收起' : '展开' }}</span>
+            </button>
+
+            <div v-if="settingsExpanded" class="ai-settings-card__body">
+              <div class="ai-provider-field">
+                <div class="ai-provider-field__head">
+                  <h4>模型服务</h4>
+                  <p class="section-note">默认跟随系统配置，也可临时切换当前会话使用的模型。</p>
+                </div>
+                <el-select
+                  v-model="selectedProviderId"
+                  class="full-width"
+                  clearable
+                  :disabled="!bootstrap.providers.length"
+                  :value-on-clear="null"
+                  placeholder="跟随系统默认模型服务"
+                >
+                  <el-option
+                    v-for="item in bootstrap.providers"
+                    :key="item.id"
+                    :label="`${item.name} · ${item.model_name}`"
+                    :value="item.id"
+                  />
+                </el-select>
+                <p v-if="!bootstrap.providers.length" class="section-note">
+                  当前未启用外部模型服务，将使用系统默认学伴。
+                </p>
+              </div>
+              <div class="ai-provider-field">
+                <div class="ai-provider-field__head">
+                  <h4>对话模式</h4>
+                  <p class="section-note">可切换流式输出（逐段生成）或标准输出（一次返回）。</p>
+                </div>
+                <el-switch
+                  v-model="streamModeEnabled"
+                  :disabled="!streamCapabilityEnabled"
+                  active-text="流式"
+                  inactive-text="标准"
+                />
+              </div>
+              <div class="ai-provider-field">
+                <div class="ai-provider-field__head">
+                  <h4>推理模式</h4>
+                  <p class="section-note">
+                    默认关闭。开启后会在接口调用时请求模型进行额外推理，通常更慢；关闭时可节省回复时间。
+                  </p>
+                </div>
+                <el-switch
+                  v-model="thinkingModeEnabled"
+                  active-text="开启"
+                  inactive-text="关闭"
+                />
+              </div>
+              <div class="ai-provider-field">
+                <div class="ai-provider-field__head">
+                  <h4>知识库</h4>
+                  <p class="section-note">当前回复会优先参考你选择的知识库。</p>
+                </div>
+                <el-select
+                  v-model="activeKnowledgeBaseIds"
+                  class="full-width"
+                  collapse-tags
+                  collapse-tags-tooltip
+                  multiple
+                  placeholder="请选择知识库"
+                >
+                  <el-option
+                    v-for="item in visibleKnowledgeBases"
+                    :key="item.id"
+                    :label="item.name"
+                    :value="item.id"
+                  >
+                    <div class="ai-knowledge-option">
+                      <strong>{{ item.name }}</strong>
+                      <span>{{ item.description }}</span>
+                    </div>
+                  </el-option>
+                </el-select>
+              </div>
+            </div>
           </section>
 
           <section class="ai-chat-shell">
@@ -162,30 +194,64 @@
                   class="ai-chat-item"
                   :class="message.role === 'assistant' ? 'is-assistant' : 'is-user'"
                 >
-                  <div class="ai-chat-bubble">
-                    <div class="ai-chat-bubble__meta">
-                      <span>{{ message.role === 'assistant' ? 'AI 学伴' : '我' }}</span>
-                      <small>{{ formatMessageTime(message.createdAt) }}</small>
-                    </div>
-                    <p class="ai-chat-bubble__text">{{ message.content }}</p>
-                    <div
-                      v-if="message.attachments?.length"
-                      class="ai-chat-attachments"
+                  <div class="ai-chat-stack">
+                    <details
+                      v-if="message.role === 'assistant' && (message.reasoningContent || message.reasoningStreaming)"
+                      class="ai-chat-reasoning"
                     >
-                      <span
-                        v-for="attachment in message.attachments"
-                        :key="attachment.id"
-                        class="ai-chat-attachment"
+                      <summary class="ai-chat-reasoning__summary">
+                        <strong>模型推理过程</strong>
+                        <span>{{ message.reasoningStreaming ? '生成中' : '点击展开' }}</span>
+                      </summary>
+                      <div class="ai-chat-reasoning__body">
+                        <MarkdownContent
+                          class="ai-chat-reasoning__content"
+                          :content="message.reasoningContent || ''"
+                        />
+                        <span
+                          v-if="message.reasoningStreaming"
+                          aria-hidden="true"
+                          class="ai-chat-bubble__cursor"
+                        ></span>
+                      </div>
+                    </details>
+
+                    <div class="ai-chat-bubble">
+                      <div class="ai-chat-bubble__meta">
+                        <span>{{ message.role === 'assistant' ? 'AI 学伴' : '我' }}</span>
+                        <small>{{ formatMessageTime(message.createdAt) }}</small>
+                      </div>
+                      <div v-if="message.role === 'assistant'" class="ai-chat-bubble__markdown-shell">
+                        <MarkdownContent
+                          class="ai-chat-bubble__markdown"
+                          :content="message.content"
+                        />
+                        <span
+                          v-if="message.streaming"
+                          aria-hidden="true"
+                          class="ai-chat-bubble__cursor"
+                        ></span>
+                      </div>
+                      <p v-else class="ai-chat-bubble__text">{{ message.content }}</p>
+                      <div
+                        v-if="message.attachments?.length"
+                        class="ai-chat-attachments"
                       >
-                        {{ attachment.name }} · {{ attachmentKindLabel(attachment.kind) }}
-                      </span>
+                        <span
+                          v-for="attachment in message.attachments"
+                          :key="attachment.id"
+                          class="ai-chat-attachment"
+                        >
+                          {{ attachment.name }} · {{ attachmentKindLabel(attachment.kind) }}
+                        </span>
+                      </div>
+                      <p
+                        v-if="message.role === 'assistant' && (message.providerName || message.warning)"
+                        class="ai-chat-bubble__footnote"
+                      >
+                        {{ assistantFootnote(message) }}
+                      </p>
                     </div>
-                    <p
-                      v-if="message.role === 'assistant' && (message.providerName || message.warning)"
-                      class="ai-chat-bubble__footnote"
-                    >
-                      {{ assistantFootnote(message) }}
-                    </p>
                   </div>
                 </article>
               </template>
@@ -327,6 +393,7 @@ import { ElMessage } from 'element-plus';
 import { useRoute } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
+import MarkdownContent from '@/components/MarkdownContent.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type Scope = 'general' | 'lesson';
@@ -397,6 +464,7 @@ type BootstrapPayload = {
     course_context: boolean;
     knowledge_base_select: boolean;
     streaming?: boolean;
+    thinking?: boolean;
   };
 };
 type ReplyPayload = {
@@ -407,6 +475,7 @@ type ReplyPayload = {
     provider_name: string;
     provider_mode: 'live' | 'preview';
     warning: string | null;
+    reasoning_content: string | null;
   };
   active_provider: CompanionProvider | null;
   context: CompanionContext | null;
@@ -442,6 +511,9 @@ type ChatMessage = {
   providerName?: string;
   providerMode?: 'live' | 'preview';
   warning?: string | null;
+  streaming?: boolean;
+  reasoningContent?: string | null;
+  reasoningStreaming?: boolean;
 };
 
 const FAB_STORAGE_KEY = 'learnsite-ai-companion-fab-position';
@@ -499,6 +571,8 @@ const selectedKnowledgeBaseIds = reactive({
 });
 const selectedProviderId = ref<number | null>(null);
 const streamModeEnabled = ref(true);
+const thinkingModeEnabled = ref(false);
+const settingsExpanded = ref(false);
 const fabPosition = ref<FabPosition | null>(null);
 const dragState = reactive({
   active: false,
@@ -509,6 +583,7 @@ const dragState = reactive({
   originX: 0,
   originY: 0,
 });
+let scrollFrameId: number | null = null;
 
 const shouldRender = computed(() => {
   const inWorkspace = route.path.startsWith('/student') || route.path.startsWith('/staff');
@@ -548,6 +623,14 @@ const activeProviderLabel = computed(() => {
       : lastAssistant.providerName;
   }
   return '系统默认学伴';
+});
+
+const settingsSummary = computed(() => {
+  const modeLabel = streamModeEnabled.value && streamCapabilityEnabled.value ? '流式' : '标准';
+  const thinkingLabel = thinkingModeEnabled.value ? '推理开启' : '推理关闭';
+  const providerLabel = selectedProvider.value?.name || bootstrap.value?.active_provider?.name || '系统默认';
+  const knowledgeCount = activeKnowledgeBaseIds.value.length;
+  return `${providerLabel} · ${modeLabel} · ${thinkingLabel} · ${knowledgeCount} 个知识库`;
 });
 
 const drawerSize = computed(() => {
@@ -909,6 +992,7 @@ function buildCompanionRequestBody(
     scope,
     message: messageText,
     provider_id: selectedProviderId.value ?? undefined,
+    thinking_enabled: thinkingModeEnabled.value,
     knowledge_base_ids: [...activeKnowledgeBaseIds.value],
     ...currentRequestContext(),
     attachments: pendingAttachments.map(payloadAttachmentFromComposer),
@@ -954,6 +1038,7 @@ function parseSseBlock(block: string) {
 function updateMessageById(scope: Scope, id: string, updater: (message: ChatMessage) => ChatMessage) {
   const store = messagesRef(scope);
   store.value = store.value.map((message) => (message.id === id ? updater(message) : message));
+  scheduleScrollMessagesToBottom();
 }
 
 async function sendCompanionMessageStream(
@@ -973,6 +1058,9 @@ async function sendCompanionMessageStream(
     createdAt: new Date().toISOString(),
     providerName: selectedProvider.value?.name,
     providerMode: 'preview',
+    streaming: true,
+    reasoningContent: '',
+    reasoningStreaming: thinkingModeEnabled.value,
   };
   messagesRef(scope).value = [...messagesRef(scope).value, initialMessage];
   await scrollMessagesToBottom();
@@ -1027,6 +1115,20 @@ async function sendCompanionMessageStream(
               // ignore malformed token event
             }
           }
+          if (parsed.event === 'reasoning') {
+            try {
+              const tokenPayload = JSON.parse(parsed.data) as StreamTokenPayload;
+              if (tokenPayload.text) {
+                updateMessageById(scope, assistantMessageId, (message) => ({
+                  ...message,
+                  reasoningContent: `${message.reasoningContent || ''}${tokenPayload.text}`,
+                  reasoningStreaming: true,
+                }));
+              }
+            } catch {
+              // ignore malformed reasoning event
+            }
+          }
           if (parsed.event === 'done') {
             try {
               donePayload = JSON.parse(parsed.data) as ReplyPayload;
@@ -1065,14 +1167,19 @@ async function sendCompanionMessageStream(
       providerName: donePayload?.reply.provider_name,
       providerMode: donePayload?.reply.provider_mode,
       warning: donePayload?.reply.warning,
+      streaming: false,
+      reasoningContent: donePayload?.reply.reasoning_content || message.reasoningContent || null,
+      reasoningStreaming: false,
     }));
   } catch (error) {
     if (isAbortError(error)) {
       const partialMessage = messagesRef(scope).value.find((item) => item.id === assistantMessageId);
-      if (partialMessage?.content.trim()) {
+      if (partialMessage?.content.trim() || partialMessage?.reasoningContent?.trim()) {
         updateMessageById(scope, assistantMessageId, (message) => ({
           ...message,
           warning: '已停止生成',
+          streaming: false,
+          reasoningStreaming: false,
         }));
       } else {
         messagesRef(scope).value = messagesRef(scope).value.filter((item) => item.id !== assistantMessageId);
@@ -1142,6 +1249,19 @@ async function scrollMessagesToBottom() {
   if (messageListRef.value) {
     messageListRef.value.scrollTop = messageListRef.value.scrollHeight;
   }
+}
+
+function scheduleScrollMessagesToBottom() {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (scrollFrameId !== null) {
+    return;
+  }
+  scrollFrameId = window.requestAnimationFrame(() => {
+    scrollFrameId = null;
+    void scrollMessagesToBottom();
+  });
 }
 
 function applyBootstrap(payload: BootstrapPayload) {
@@ -1324,6 +1444,9 @@ async function sendCurrentMessage() {
           providerName: response.reply.provider_name,
           providerMode: response.reply.provider_mode,
           warning: response.reply.warning,
+          streaming: false,
+          reasoningContent: response.reply.reasoning_content,
+          reasoningStreaming: false,
         },
       ];
     }
@@ -1338,6 +1461,9 @@ async function sendCurrentMessage() {
             content: '本次回复已停止。',
             createdAt: new Date().toISOString(),
             warning: '已停止生成',
+            streaming: false,
+            reasoningContent: null,
+            reasoningStreaming: false,
           },
         ];
       }
@@ -1352,6 +1478,9 @@ async function sendCurrentMessage() {
         content: `发送失败：${message}`,
         createdAt: new Date().toISOString(),
         warning: message,
+        streaming: false,
+        reasoningContent: null,
+        reasoningStreaming: false,
       },
     ];
     ElMessage.error(message);
@@ -1521,6 +1650,8 @@ watch(
       drawerVisible.value = false;
       bootstrap.value = null;
       selectedProviderId.value = null;
+      thinkingModeEnabled.value = false;
+      settingsExpanded.value = false;
       currentContext.value = null;
       return;
     }
@@ -1552,6 +1683,9 @@ watch(
 
 onBeforeUnmount(() => {
   abortCurrentRequest(false);
+  if (scrollFrameId !== null) {
+    window.cancelAnimationFrame(scrollFrameId);
+  }
   window.removeEventListener('resize', handleWindowResize);
   window.removeEventListener('pointermove', handleWindowPointerMove);
   window.removeEventListener('pointerup', handleWindowPointerUp);
@@ -1716,6 +1850,46 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
+.ai-settings-card__toggle {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ai-settings-card__toggle-copy {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.ai-settings-card__summary {
+  margin: 0;
+  color: var(--ls-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ai-settings-card__toggle-action {
+  color: var(--ls-primary);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ai-settings-card__body {
+  display: grid;
+  gap: 12px;
+}
+
 .ai-context-card__head,
 .ai-settings-card__head,
 .ai-composer__head,
@@ -1806,8 +1980,13 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
-.ai-chat-bubble {
+.ai-chat-stack {
+  display: grid;
+  gap: 8px;
   max-width: min(92%, 520px);
+}
+
+.ai-chat-bubble {
   padding: 14px 16px;
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.9);
@@ -1832,12 +2011,36 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-.ai-chat-bubble__text {
+.ai-chat-bubble__text,
+.ai-chat-bubble__markdown-shell {
   margin: 0;
   color: var(--ls-text);
   line-height: 1.75;
-  white-space: pre-wrap;
   word-break: break-word;
+}
+
+.ai-chat-bubble__text {
+  white-space: pre-wrap;
+}
+
+.ai-chat-bubble__markdown-shell {
+  display: inline;
+}
+
+.ai-chat-bubble__markdown {
+  display: inline-block;
+  width: 100%;
+}
+
+.ai-chat-bubble__cursor {
+  display: inline-block;
+  width: 8px;
+  height: 1em;
+  margin-left: 3px;
+  border-radius: 999px;
+  background: var(--ls-primary);
+  vertical-align: -0.12em;
+  animation: ai-chat-cursor-blink 1s steps(1) infinite;
 }
 
 .ai-chat-attachments {
@@ -1860,6 +2063,54 @@ onBeforeUnmount(() => {
   color: var(--ls-muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.ai-chat-reasoning {
+  border-radius: 14px;
+  border: 1px solid rgba(47, 135, 255, 0.16);
+  background: rgba(47, 135, 255, 0.08);
+  overflow: hidden;
+}
+
+.ai-chat-reasoning__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  color: var(--ls-primary);
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+  list-style: none;
+}
+
+.ai-chat-reasoning__summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-chat-reasoning__summary strong {
+  font-size: 12px;
+}
+
+.ai-chat-reasoning__summary span {
+  color: var(--ls-muted);
+}
+
+.ai-chat-reasoning__body {
+  padding: 0 14px 12px;
+}
+
+@keyframes ai-chat-cursor-blink {
+  0%,
+  50% {
+    opacity: 1;
+  }
+
+  50.01%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .ai-starter-card__actions,

@@ -170,14 +170,15 @@ def summarize_plan_progress(plan: LessonPlan) -> tuple[int, int]:
 
 def serialize_recent_plan(plan: LessonPlan) -> dict:
     pending_count, completed_count = summarize_plan_progress(plan)
+    lesson = plan.lesson
     return {
         "id": plan.id,
         "title": plan.title,
         "status": plan.status,
         "assigned_date": plan.assigned_date.isoformat(),
-        "book_name": plan.lesson.unit.book.name,
-        "unit_title": plan.lesson.unit.title,
-        "lesson_title": plan.lesson.title,
+        "book_name": lesson.unit.book.name if lesson else "",
+        "unit_title": lesson.unit.title if lesson else "暂未绑定",
+        "lesson_title": lesson.title if lesson else "暂未绑定课次",
         "task_count": len(plan.tasks),
         "pending_count": pending_count,
         "completed_count": completed_count,
@@ -186,6 +187,7 @@ def serialize_recent_plan(plan: LessonPlan) -> dict:
 
 def serialize_launchpad_plan(plan: LessonPlan) -> dict:
     pending_count, completed_count = summarize_plan_progress(plan)
+    lesson = plan.lesson
     return {
         "id": plan.id,
         "title": plan.title,
@@ -194,9 +196,9 @@ def serialize_launchpad_plan(plan: LessonPlan) -> dict:
         "task_count": len(plan.tasks),
         "pending_count": pending_count,
         "completed_count": completed_count,
-        "book_name": plan.lesson.unit.book.name,
-        "unit_title": plan.lesson.unit.title,
-        "lesson_title": plan.lesson.title,
+        "book_name": lesson.unit.book.name if lesson else "",
+        "unit_title": lesson.unit.title if lesson else "暂未绑定",
+        "lesson_title": lesson.title if lesson else "暂未绑定课次",
     }
 
 
