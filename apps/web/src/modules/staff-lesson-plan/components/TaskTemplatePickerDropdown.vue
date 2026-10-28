@@ -1,5 +1,11 @@
 <template>
-  <n-dropdown placement="bottom-start" trigger="click" :options="options" @select="handleSelect">
+  <n-dropdown
+    placement="bottom-start"
+    trigger="click"
+    :options="options"
+    :render-option="renderDropdownOption"
+    @select="handleSelect"
+  >
     <n-button type="primary">从模板新增</n-button>
   </n-dropdown>
 </template>
@@ -8,6 +14,7 @@
 import type { DropdownOption } from 'naive-ui';
 import { NButton, NDropdown } from 'naive-ui';
 import { computed, h } from 'vue';
+import type { VNode } from 'vue';
 
 import { taskTemplatePresetOptions } from '../lessonPlan.constants';
 import type {
@@ -27,7 +34,16 @@ const props = defineProps<{
   handleTaskTemplateCommand: (command: TaskTemplateDropdownCommand) => void;
 }>();
 
-const optionItemStyle = 'display: grid; gap: 2px; min-width: 260px; white-space: normal;';
+const optionItemStyle =
+  'display: grid; gap: 2px; min-width: 260px; white-space: normal; line-height: 1.4;';
+
+/**
+ * n-dropdown 的选项高度被固定为单行（height: var(--n-option-height)），
+ * 标题 + 说明的两行文案会溢出压到下一项，这里套一层容器由全局样式放开高度。
+ */
+function renderDropdownOption({ node }: { node: VNode }) {
+  return h('div', { class: 'ls-task-template-option' }, [node]);
+}
 
 /**
  * n-dropdown 的选项内容由下拉层渲染，scoped 样式不会命中，
@@ -161,3 +177,20 @@ function handleSelect(key: string | number) {
   }
 }
 </script>
+
+<style>
+/* 下拉层被 teleport 到 body，scoped 样式无法命中，这里用前缀类限定作用范围。
+   选择器层数需覆盖 naive-ui 自身的 .n-dropdown-menu .n-dropdown-option .n-dropdown-option-body。 */
+.n-dropdown-menu .ls-task-template-option .n-dropdown-option .n-dropdown-option-body {
+  height: auto;
+  min-height: var(--n-option-height);
+  line-height: 1.4;
+  padding: 6px 0;
+}
+
+.n-dropdown-menu .ls-task-template-option .n-dropdown-option .n-dropdown-option-body .n-dropdown-option-body__label {
+  padding-right: 14px;
+  white-space: normal;
+}
+</style>
+

@@ -1,224 +1,149 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="在这里完成英文、中文与拼音练习，系统会将成绩实时同步到排行榜。"
-      eyebrow="打字训练"
-      title="课堂打字练习与速度反馈"
-    >
+  <div class="sw-typing">
+    <StudentPageHead title="打字训练" :sub="headSub">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadHome">刷新练习数据</n-button>
         <n-button secondary @click="router.push('/student/typing/rankings')">查看排行榜</n-button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
     <template v-else-if="homeData">
-      <div class="metric-grid">
-        <article class="metric-tile">
-          <p class="metric-label">平均速度</p>
-          <p class="metric-value">{{ displayNumber(homeData.overview.average_speed) }}</p>
-          <p class="metric-note">单位 CPM，按历史练习成绩计算</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">最佳速度</p>
-          <p class="metric-value">{{ displayNumber(homeData.overview.best_speed) }}</p>
-          <p class="metric-note">当前账号历史最高速度</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">最佳准确率</p>
-          <p class="metric-value">
-            {{ homeData.overview.best_accuracy === null ? '--' : `${homeData.overview.best_accuracy}%` }}
-          </p>
-          <p class="metric-note">按字符匹配结果估算</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">今日排名</p>
-          <p class="metric-value">
-            {{ homeData.overview.today_rank ? `#${homeData.overview.today_rank}` : '--' }}
-          </p>
-          <p class="metric-note">今日已有 {{ homeData.overview.today_participants }} 名同学参与</p>
-        </article>
-      </div>
+      <StudentPanel title="练习清单" :count="`${homeData.typing_sets.length} 篇`" flush>
+        <template v-if="homeData.typing_sets.length">
+          <article
+            v-for="item in homeData.typing_sets"
+            :key="item.id"
+            class="sw-row sw-typing-row"
+          >
+            <span class="sw-row__main">
+              <span class="sw-row__title">{{ item.title }}</span>
+              <span class="sw-row__meta">
+                <span>{{ item.difficulty }}</span>
+                <span>{{ item.content_length }} 字</span>
+                <span>{{ modeLabel(item.typing_mode) }}</span>
+                <span v-if="item.last_speed !== null">上次 {{ item.last_speed }} CPM</span>
+              </span>
+            </span>
+            <span class="sw-row__action">
+              <n-button type="primary" @click="openPractice(item)">开始练习</n-button>
+            </span>
+          </article>
+        </template>
+        <StudentEmpty v-else text="当前还没有可练习内容，老师发布后会出现在这里。" />
+      </StudentPanel>
 
-      <div class="split-grid">
-        <SaPanel description="点击任意练习即可进入打字窗口并记录成绩。" title="练习内容">
-          <template #actions>
-            <n-tag round type="info">共 {{ homeData.typing_sets.length }} 套</n-tag>
-          </template>
+      <StudentStatStrip :items="statItems" />
 
-          <n-empty v-if="!homeData.typing_sets.length" description="当前还没有可练习内容" />
-
-          <div v-else class="typing-set-list">
+      <div class="sw-split">
+        <StudentPanel
+          title="最近练习"
+          :count="`${homeData.recent_records.length} 次`"
+          flush
+        >
+          <template v-if="homeData.recent_records.length">
             <article
-              v-for="item in homeData.typing_sets"
+              v-for="item in homeData.recent_records"
               :key="item.id"
-              class="typing-set-card"
+              class="sw-row"
             >
-              <div class="typing-set-card__top">
-                <div>
-                  <h4>{{ item.title }}</h4>
-                  <p class="typing-set-card__desc">
-                    {{ item.description || '教师暂未填写练习说明。' }}
-                  </p>
-                </div>
-                <n-tag round>{{ modeLabel(item.typing_mode) }}</n-tag>
-              </div>
-
-              <div class="chip-row">
-                <n-tag round type="warning">{{ item.difficulty }}</n-tag>
-                <n-tag round>{{ item.content_length }} 字</n-tag>
-                <n-tag v-if="item.last_speed !== null" round type="success">
-                  上次速度 {{ item.last_speed }}
-                </n-tag>
-                <n-tag v-if="item.last_accuracy !== null" round type="info">
-                  上次准确率 {{ item.last_accuracy }}%
-                </n-tag>
-              </div>
-
-              <p class="typing-set-card__content">
-                {{ contentPreview(item.content) }}
-              </p>
-
-              <div class="typing-set-card__footer">
-                <span class="section-note">
-                  {{ item.last_played_at ? `上次练习 ${formatDateTime(item.last_played_at)}` : '还没有练习记录' }}
+              <span class="sw-row__main">
+                <span class="sw-row__title">{{ item.typing_set_title }}</span>
+                <span class="sw-row__meta">
+                  <span>{{ formatDateTime(item.played_at) }}</span>
+                  <span>{{ item.duration_sec }} 秒</span>
+                  <span>{{ item.typed_chars }} 字</span>
+                  <span>准确率 {{ item.accuracy_percent }}%</span>
                 </span>
-                <n-button type="primary" @click="openPractice(item)">开始练习</n-button>
-              </div>
+              </span>
+              <span class="sw-row__value">
+                {{ item.speed_cpm }}<small class="sw-row__unit"> CPM</small>
+              </span>
             </article>
-          </div>
-        </SaPanel>
-
-        <SaPanel
-          :description="homeData.ranking_preview.label"
-          title="班级榜预览"
-        >
-          <template #actions>
-            <n-button text type="primary" @click="router.push('/student/typing/rankings')">
-              完整榜单
-            </n-button>
           </template>
+          <StudentEmpty v-else text="你还没有练习记录，完成第一篇后会留在这里。" />
+        </StudentPanel>
 
-          <n-empty
-            v-if="!homeData.ranking_preview.items.length"
-            description="今天还没有打字成绩"
-          />
-
-          <div v-else class="ranking-preview-list">
-            <article
-              v-for="item in homeData.ranking_preview.items"
-              :key="`${item.student_no}-${item.played_at}`"
-              class="ranking-preview-item"
-            >
-              <div>
-                <p class="ranking-preview-item__name">#{{ item.rank }} {{ item.student_name }}</p>
-                <p class="section-note">
-                  {{ item.typing_set_title }} · {{ item.accuracy_percent }}%
-                </p>
-              </div>
-              <strong>{{ item.speed_cpm }}</strong>
-            </article>
-          </div>
-
-          <div class="pending-box">
-            <p class="pending-box__title">今日未练习</p>
-            <n-empty
-              v-if="!homeData.ranking_preview.pending_students.length"
-              description="本班学生都已参与"
-            />
-            <div v-else class="chip-row">
-              <n-tag
-                v-for="item in homeData.ranking_preview.pending_students"
-                :key="item.student_no"
-                round
-                type="warning"
+        <div class="sw-split__aside">
+          <StudentPanel
+            title="今日榜前 5"
+            :count="`${rankingItems.length} 人`"
+            flush
+          >
+            <template v-if="rankingItems.length">
+              <article
+                v-for="item in rankingItems"
+                :key="`${item.student_no}-${item.played_at}`"
+                class="sw-row sw-rank-row"
               >
-                {{ item.student_name }}
-              </n-tag>
-            </div>
-          </div>
-        </SaPanel>
+                <span
+                  :class="['sw-rank-row__rank', { 'is-top': item.rank <= 3 }]"
+                >
+                  {{ item.rank }}
+                </span>
+                <span class="sw-row__main">
+                  <span class="sw-row__title">{{ item.student_name }}</span>
+                  <span class="sw-row__meta">
+                    <span>{{ item.typing_set_title }}</span>
+                    <span>准确率 {{ item.accuracy_percent }}%</span>
+                  </span>
+                </span>
+                <span class="sw-row__value">{{ item.speed_cpm }}</span>
+              </article>
+            </template>
+            <StudentEmpty v-else text="今天还没有打字成绩，完成后就能上榜。" />
+          </StudentPanel>
+        </div>
       </div>
-
-      <SaPanel description="保留最近 5 次成绩，便于学生回看进步情况。" title="最近练习记录">
-        <SaDataTable
-          :data="homeData.recent_records"
-          empty-text="你还没有练习记录"
-          row-key="id"
-          stripe
-        >
-          <SaTableColumn label="练习名称" min-width="220" prop="typing_set_title" />
-          <SaTableColumn label="速度" min-width="100" prop="speed_cpm" />
-          <SaTableColumn label="准确率" min-width="100">
-            <template #default="{ row }">
-              {{ row.accuracy_percent }}%
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="时长" min-width="100">
-            <template #default="{ row }">
-              {{ row.duration_sec }} 秒
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="字数" min-width="100" prop="typed_chars" />
-          <SaTableColumn label="练习时间" min-width="180">
-            <template #default="{ row }">
-              {{ formatDateTime(row.played_at) }}
-            </template>
-          </SaTableColumn>
-        </SaDataTable>
-      </SaPanel>
     </template>
 
     <n-modal
       v-model:show="practiceDialogVisible"
       :content-style="{ maxHeight: 'calc(92vh - 180px)', overflow: 'auto' }"
       :mask-closable="false"
-      :style="{ width: 'min(1100px, 94vw)' }"
+      :style="{ width: 'min(720px, 94vw)' }"
       display-directive="if"
       preset="card"
       @after-leave="stopPracticeTimer"
     >
       <template #header>
-        <div class="section-head">
-          <div>
-            <p class="eyebrow">{{ practiceResult ? '练习结果' : '正在练习' }}</p>
+        <div class="practice-head">
+          <div class="practice-head__main">
             <h3>{{ activePracticeSet?.title || '打字练习' }}</h3>
-            <p class="section-note">
-              {{ practiceResult ? '成绩已经保存，可以继续再练一次。' : (activePracticeSet?.description || '请尽量对照原文完整输入。') }}
+            <p class="practice-head__meta">
+              <span>{{ activePracticeSet ? modeLabel(activePracticeSet.typing_mode) : '--' }}</span>
+              <span>{{ activePracticeSet?.difficulty || '--' }}</span>
+              <span>{{ activePracticeSet?.content_length || 0 }} 字</span>
+              <span>
+                {{ practiceResult ? `用时 ${practiceResult.duration_sec} 秒` : `计时 ${elapsedSec} 秒` }}
+              </span>
             </p>
           </div>
-          <div class="chip-row">
-            <n-tag round>{{ activePracticeSet ? modeLabel(activePracticeSet.typing_mode) : '--' }}</n-tag>
-            <n-tag round type="warning">{{ activePracticeSet?.difficulty || '--' }}</n-tag>
-            <n-tag round type="success">计时 {{ elapsedSec }} 秒</n-tag>
-          </div>
+          <span v-if="practiceResult" class="sw-chip sw-chip--done">已完成</span>
+          <span v-else class="sw-chip sw-chip--now">进行中</span>
         </div>
       </template>
 
-      <div v-if="!practiceResult" class="practice-shell">
-        <div class="practice-panel">
-          <div class="panel-head">
+      <div v-if="!practiceResult" class="practice-body">
+        <section class="practice-block">
+          <header class="practice-block__head">
             <h4>原文内容</h4>
-            <n-tag round>{{ activePracticeSet?.content_length || 0 }} 字</n-tag>
-          </div>
+            <span>{{ activePracticeSet?.content_length || 0 }} 字</span>
+          </header>
           <div class="practice-source">
             {{ activePracticeSet?.content || '' }}
           </div>
-        </div>
+        </section>
 
-        <div class="practice-panel">
-          <div class="panel-head">
+        <section class="practice-block">
+          <header class="practice-block__head">
             <h4>输入区</h4>
-            <div class="chip-row">
-              <n-tag round>当前速度 {{ liveSpeedCpm }}</n-tag>
-              <n-tag round type="info">准确率 {{ liveAccuracyPercent }}%</n-tag>
-            </div>
-          </div>
+            <span>{{ typedText.length }} / {{ activePracticeSet?.content_length || 0 }}</span>
+          </header>
 
           <n-input
             v-model:value="typedText"
@@ -228,65 +153,47 @@
             type="textarea"
           />
 
-          <div class="metric-grid practice-metrics">
-            <article class="metric-tile">
-              <p class="metric-label">已输入字符</p>
-              <p class="metric-value">{{ typedText.length }}</p>
-              <p class="metric-note">按当前输入统计</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">当前速度</p>
-              <p class="metric-value">{{ liveSpeedCpm }}</p>
-              <p class="metric-note">按当前时间折算 CPM</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">当前准确率</p>
-              <p class="metric-value">{{ liveAccuracyPercent }}%</p>
-              <p class="metric-note">按字符位置估算</p>
-            </article>
-          </div>
-        </div>
+          <p class="practice-metrics">
+            <span>已输入<strong>{{ typedText.length }}</strong></span>
+            <span>当前速度<strong>{{ liveSpeedCpm }}</strong><small>CPM</small></span>
+            <span>准确率<strong>{{ liveAccuracyPercent }}%</strong></span>
+          </p>
+        </section>
       </div>
 
-      <div v-else class="page-stack">
-        <div class="metric-grid">
-          <article class="metric-tile">
-            <p class="metric-label">本次速度</p>
-            <p class="metric-value">{{ practiceResult.speed_cpm }}</p>
-            <p class="metric-note">单位 CPM</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">准确率</p>
-            <p class="metric-value">{{ practiceResult.accuracy_percent }}%</p>
-            <p class="metric-note">已自动保存</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">今日排名</p>
-            <p class="metric-value">{{ practiceResult.today_rank ? `#${practiceResult.today_rank}` : '--' }}</p>
-            <p class="metric-note">{{ formatDateTime(practiceResult.played_at) }}</p>
-          </article>
-        </div>
+      <div v-else class="practice-body">
+        <p class="practice-metrics">
+          <span>本次速度<strong>{{ practiceResult.speed_cpm }}</strong><small>CPM</small></span>
+          <span>准确率<strong>{{ practiceResult.accuracy_percent }}%</strong></span>
+          <span>今日排名<strong>{{ practiceResult.today_rank ? `#${practiceResult.today_rank}` : '--' }}</strong></span>
+          <span>提交<strong class="is-text">{{ formatDateTime(practiceResult.played_at) }}</strong></span>
+        </p>
 
-        <SaPanel
-          :description="practiceRankingPreview?.label || '当前班级'"
-          title="最新榜单预览"
-        >
-          <div v-if="practiceRankingPreview?.items.length" class="ranking-preview-list">
+        <template v-if="practiceRankingPreview?.items.length">
+          <StudentPanel
+            :title="practiceRankingPreview.label || '最新榜'"
+            :count="`${practiceRankingPreview.items.length} 人`"
+            flush
+          >
             <article
               v-for="item in practiceRankingPreview.items"
               :key="`${item.student_no}-${item.played_at}`"
-              class="ranking-preview-item"
+              class="sw-row sw-rank-row"
             >
-              <div>
-                <p class="ranking-preview-item__name">#{{ item.rank }} {{ item.student_name }}</p>
-                <p class="section-note">
-                  {{ item.typing_set_title }} · {{ item.accuracy_percent }}%
-                </p>
-              </div>
-              <strong>{{ item.speed_cpm }}</strong>
+              <span :class="['sw-rank-row__rank', { 'is-top': item.rank <= 3 }]">
+                {{ item.rank }}
+              </span>
+              <span class="sw-row__main">
+                <span class="sw-row__title">{{ item.student_name }}</span>
+                <span class="sw-row__meta">
+                  <span>{{ item.typing_set_title }}</span>
+                  <span>准确率 {{ item.accuracy_percent }}%</span>
+                </span>
+              </span>
+              <span class="sw-row__value">{{ item.speed_cpm }}</span>
             </article>
-          </div>
-        </SaPanel>
+          </StudentPanel>
+        </template>
       </div>
 
       <template #footer>
@@ -311,16 +218,16 @@
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NInput, NModal, NSkeleton, NTag } from 'naive-ui';
+import { NAlert, NButton, NInput, NModal, NSkeleton } from 'naive-ui';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { ElMessage } from '@/ui/feedback';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
+import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type RankingItem = {
@@ -438,6 +345,45 @@ const liveSpeedCpm = computed(() => {
   return Math.round((typedText.value.length * 60) / elapsedSec.value);
 });
 
+const lastRecord = computed(() => {
+  const records = homeData.value?.recent_records || [];
+  if (!records.length) {
+    return null;
+  }
+  return records.reduce((latest, item) => (item.played_at > latest.played_at ? item : latest), records[0]);
+});
+
+const rankingItems = computed(() => homeData.value?.ranking_preview.items.slice(0, 5) || []);
+
+const headSub = computed(() => {
+  if (!homeData.value) {
+    return '';
+  }
+  const record = lastRecord.value;
+  if (!record) {
+    return `共 ${homeData.value.typing_sets.length} 篇练习 · 还没有练习记录`;
+  }
+  return `上次 ${record.speed_cpm} 字/分 · 正确率 ${record.accuracy_percent}%`;
+});
+
+const statItems = computed<StudentStatItem[]>(() => {
+  const overview = homeData.value?.overview;
+  const bestAccuracy = overview?.best_accuracy;
+  return [
+    { label: '平均速度', value: displayNumber(overview?.average_speed ?? null), unit: 'CPM' },
+    { label: '最佳速度', value: displayNumber(overview?.best_speed ?? null), unit: 'CPM' },
+    {
+      label: '最佳准确率',
+      value: bestAccuracy === null || bestAccuracy === undefined ? '--' : `${bestAccuracy}%`,
+    },
+    {
+      label: '今日排名',
+      value: overview?.today_rank ? `#${overview.today_rank}` : '--',
+      note: `${overview?.today_participants ?? 0} 人已参与`,
+    },
+  ];
+});
+
 function displayNumber(value: number | null) {
   return value === null ? '--' : value;
 }
@@ -460,10 +406,6 @@ function modeLabel(mode: string) {
     return '拼音';
   }
   return mode;
-}
-
-function contentPreview(content: string) {
-  return content.length > 110 ? `${content.slice(0, 110)}...` : content;
 }
 
 function stopPracticeTimer() {
@@ -567,143 +509,158 @@ onBeforeUnmount(stopPracticeTimer);
 </script>
 
 <style scoped>
-.section-head {
+.sw-typing {
+  display: grid;
+  gap: var(--sw-section-gap);
+}
+
+.sw-typing-row {
+  min-height: 64px;
+}
+
+.sw-row__unit {
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.sw-rank-row__rank {
+  flex: none;
+  width: 26px;
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-rank-row__rank.is-top {
+  color: var(--sw-ink);
+  font-weight: 600;
+}
+
+.sw-rank-row .sw-row__value {
+  min-width: 48px;
+  font-size: 14px;
+}
+
+/* 练习弹窗：单列，原文与输入区用分隔线过渡 */
+.practice-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.section-head h3 {
-  margin: 0 0 4px;
+.practice-head__main {
+  min-width: 0;
 }
 
-.typing-set-list {
-  display: grid;
-  gap: 14px;
-}
-
-.typing-set-card {
-  display: grid;
-  gap: 14px;
-  padding: 18px;
-  border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-panel);
-}
-
-.typing-set-card__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.typing-set-card__top h4 {
-  margin: 0 0 8px;
-}
-
-.typing-set-card__desc,
-.typing-set-card__content {
+.practice-head h3 {
   margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
+  color: var(--sw-ink);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
-.typing-set-card__content {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--ls-panel-soft);
-  color: var(--ls-text);
-}
-
-.typing-set-card__footer {
+.practice-head__meta {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 5px 0 0;
+  color: var(--sw-muted);
+  font-size: 12px;
 }
 
-.split-grid {
+.practice-body {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.ranking-preview-list {
-  display: grid;
-  gap: 10px;
-}
-
-.ranking-preview-item {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--ls-elevated);
-  border: 1px solid var(--ls-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ranking-preview-item__name {
-  margin: 0 0 4px;
-  font-weight: 700;
-}
-
-.pending-box {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px dashed var(--ls-border);
-}
-
-.pending-box__title {
-  margin: 0 0 10px;
-  font-weight: 700;
-}
-
-.practice-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
   gap: 16px;
 }
 
-.practice-panel {
+.practice-block {
   display: grid;
-  gap: 14px;
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-card);
+  gap: 10px;
+  min-width: 0;
 }
 
-.panel-head {
+.practice-block + .practice-block {
+  padding-top: 16px;
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+.practice-block__head {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
 }
 
-.panel-head h4 {
+.practice-block__head h4 {
   margin: 0;
+  color: var(--sw-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.practice-block__head span {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .practice-source {
-  padding: 16px;
-  border-radius: 16px;
-  background: var(--ls-panel-soft);
+  max-height: 200px;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface-2);
+  color: var(--sw-text);
+  font-size: 14px;
   line-height: 1.9;
   white-space: pre-wrap;
   word-break: break-word;
-  min-height: 320px;
 }
 
 .practice-metrics {
-  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 0;
+  margin: 0;
+  padding: 0;
+}
+
+.practice-metrics > span {
+  padding: 0 16px;
+  border-left: 1px solid var(--sw-line-soft);
+  color: var(--sw-muted);
+  font-size: 12px;
+}
+
+.practice-metrics > span:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.practice-metrics strong {
+  margin-left: 6px;
+  color: var(--sw-ink);
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.practice-metrics strong.is-text {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.practice-metrics small {
+  margin-left: 3px;
+  color: var(--sw-muted);
+  font-size: 11px;
 }
 
 .dialog-footer {
@@ -713,19 +670,9 @@ onBeforeUnmount(stopPracticeTimer);
   flex-wrap: wrap;
 }
 
-@media (max-width: 1200px) {
-  .split-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 960px) {
-  .practice-shell {
-    grid-template-columns: 1fr;
-  }
-
-  .typing-set-card__top {
-    flex-direction: column;
+@media (max-width: 640px) {
+  .practice-metrics > span {
+    padding: 0 12px;
   }
 }
 </style>

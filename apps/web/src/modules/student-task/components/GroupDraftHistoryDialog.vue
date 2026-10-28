@@ -333,7 +333,7 @@ watch(
 .history-sidebar {
   padding: 16px;
   border: 1px solid var(--ls-border);
-  border-radius: 20px;
+  border-radius: 10px;
   background: var(--ls-panel-soft);
 }
 
@@ -390,15 +390,15 @@ watch(
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--ls-border);
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--ls-elevated);
   text-align: left;
   cursor: pointer;
 }
 
 .version-card-active {
-  border-color: rgba(47, 135, 255, 0.4);
-  box-shadow: 0 0 0 3px rgba(47, 135, 255, 0.12);
+  border-color: var(--sw-ink, #111111);
+  box-shadow: none;
 }
 
 .history-summary {
@@ -414,7 +414,7 @@ watch(
 .history-card {
   padding: 18px;
   border: 1px solid var(--ls-border);
-  border-radius: 20px;
+  border-radius: 10px;
   background: var(--ls-card);
 }
 
@@ -423,7 +423,7 @@ watch(
   max-height: 260px;
   overflow: auto;
   padding: 14px 16px;
-  border-radius: 16px;
+  border-radius: 8px;
   background: var(--ls-code-bg);
   color: var(--ls-code-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;

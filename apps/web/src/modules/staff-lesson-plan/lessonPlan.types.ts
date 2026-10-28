@@ -30,6 +30,8 @@ export type PlanDetail = PlanSummary & {
     config: Record<string, unknown> | null;
     sort_order: number;
     is_required: boolean;
+    /** 学生端会一起展示的关联资源，供教师学生视角预览对照 */
+    resources?: Array<Record<string, unknown>>;
   }>;
 };
 

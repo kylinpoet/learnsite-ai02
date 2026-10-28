@@ -38,10 +38,15 @@ const navItems = [
   { label: '打字训练', to: '/student/typing', icon: markRaw(Keyboard) },
   { label: '课程资源', to: '/student/resources', icon: markRaw(BookOpenText) },
   { label: '共享网盘', to: '/student/drive', icon: markRaw(FolderOpen) },
+  { label: '小组协作', to: '/student/groups', icon: markRaw(UsersRound) },
   { label: '我的档案', to: '/student/profile', icon: markRaw(UserRound) },
 ];
 
-const navGroups = computed(() => [{ title: '', items: navItems }]);
+const navGroups = computed(() => [
+  { title: '学习', items: navItems.slice(0, 4) },
+  { title: '资源', items: navItems.slice(4, 6) },
+  { title: '我的', items: navItems.slice(6) },
+]);
 
 const studentPageItems: StudentPageItem[] = [
   { label: '学习首页', icon: markRaw(House), matches: [(path) => path === '/student/home'] },
@@ -121,7 +126,7 @@ const currentPage = computed(() => {
     :current-page-icon="currentPage.icon"
     :current-page-label="currentPage.label"
     :nav-groups="navGroups"
-    kicker="成长与任务总览"
+    kicker="学习空间"
     variant="student"
   >
     <template #actions>

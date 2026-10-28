@@ -9,6 +9,8 @@ import { authSessionExpiredEvent } from './stores/authSession';
 import './styles/theme.css';
 import './styles/base.css';
 import './styles/layout.css';
+import './styles/assistant.css';
+import './styles/student-workspace.css';
 
 const app = createApp(App);
 const pinia = createPinia();

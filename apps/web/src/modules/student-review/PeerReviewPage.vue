@@ -1,193 +1,120 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader eyebrow="作品互评" :title="pageData?.task.title || `任务 ${route.params.taskId}`">
-      <p class="hero-copy">
-        {{ pageData?.task.course.title || '正在加载课次信息' }}
-        <span v-if="pageData">
-          · {{ pageData.task.course.unit_title }} · {{ pageData.task.course.lesson_title }}
-        </span>
-      </p>
-      <template #actions>
-        <div class="action-group">
-          <n-button secondary @click="goToTask">返回任务</n-button>
-          <n-button secondary @click="goToCourse">返回课程</n-button>
-        </div>
+  <div class="sw-review">
+    <StudentPageHead :title="pageData?.task.title || `任务 ${route.params.taskId}`" :sub="headSub">
+      <template #back>
+        <button class="sw-back" type="button" @click="goToTask">← 返回任务</button>
       </template>
-    </SaPageHeader>
+      <template #actions>
+        <n-button secondary @click="goToCourse">返回课程</n-button>
+      </template>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <div v-if="pageData" class="metric-grid">
-      <article class="mini-panel">
-        <p class="metric-label">作品总数</p>
-        <p class="metric-value">{{ pageData.summary.total_works }}</p>
-        <p class="metric-note">当前课题已经提交到作品墙的数量。</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">可投次数</p>
-        <p class="metric-value">{{ pageData.summary.votes_remaining }}</p>
-        <p class="metric-note">
-          已用 {{ pageData.summary.votes_used }} / {{ pageData.summary.vote_limit }} 次推荐。
-        </p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">我的得票</p>
-        <p class="metric-value">{{ pageData.summary.my_received_votes }}</p>
-        <p class="metric-note">表示同学给你这份作品投出的推荐票数。</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">互评得分</p>
-        <p class="metric-value">{{ pageData.summary.my_peer_review_score ?? '--' }}</p>
-        <p class="metric-note">当前按推荐票累计，后续仍可扩展更细的评分规则。</p>
-      </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="10" animated /></div>
     </div>
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
+    <template v-else-if="pageData">
+      <StudentStatStrip :items="statItems" />
 
-    <div v-else-if="pageData" class="page-stack">
-      <SaPanel v-if="pageData.gate.requires_submission" class="gate-card" title="参与说明">
-        <div class="gate-body">
-          <p>{{ pageData.gate.message }}</p>
+      <StudentPanel v-if="pageData.gate.requires_submission" title="还不能参与互评">
+        <div class="sw-review__gate">
+          <p class="sw-review__gate-text">{{ pageData.gate.message }}</p>
           <n-button type="primary" @click="goToTask">先去提交作品</n-button>
         </div>
-      </SaPanel>
+      </StudentPanel>
 
-      <template v-else>
-        <SaPanel>
-          <template #header>
-            <div class="chart-head">
-              <div>
-                <strong>作品得票与互评对比</strong>
-                <p class="section-note">柱为每份作品的推荐票数，折线为互评得分，便于横向比较人气与评分。</p>
-              </div>
-            </div>
-          </template>
-          <n-empty v-if="!pageData.items.length" description="作品墙上还没有作品。" />
-          <AppChart v-else :height="280" :option="voteComparisonOption" />
-        </SaPanel>
-
-        <div class="detail-grid">
-        <SaPanel title="作品墙">
-          <template #actions>
-            <n-tag round type="success">共 {{ pageData.items.length }} 份</n-tag>
-          </template>
-
-          <div class="wall-list">
+      <div v-else class="sw-review__grid">
+        <StudentPanel title="作品墙" :count="`${pageData.items.length} 份`" flush>
+          <template v-if="pageData.items.length">
             <button
               v-for="item in pageData.items"
               :key="item.submission_id"
-              :class="['wall-item', { 'wall-item--active': item.submission_id === selectedSubmissionId }]"
               type="button"
+              :class="['sw-review__wall-item', { 'is-active': item.submission_id === selectedSubmissionId }]"
               @click="selectSubmission(item.submission_id)"
             >
-              <div class="wall-item-head">
+              <span class="sw-review__wall-head">
                 <strong>{{ item.student_name }}</strong>
-                <div class="wall-tags">
-                  <n-tag v-if="item.is_mine" round type="info">我的作品</n-tag>
-                  <n-tag v-else-if="item.has_voted" round type="success">已推荐</n-tag>
-                  <n-tag v-if="item.is_teacher_recommended" round type="warning">教师推荐</n-tag>
-                </div>
-              </div>
-              <p class="wall-meta">{{ item.student_no }} · {{ item.class_name }}</p>
-              <p class="wall-note">
-                {{ richTextToExcerpt(item.submission_note, 90) || '这份作品还没有填写额外说明。' }}
-              </p>
-              <div class="wall-item-foot">
+                <span v-if="item.is_mine" class="sw-chip">我的</span>
+                <span v-else-if="item.has_voted" class="sw-chip sw-chip--done">已推荐</span>
+                <span v-if="item.is_teacher_recommended" class="sw-chip sw-chip--now">教师推荐</span>
+              </span>
+              <span class="sw-review__wall-meta">{{ item.student_no }} · {{ item.class_name }}</span>
+              <span class="sw-review__wall-note">
+                {{ richTextToExcerpt(item.submission_note, 80) || '没有填写额外说明。' }}
+              </span>
+              <span class="sw-review__wall-foot">
                 <span>得票 {{ item.vote_count }}</span>
                 <span>互评 {{ item.peer_review_score }}</span>
-              </div>
+              </span>
             </button>
-          </div>
-        </SaPanel>
+          </template>
+          <StudentEmpty v-else text="作品墙上还没有作品。" />
+        </StudentPanel>
 
-        <SaPanel class="stage-card" title="作品详情">
+        <StudentPanel title="作品详情">
           <template #actions>
-            <n-tag round type="info">
-              {{ selectedItem ? formatDateTime(selectedItem.updated_at) : '请选择作品' }}
-            </n-tag>
+            <span v-if="selectedItem" class="sw-review__time">{{ formatDateTime(selectedItem.updated_at) }}</span>
           </template>
 
-          <n-empty v-if="!selectedItem" description="请选择左侧的一份作品查看" />
+          <StudentEmpty v-if="!selectedItem" text="从左侧选择一份作品查看。" />
 
-          <div v-else class="stage-stack">
-            <div class="detail-hero">
+          <div v-else class="sw-review__detail">
+            <div class="sw-review__identity">
               <div>
-                <div class="wall-item-head">
-                  <strong>{{ selectedItem.student_name }}</strong>
-                  <div class="wall-tags">
-                    <n-tag v-if="selectedItem.is_mine" round type="info">我的作品</n-tag>
-                    <n-tag v-if="selectedItem.has_voted" round type="success">已推荐</n-tag>
-                    <n-tag v-if="selectedItem.is_teacher_recommended" round type="warning">
-                      教师推荐
-                    </n-tag>
-                  </div>
-                </div>
-                <p class="wall-meta">{{ selectedItem.student_no }} · {{ selectedItem.class_name }}</p>
+                <p class="sw-review__name">
+                  {{ selectedItem.student_name }}
+                  <span v-if="selectedItem.is_mine" class="sw-chip">我的</span>
+                  <span v-if="selectedItem.has_voted" class="sw-chip sw-chip--done">已推荐</span>
+                  <span v-if="selectedItem.is_teacher_recommended" class="sw-chip sw-chip--now">教师推荐</span>
+                </p>
+                <p class="sw-review__meta">{{ selectedItem.student_no }} · {{ selectedItem.class_name }}</p>
               </div>
-
-              <div class="detail-score-grid">
-                <div>
-                  <span class="detail-score-label">得票</span>
-                  <strong>{{ selectedItem.vote_count }}</strong>
-                </div>
-                <div>
-                  <span class="detail-score-label">互评</span>
-                  <strong>{{ selectedItem.peer_review_score }}</strong>
-                </div>
+              <div class="sw-review__scores">
+                <span><small>得票</small><strong>{{ selectedItem.vote_count }}</strong></span>
+                <span><small>互评</small><strong>{{ selectedItem.peer_review_score }}</strong></span>
               </div>
             </div>
 
-            <div class="content-block">
-              <h3>作品说明</h3>
+            <div class="sw-review__note">
               <RichTextContent
                 :html="selectedItem.submission_note"
                 empty-text="该作品没有填写额外说明。"
               />
             </div>
 
-            <div class="vote-panel">
-              <div>
-                <h3>推荐操作</h3>
-                <p>{{ voteStatusText }}</p>
-              </div>
-              <n-button
-                :disabled="voteDisabled"
-                :loading="isVoting"
-                type="primary"
-                @click="voteForSelected"
-              >
+            <div class="sw-review__vote">
+              <p class="sw-review__vote-text">{{ voteStatusText }}</p>
+              <n-button :disabled="voteDisabled" :loading="isVoting" type="primary" @click="voteForSelected">
                 推荐这份作品
               </n-button>
             </div>
 
-            <div class="showcase-files-head">
-              <h3>附件展示</h3>
-              <n-tag round type="success">共 {{ selectedItem.files.length }} 个附件</n-tag>
+            <div class="sw-review__files-head">
+              <h3 class="sw-review__section-title">附件</h3>
+              <span class="sw-review__meta">{{ selectedItem.files.length }} 个</span>
             </div>
 
-            <n-empty v-if="!selectedItem.files.length" description="这份作品没有附件" />
+            <StudentEmpty v-if="!selectedItem.files.length" text="这份作品没有附件。" />
 
             <template v-else>
-              <div class="showcase-file-list">
+              <div class="sw-review__file-list">
                 <button
                   v-for="file in selectedItem.files"
                   :key="file.id"
-                  :class="['showcase-file-card', { 'showcase-file-card--active': file.id === selectedFileId }]"
                   type="button"
+                  :class="['sw-review__file', { 'is-active': file.id === selectedFileId }]"
                   @click="selectFile(file.id)"
                 >
-                  <span class="showcase-file-name">{{ file.name }}</span>
-                  <span class="showcase-file-meta">
-                    {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB
-                    {{ file.previewable ? ' · 可直接展示' : ' · 仅下载' }}
-                  </span>
+                  <span class="sw-review__file-name">{{ file.name }}</span>
+                  <span class="sw-review__meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</span>
                 </button>
               </div>
 
               <n-spin :show="isPreviewLoading">
-                <div class="showcase-preview">
+                <div class="sw-review__preview">
                   <iframe
                     v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
                     :src="previewUrl"
@@ -207,33 +134,34 @@
                     <p>当前附件暂不支持直接展示，请下载后查看。</p>
                     <n-button
                       :loading="downloadLoadingFileId === selectedFile.id"
-                      type="success"
+                      type="primary"
                       @click="downloadFile(selectedFile)"
                     >
                       下载当前附件
                     </n-button>
                   </div>
-                  <n-empty v-else description="请选择一个附件进行查看" />
+                  <StudentEmpty v-else text="请选择一个附件查看。" />
                 </div>
               </n-spin>
             </template>
           </div>
-        </SaPanel>
-        </div>
-      </template>
-    </div>
+        </StudentPanel>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSkeleton, NSpin, NTag } from 'naive-ui';
+import { NAlert, NButton, NSkeleton, NSpin } from 'naive-ui';
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
+import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
@@ -369,6 +297,36 @@ const selectedFile = computed(() => {
     return null;
   }
   return selectedItem.value.files.find((file) => file.id === selectedFileId.value) || null;
+});
+
+const headSub = computed(() => {
+  const payload = pageData.value;
+  if (!payload) {
+    return '';
+  }
+  return [
+    payload.task.course.title,
+    payload.task.course.unit_title,
+    payload.task.course.lesson_title,
+    `${payload.items.length} 份作品`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+});
+
+const statItems = computed<StudentStatItem[]>(() => {
+  const summary = pageData.value?.summary;
+  return [
+    { label: '作品', value: summary?.total_works ?? 0, unit: '份' },
+    {
+      label: '可推荐',
+      value: summary?.votes_remaining ?? 0,
+      unit: '次',
+      note: `已用 ${summary?.votes_used ?? 0}/${summary?.vote_limit ?? 0}`,
+    },
+    { label: '我的得票', value: summary?.my_received_votes ?? 0, unit: '票' },
+    { label: '互评得分', value: summary?.my_peer_review_score ?? '--' },
+  ];
 });
 
 const voteDisabled = computed(() => {
@@ -647,253 +605,299 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.action-group {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+.sw-review {
+  display: grid;
+  gap: var(--sw-section-gap);
 }
 
-.detail-grid {
+.sw-review__grid {
   display: grid;
-  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
-  gap: 16px;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: var(--sw-gap);
   align-items: start;
 }
 
-@media (max-width: 1200px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.wall-tags,
-.wall-item-head,
-.info-row,
-.showcase-files-head {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
-
-.gate-card :deep(.sa-panel__body) {
+/* 作品墙 */
+.sw-review__wall-item {
   display: grid;
-  gap: 16px;
-}
-
-.gate-body p,
-.wall-meta,
-.wall-note,
-.content-block :deep(.rich-text-content),
-.content-block p,
-.detail-score-label,
-.showcase-file-meta {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.wall-list,
-.stage-stack {
-  display: grid;
-  gap: 14px;
-}
-
-.wall-item,
-.showcase-file-card {
+  gap: 4px;
   width: 100%;
-  border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-card);
+  padding: 12px 18px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
   text-align: left;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease,
-    transform 0.2s ease;
   cursor: pointer;
 }
 
-.wall-item {
-  padding: 16px;
+.sw-review__wall-item + .sw-review__wall-item {
+  border-top: 1px solid var(--sw-line-soft);
 }
 
-.wall-item:hover,
-.showcase-file-card:hover {
-  border-color: rgba(67, 109, 185, 0.3);
-  box-shadow: 0 10px 26px rgba(67, 109, 185, 0.08);
-  transform: translateY(-1px);
+.sw-review__wall-item:hover {
+  background: var(--sw-surface-2);
 }
 
-.wall-item--active,
-.showcase-file-card--active {
-  border-color: rgba(67, 109, 185, 0.42);
-  background:
-    linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
-    var(--ls-card);
+.sw-review__wall-item.is-active {
+  background: var(--sw-surface-3);
 }
 
-.wall-meta {
-  margin-top: 6px;
+.sw-review__wall-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: var(--sw-ink);
+  font-size: 14px;
+}
+
+.sw-review__wall-meta {
+  color: var(--sw-muted);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.wall-note {
-  margin-top: 10px;
+.sw-review__wall-note {
   display: -webkit-box;
   overflow: hidden;
+  color: var(--sw-text);
+  font-size: 13px;
+  line-height: 1.5;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
 }
 
-.wall-item-foot {
+.sw-review__wall-foot {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-  color: var(--ls-ink);
-  font-weight: 700;
+  gap: 14px;
+  margin-top: 2px;
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.stage-card :deep(.sa-panel__body) {
+/* 详情 */
+.sw-review__time {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-review__detail {
   display: grid;
-  gap: 16px;
+  gap: 18px;
 }
 
-.detail-hero {
+.sw-review__identity {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--ls-primary-soft);
+  gap: 20px;
 }
 
-.detail-score-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(72px, 1fr));
-  gap: 12px;
-}
-
-.detail-score-grid > div {
-  padding: 12px 14px;
-  border-radius: 16px;
-  background: var(--ls-elevated);
-  text-align: center;
-}
-
-.detail-score-grid strong {
-  display: block;
-  margin-top: 6px;
-  font-size: 24px;
-  color: var(--ls-ink);
-}
-
-.vote-panel {
+.sw-review__name {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 16px;
-  border-radius: 18px;
-  background:
-    linear-gradient(135deg, rgba(111, 179, 149, 0.12), rgba(255, 186, 73, 0.14)),
-    var(--ls-card);
+  gap: 6px;
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 17px;
+  font-weight: 600;
 }
 
-.vote-panel h3,
-.content-block h3,
-.showcase-files-head h3 {
-  margin: 0 0 8px;
+.sw-review__meta {
+  margin: 4px 0 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.showcase-file-list {
+.sw-review__scores {
+  display: flex;
+  flex: none;
+  gap: 24px;
+  text-align: right;
+}
+
+.sw-review__scores span {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 2px;
 }
 
-.showcase-file-card {
-  padding: 12px 14px;
-}
-
-.showcase-file-name,
-.showcase-file-meta {
-  display: block;
-}
-
-.showcase-file-name {
-  font-weight: 700;
-  color: var(--ls-ink);
-  word-break: break-word;
-}
-
-.showcase-file-meta {
-  margin-top: 4px;
+.sw-review__scores small {
+  color: var(--sw-muted);
   font-size: 12px;
 }
 
-.showcase-preview {
-  min-height: 380px;
-  padding: 14px;
-  border-radius: 20px;
-  border: 1px solid var(--ls-border);
-  background:
-    radial-gradient(circle at top left, rgba(67, 109, 185, 0.08), transparent 45%),
-    var(--ls-card);
+.sw-review__scores strong {
+  color: var(--sw-ink);
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-review__note {
+  max-width: 76ch;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.sw-review__vote {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  background: var(--sw-surface-2);
+}
+
+.sw-review__vote-text {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sw-review__files-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.sw-review__section-title {
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.sw-review__file-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sw-review__file {
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--sw-line);
+  border-radius: 6px;
+  background: var(--sw-surface);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sw-review__file.is-active {
+  border-color: var(--sw-ink);
+}
+
+.sw-review__file-name {
+  max-width: 240px;
+  overflow: hidden;
+  color: var(--sw-ink);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sw-review__file .sw-review__meta {
+  margin: 0;
+}
+
+.sw-review__preview {
+  min-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  background: var(--sw-surface-2);
 }
 
 .preview-frame {
   width: 100%;
-  min-height: 70vh;
+  min-height: 62vh;
   border: none;
-  border-radius: 16px;
-  background: #fff;
+  background: #ffffff;
 }
 
 .preview-image {
   display: block;
   max-width: 100%;
-  max-height: 70vh;
+  max-height: 62vh;
   margin: 0 auto;
-  border-radius: 16px;
 }
 
 .preview-text {
   margin: 0;
-  max-height: 70vh;
+  max-height: 62vh;
   overflow: auto;
   padding: 16px;
-  border-radius: 16px;
-  background: var(--ls-code-bg);
-  color: var(--ls-code-text);
+  color: var(--sw-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .preview-fallback {
-  min-height: 260px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  display: grid;
+  justify-items: center;
   gap: 12px;
+  padding: 56px 16px;
+  color: var(--sw-muted);
   text-align: center;
-  color: var(--ls-muted);
 }
 
-@media (max-width: 960px) {
-  .detail-hero,
-  .vote-panel {
+.preview-fallback p {
+  margin: 0;
+  font-size: 13px;
+}
+
+.sw-review__gate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.sw-review__gate-text {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@media (max-width: 1080px) {
+  .sw-review__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sw-review__wall-item {
+    padding: 12px 16px;
+  }
+}
+
+@media (max-width: 640px) {
+  .sw-review__identity,
+  .sw-review__vote,
+  .sw-review__gate {
     flex-direction: column;
     align-items: flex-start;
   }
 
-  .showcase-file-list {
-    grid-template-columns: 1fr;
+  .sw-review__scores {
+    justify-content: flex-start;
+    text-align: left;
   }
 }
 </style>

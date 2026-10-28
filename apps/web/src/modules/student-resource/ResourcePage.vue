@@ -1,153 +1,119 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="在这里按分类浏览课堂资源与延伸阅读，快速找到本节课需要的学习材料。"
-      eyebrow="在线资源"
-      title="课堂资源与延伸阅读"
-    >
+  <div class="sw-resource">
+    <StudentPageHead title="课程资源" :sub="headSub">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadResources">刷新资源</n-button>
+        <n-button :loading="isLoading" @click="loadResources">刷新</n-button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
-
-    <template v-else-if="resourceData">
-      <div class="metric-grid">
-        <article class="metric-tile">
-          <p class="metric-label">资源分类</p>
-          <p class="metric-value">{{ resourceData.categories.length }}</p>
-          <p class="metric-note">按教学用途组织</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">资源总数</p>
-          <p class="metric-value">{{ resourceData.total_count }}</p>
-          <p class="metric-note">当前学生可见资源</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">推荐资源</p>
-          <p class="metric-value">{{ resourceData.featured_items.length }}</p>
-          <p class="metric-note">默认优先展示重点资源</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">当前分类</p>
-          <p class="metric-value resource-metric-text">{{ activeCategory?.name || '--' }}</p>
-          <p class="metric-note">{{ activeCategory?.item_count || 0 }} 条资源</p>
-        </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body">
+        <n-skeleton :rows="8" animated />
       </div>
+    </div>
 
-      <SaPanel
-        v-if="resourceData.featured_items.length"
-        description="优先展示适合课堂使用和延伸阅读的内容。"
-        title="推荐资源"
+    <div v-else-if="resourceData" class="sw-reader">
+      <StudentPanel title="分类" :count="`${resourceData.categories.length} 个`" flush>
+        <div v-if="resourceData.categories.length" class="sw-cats">
+          <button
+            v-for="category in resourceData.categories"
+            :key="category.id"
+            type="button"
+            :class="['sw-row', 'sw-row--link', 'sw-cat', { 'is-active': String(category.id) === activeCategoryKey }]"
+            @click="activeCategoryKey = String(category.id)"
+          >
+            <span class="sw-row__main">
+              <span class="sw-row__title">{{ category.name }}</span>
+            </span>
+            <span class="sw-row__value">{{ category.item_count }}</span>
+          </button>
+        </div>
+        <StudentEmpty v-else box text="还没有可查看的分类，老师发布资源后会出现在这里。" />
+      </StudentPanel>
+
+      <StudentPanel
+        :title="activeCategory?.name || '资源列表'"
+        :count="activeCategory ? `${categoryItems.length} 份` : undefined"
+        flush
       >
-        <div class="featured-grid">
-          <article
-            v-for="item in resourceData.featured_items"
+        <template v-if="categoryItems.length">
+          <button
+            v-for="item in categoryItems"
             :key="item.id"
-            class="featured-card"
+            type="button"
+            :class="['sw-row', 'sw-row--link', 'sw-item', { 'is-active': selectedResourceId === item.id }]"
             @click="selectResource(item.id)"
           >
-            <div class="chip-row">
-              <n-tag round>{{ typeLabel(item.resource_type) }}</n-tag>
-              <n-tag v-if="item.category" round type="info">{{ item.category.name }}</n-tag>
-            </div>
-            <h4>{{ item.title }}</h4>
-            <p>{{ item.summary || '暂无资源摘要。' }}</p>
-          </article>
-        </div>
-      </SaPanel>
+            <span class="sw-row__main">
+              <span class="sw-row__title">{{ item.title }}</span>
+              <span class="sw-row__meta">
+                <span>{{ typeLabel(item.resource_type) }}</span>
+                <span>{{ item.owner_name }}</span>
+              </span>
+            </span>
+            <span v-if="item.external_url" class="sw-chip">外链</span>
+          </button>
+        </template>
+        <StudentEmpty v-else box :text="activeCategory ? '这个分类下还没有资源，换一个分类看看。' : '先选择一个分类，资源会列在这里。'" />
+      </StudentPanel>
 
-      <div class="detail-grid">
-        <SaPanel description="切换分类后，可查看该分类下全部资源。" title="分类浏览">
-          <n-tabs v-model:value="activeCategoryKey" class="resource-tabs">
-            <n-tab-pane
-              v-for="category in resourceData.categories"
-              :key="category.id"
-              :name="String(category.id)"
-              :tab="`${category.name}（${category.item_count}）`"
+      <StudentPanel
+        :title="resourceDetail?.title || '资源详情'"
+        :count="resourceDetail ? typeLabel(resourceDetail.resource_type) : undefined"
+      >
+        <template v-if="resourceDetail?.external_url" #actions>
+          <n-button secondary @click="openExternal(resourceDetail.external_url)">打开外链</n-button>
+        </template>
+
+        <StudentEmpty v-if="!resourceDetail" box text="从中间列表选一篇材料，正文会显示在这里。" />
+
+        <div v-else class="sw-detail">
+          <p class="sw-row__meta sw-detail__meta">
+            <span>{{ resourceDetail.category?.name || '未分类' }}</span>
+            <span>提供者 {{ resourceDetail.owner_name }}</span>
+            <span v-if="resourceDetail.external_url">外链资源</span>
+          </p>
+
+          <p class="sw-detail__summary">{{ resourceDetail.summary || '暂无摘要。' }}</p>
+
+          <RichTextContent
+            :html="resourceDetail.content"
+            empty-text="这篇材料没有正文，可直接打开外链查看。"
+          />
+
+          <div v-if="resourceDetail.related_items.length" class="sw-detail__related">
+            <p class="sw-detail__related-label">同分类的其他材料</p>
+            <button
+              v-for="item in resourceDetail.related_items"
+              :key="item.id"
+              type="button"
+              class="sw-row sw-row--link sw-detail__related-row"
+              @click="selectResource(item.id)"
             >
-              <n-empty v-if="!category.items.length" description="该分类下暂时没有资源" />
-
-              <div v-else class="resource-list">
-                <article
-                  v-for="item in category.items"
-                  :key="item.id"
-                  :class="['resource-item', { 'resource-item-active': selectedResourceId === item.id }]"
-                  @click="selectResource(item.id)"
-                >
-                  <div class="resource-item__top">
-                    <strong>{{ item.title }}</strong>
-                    <n-tag round>{{ typeLabel(item.resource_type) }}</n-tag>
-                  </div>
-                  <p class="resource-item__summary">{{ item.summary || '暂无资源摘要。' }}</p>
-                  <p class="section-note">提供者：{{ item.owner_name }}</p>
-                </article>
-              </div>
-            </n-tab-pane>
-          </n-tabs>
-        </SaPanel>
-
-        <SaPanel description="支持文章阅读和外链跳转。" title="资源详情">
-          <template v-if="resourceDetail?.external_url" #actions>
-            <n-button secondary type="primary" @click="openExternal(resourceDetail.external_url)">
-              打开外链
-            </n-button>
-          </template>
-
-          <n-empty v-if="!resourceDetail" description="请先从左侧选择一条资源" />
-
-          <template v-else>
-            <div class="chip-row detail-chip-row">
-              <n-tag round>{{ typeLabel(resourceDetail.resource_type) }}</n-tag>
-              <n-tag v-if="resourceDetail.category" round type="info">
-                {{ resourceDetail.category.name }}
-              </n-tag>
-              <n-tag round type="success">{{ resourceDetail.owner_name }}</n-tag>
-            </div>
-
-            <h3 class="detail-title">{{ resourceDetail.title }}</h3>
-            <p class="detail-summary">{{ resourceDetail.summary || '暂无摘要。' }}</p>
-
-            <RichTextContent
-              :html="resourceDetail.content"
-              empty-text="当前资源没有正文内容，可直接使用外链或摘要信息。"
-            />
-
-            <div v-if="resourceDetail.related_items.length" class="related-box">
-              <p class="related-box__title">同类资源推荐</p>
-              <div class="chip-row">
-                <n-tag
-                  v-for="item in resourceDetail.related_items"
-                  :key="item.id"
-                  round
-                  type="warning"
-                  @click="selectResource(item.id)"
-                >
-                  {{ item.title }}
-                </n-tag>
-              </div>
-            </div>
-          </template>
-        </SaPanel>
-      </div>
-    </template>
+              <span class="sw-row__main">
+                <span class="sw-row__title">{{ item.title }}</span>
+                <span class="sw-row__meta">{{ typeLabel(item.resource_type) }}</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </StudentPanel>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { apiGet } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type ResourceSummary = {
@@ -195,6 +161,14 @@ const resourceDetail = ref<ResourceDetailPayload | null>(null);
 const activeCategory = computed(() =>
   resourceData.value?.categories.find((item) => String(item.id) === activeCategoryKey.value) || null
 );
+const categoryItems = computed(() => activeCategory.value?.items || []);
+
+const headSub = computed(() => {
+  if (!resourceData.value) {
+    return '';
+  }
+  return `${resourceData.value.categories.length} 个分类 · ${resourceData.value.total_count} 份材料`;
+});
 
 function requestedResourceId() {
   const value = Number(route.query.resourceId);
@@ -305,123 +279,111 @@ onMounted(loadResources);
 </script>
 
 <style scoped>
-.detail-grid {
+.sw-resource {
   display: grid;
-  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
-  gap: 16px;
+  gap: var(--sw-section-gap);
+}
+
+/* 三栏阅读器：分类 200 / 列表 300 / 详情自适应 */
+.sw-reader {
+  display: grid;
+  grid-template-columns: 200px 300px minmax(0, 1fr);
+  gap: var(--sw-gap);
   align-items: start;
 }
 
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.section-head h3 {
-  margin: 0 0 4px;
-}
-
-.resource-metric-text {
-  font-size: clamp(24px, 2vw, 34px);
-}
-
-.featured-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.featured-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 18px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-panel);
-  cursor: pointer;
-}
-
-.featured-card h4 {
-  margin: 0;
-}
-
-.featured-card p {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.resource-tabs {
+.sw-cat,
+.sw-item {
   width: 100%;
-}
-
-.resource-list {
-  display: grid;
-  gap: 12px;
-}
-
-.resource-item {
-  display: grid;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-elevated);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  transition: border-color 0.18s ease, transform 0.18s ease;
 }
 
-.resource-item:hover,
-.resource-item-active {
-  border-color: rgba(74, 135, 255, 0.45);
-  transform: translateY(-1px);
+.sw-cat {
+  min-height: 44px;
 }
 
-.resource-item__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
+.sw-cat:hover,
+.sw-item:hover {
+  background: var(--sw-surface-2);
 }
 
-.resource-item__summary {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
+.sw-cat.is-active,
+.sw-item.is-active {
+  background: var(--sw-surface-2);
 }
 
-.detail-chip-row {
-  margin-bottom: 14px;
+.sw-cat.is-active .sw-row__title,
+.sw-item.is-active .sw-row__title {
+  font-weight: 600;
 }
 
-.detail-title {
-  margin: 0 0 8px;
-}
-
-.detail-summary {
-  margin: 0 0 18px;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.related-box {
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px dashed var(--ls-border);
-}
-
-.related-box__title {
+.sw-detail__meta {
   margin: 0 0 10px;
-  font-weight: 700;
 }
 
-@media (max-width: 1100px) {
-  .featured-grid,
-  .detail-grid {
-    grid-template-columns: 1fr;
+.sw-detail__summary {
+  max-width: 70ch;
+  margin: 0 0 16px;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.sw-detail :deep(.rich-text-content) {
+  max-width: 70ch;
+}
+
+.sw-detail__related {
+  max-width: 70ch;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+.sw-detail__related-label {
+  margin: 0 0 2px;
+  color: var(--sw-muted);
+  font-size: 12px;
+}
+
+.sw-detail__related-row {
+  min-height: 44px;
+  padding: 8px 0;
+}
+
+.sw-detail__related-row + .sw-detail__related-row {
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+@media (max-width: 1080px) {
+  .sw-reader {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 窄屏把分类压成一行可换行的选择条 */
+  .sw-cats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .sw-cats .sw-cat {
+    width: auto;
+    min-width: 0;
+    max-width: 100%;
+    min-height: 34px;
+    padding: 6px 10px;
+    border-top: 0;
+    border-radius: 4px;
+  }
+
+  .sw-cats .sw-cat + .sw-cat {
+    border-top: 0;
   }
 }
 </style>

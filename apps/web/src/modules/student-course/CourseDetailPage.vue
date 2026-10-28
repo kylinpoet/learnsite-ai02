@@ -1,91 +1,94 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="这一页展示本课次的任务清单。图文任务、讨论任务、网页任务和数据提交任务都可以直接从这里进入。"
-      eyebrow="学案详情"
-      :title="planDetail?.title || `课程 ${route.params.courseId}`"
-    >
-      <template #actions>
-        <n-tag round>课程体系已接入</n-tag>
+  <div class="sw-course">
+    <StudentPageHead :title="planDetail?.title || `课程 ${route.params.courseId}`" :sub="headSub">
+      <template #back>
+        <RouterLink class="sw-back" to="/student/home">← 返回学习首页</RouterLink>
       </template>
-    </SaPageHeader>
+      <template v-if="nextTask" #actions>
+        <n-button type="primary" @click="openTask(nextTask)">继续：{{ nextTask.title }}</n-button>
+      </template>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel panel-class="detail-tab-card">
-      <n-tabs v-model:value="activeTab" class="detail-tabs">
-        <n-tab-pane name="guide" tab="学案导读">
-          <n-skeleton v-if="isLoading" :rows="4" animated />
-          <RichTextContent
-            v-else
-            :html="planDetail?.content"
-            empty-text="当前课程还没有补充学案导读。"
-          />
-        </n-tab-pane>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="6" animated /></div>
+    </div>
 
-        <template v-if="planDetail?.tasks.length">
-          <n-tab-pane
-            v-for="(task, index) in planDetail.tasks"
+    <template v-else-if="planDetail">
+      <div v-if="tasks.length" class="sw-course__progress">
+        <div class="sw-progress">
+          <span class="sw-progress__track">
+            <span class="sw-progress__fill" :style="{ width: `${completionPercent}%` }" />
+          </span>
+          <span class="sw-progress__label">{{ completedCount }}/{{ tasks.length }} 已完成</span>
+        </div>
+        <p class="sw-course__progress-note">按顺序完成，提交后回到这里进入下一项。</p>
+      </div>
+
+      <StudentPanel title="任务清单" :count="`${tasks.length} 项`" flush>
+        <template v-if="tasks.length">
+          <button
+            v-for="task in sortedTasks"
             :key="task.id"
-            :name="taskTabName(task.id)"
+            type="button"
+            class="sw-row sw-row--link sw-task"
+            @click="openTask(task)"
           >
-            <template #tab>
-              <span class="task-tab-label">
-                <span class="task-tab-label__title">任务{{ index + 1 }}</span>
-                <span
-                  :class="[
-                    'task-tab-label__status',
-                    task.is_completed ? 'task-tab-label__status--done' : 'task-tab-label__status--todo',
-                  ]"
-                >
-                  {{ task.is_completed ? '已完成' : '未完成' }}
-                </span>
+            <span :class="['sw-task__index', { 'is-done': task.is_completed }]">{{ task.sort_order }}</span>
+            <span class="sw-row__main">
+              <span class="sw-row__title">
+                {{ task.title }}
+                <span v-if="task.is_required" class="sw-task__required">必做</span>
               </span>
-            </template>
-
-            <n-skeleton v-if="isLoading" :rows="5" animated />
-            <article v-else class="task-card task-card--single">
-              <div class="task-main">
-                <div class="task-head">
-                  <p class="task-order">任务 {{ task.sort_order }}</p>
-                  <n-tag round :type="task.is_required ? 'success' : 'warning'">
-                    {{ task.is_required ? '必做' : '选做' }}
-                  </n-tag>
-                  <n-tag round :type="task.is_completed ? 'success' : 'info'">
-                    {{ task.is_completed ? '已完成' : '未完成' }}
-                  </n-tag>
-                </div>
-                <h3>{{ task.title }}</h3>
-                <p class="task-type">{{ taskTypeLabel(task.task_type) }}</p>
-                <p v-if="richTextToExcerpt(task.description, 120)" class="task-desc">
-                  {{ richTextToExcerpt(task.description, 120) }}
-                </p>
-              </div>
-              <n-button type="primary" @click="openTask(task)">进入任务</n-button>
-            </article>
-          </n-tab-pane>
+              <span class="sw-row__meta">
+                <span>{{ taskTypeLabel(task.task_type) }}</span>
+                <span v-if="taskExcerpt(task)" class="sw-task__excerpt">{{ taskExcerpt(task) }}</span>
+              </span>
+            </span>
+            <span
+              :class="['sw-chip', task.is_completed ? 'sw-chip--done' : 'sw-chip--todo']"
+            >
+              {{ task.is_completed ? '已完成' : '未完成' }}
+            </span>
+            <span class="sw-task__go">
+              {{ task.is_completed ? '查看' : '开始' }}
+              <span aria-hidden="true">→</span>
+            </span>
+          </button>
         </template>
+        <StudentEmpty v-else text="这节课还没有发布任务。" />
+      </StudentPanel>
 
-        <n-tab-pane v-else name="tasks-empty" tab="任务清单（0）">
-          <n-skeleton v-if="isLoading" :rows="4" animated />
-          <n-empty v-else description="当前课次还没有任务" />
-        </n-tab-pane>
-      </n-tabs>
-    </SaPanel>
+      <StudentPanel v-if="hasGuide" title="学案导读">
+        <RichTextContent :html="planDetail.content" empty-text="这节课没有补充导读。" />
+      </StudentPanel>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
-import { onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { richTextToExcerpt } from '@/utils/richText';
+
+type PlanTask = {
+  id: number;
+  title: string;
+  task_type: string;
+  description: string | null;
+  sort_order: number;
+  is_required: boolean;
+  is_completed: boolean;
+};
 
 type PlanDetail = {
   id: number;
@@ -93,15 +96,8 @@ type PlanDetail = {
   content: string | null;
   lesson_id: number;
   lesson_title: string;
-  tasks: Array<{
-    id: number;
-    title: string;
-    task_type: string;
-    description: string | null;
-    sort_order: number;
-    is_required: boolean;
-    is_completed: boolean;
-  }>;
+  unit_title?: string | null;
+  tasks: PlanTask[];
 };
 
 const route = useRoute();
@@ -110,7 +106,25 @@ const authStore = useAuthStore();
 const planDetail = ref<PlanDetail | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
-const activeTab = ref('guide');
+
+const tasks = computed(() => planDetail.value?.tasks || []);
+const sortedTasks = computed(() => [...tasks.value].sort((left, right) => left.sort_order - right.sort_order));
+const completedCount = computed(() => tasks.value.filter((task) => task.is_completed).length);
+const completionPercent = computed(() =>
+  tasks.value.length ? Math.round((completedCount.value / tasks.value.length) * 100) : 0,
+);
+const nextTask = computed(() => sortedTasks.value.find((task) => !task.is_completed) || null);
+const hasGuide = computed(() => Boolean(planDetail.value?.content?.trim()));
+
+const headSub = computed(() => {
+  if (!planDetail.value) {
+    return '';
+  }
+  if (!tasks.value.length) {
+    return `${planDetail.value.lesson_title} · 暂无任务`;
+  }
+  return `${planDetail.value.unit_title || planDetail.value.lesson_title} · ${tasks.value.length} 项任务，已完成 ${completedCount.value} 项`;
+});
 
 function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
@@ -137,8 +151,8 @@ function taskTypeLabel(taskType: string) {
   return taskType;
 }
 
-function taskTabName(taskId: number) {
-  return `task:${taskId}`;
+function taskExcerpt(task: PlanTask) {
+  return richTextToExcerpt(task.description, 48);
 }
 
 async function loadPlan() {
@@ -154,7 +168,7 @@ async function loadPlan() {
   }
 }
 
-async function openTask(task: PlanDetail['tasks'][number]) {
+async function openTask(task: PlanTask) {
   if (task.task_type === 'reading') {
     await router.push(`/student/courses/${route.params.courseId}/readings/${task.id}`);
     return;
@@ -172,144 +186,94 @@ onMounted(loadPlan);
 </script>
 
 <style scoped>
-.detail-tab-card :deep(.sa-panel__body) {
-  padding-top: 14px;
+.sw-course {
+  display: grid;
+  gap: var(--sw-section-gap);
 }
 
-.detail-tabs :deep(.n-tabs-nav) {
-  margin-bottom: 14px;
-}
-
-.detail-tabs :deep(.n-tabs-tab) {
-  height: auto;
-  line-height: 1.2;
-  padding: 10px 12px;
-  border-radius: 12px;
-  transition: background-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.detail-tabs :deep(.n-tabs-tab:hover) {
-  background: var(--ls-chip-bg);
-}
-
-.detail-tabs :deep(.n-tabs-tab.n-tabs-tab--active) {
-  background: var(--ls-primary-soft);
-  box-shadow: inset 0 0 0 1px var(--ls-border);
-}
-
-.task-tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.task-tab-label__title {
-  color: var(--ls-ink);
-  font-weight: 700;
-}
-
-.task-tab-label__status {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border-radius: 999px;
-  border: 1px solid;
-  padding: 3px 11px;
-  font-size: 12px;
-  line-height: 1.2;
-  font-weight: 700;
-  box-shadow: 0 4px 10px rgba(36, 55, 90, 0.16);
-}
-
-.task-tab-label__status::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
-  flex: 0 0 auto;
-}
-
-.task-tab-label__status--done {
-  color: #ffffff;
-  background: linear-gradient(135deg, #35be77, #1f9758);
-  border-color: rgba(16, 96, 55, 0.58);
-}
-
-.task-tab-label__status--todo {
-  color: #ffffff;
-  background: linear-gradient(135deg, #8ea6d8, #6f87bf);
-  border-color: rgba(67, 86, 130, 0.58);
-}
-
-.detail-tabs :deep(.n-tabs-tab--active .task-tab-label__title) {
-  color: var(--ls-primary);
-  text-shadow: 0 0 0 rgba(0, 0, 0, 0);
-}
-
-.detail-tabs :deep(.n-tabs-tab--active .task-tab-label__status--done) {
-  background: linear-gradient(135deg, #2dbd72, #187f48);
-  box-shadow: 0 6px 14px rgba(24, 127, 72, 0.32);
-  transform: translateY(-1px);
-}
-
-.detail-tabs :deep(.n-tabs-tab--active .task-tab-label__status--todo) {
-  background: linear-gradient(135deg, #89a2d9, #5f79b8);
-  box-shadow: 0 6px 14px rgba(79, 101, 151, 0.3);
-  transform: translateY(-1px);
-}
-
-.task-card {
+.sw-course__progress {
   display: flex;
-  justify-content: space-between;
-  gap: 16px;
   align-items: center;
-  padding: 18px 20px;
-  border: 1px solid var(--ls-border);
-  border-radius: 20px;
-  background: var(--ls-card);
+  gap: 18px;
+  padding: 12px 18px;
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
 }
 
-.task-card--single {
-  margin-top: 2px;
+.sw-course__progress .sw-progress {
+  flex: 1;
+  min-width: 0;
 }
 
-.task-main h3,
-.task-order,
-.task-type {
+.sw-course__progress-note {
   margin: 0;
+  flex: none;
+  color: var(--sw-muted);
+  font-size: 12px;
 }
 
-.task-head {
-  display: flex;
+.sw-task {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.sw-task__index {
+  display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--sw-line);
+  border-radius: 999px;
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.task-main h3 {
-  margin-top: 6px;
-  font-size: 18px;
+.sw-task__index.is-done {
+  border-color: transparent;
+  background: var(--sw-ink);
+  color: var(--sw-surface);
 }
 
-.task-order,
-.task-type {
-  color: var(--ls-muted);
+.sw-task__required {
+  margin-left: 6px;
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 
-.task-type {
-  margin-top: 6px;
+.sw-task__go {
+  flex: none;
+  color: var(--sw-muted);
+  font-size: 13px;
 }
 
-.task-desc {
-  margin: 8px 0 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
+.sw-task:hover .sw-task__go {
+  color: var(--sw-ink);
 }
 
-@media (max-width: 768px) {
-  .task-card {
+@media (max-width: 720px) {
+  .sw-course__progress {
     flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .sw-task__excerpt {
+    display: none;
+  }
+
+  .sw-task__go {
+    display: none;
+  }
+
+  .sw-task {
     align-items: flex-start;
   }
 }

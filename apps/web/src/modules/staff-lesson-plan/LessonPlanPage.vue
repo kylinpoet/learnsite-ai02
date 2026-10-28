@@ -11,6 +11,7 @@
           <div class="lesson-plan-hero__buttons">
             <n-button v-if="!isEditorRoute" type="primary" @click="openCreateDialog">新建学案</n-button>
             <n-button v-else secondary type="primary" @click="goToPlanList">返回学案清单</n-button>
+            <n-button v-if="isEditorRoute" secondary @click="openStudentPreview">预览学生端</n-button>
             <n-button secondary @click="router.push('/staff/curriculum')">查看课程体系</n-button>
             <n-button v-if="!isEditorRoute" secondary @click="selectPlan(plans[0]?.id || null)">
               编辑最新学案
@@ -413,6 +414,14 @@
       :toggle-pinned="toggleCustomTaskTemplatePinned"
       :delete-template="deleteCustomTaskTemplate"
     />
+
+    <StudentViewPreviewDrawer
+      v-model:show="studentPreviewVisible"
+      :initial-task-key="studentPreviewTaskKey"
+      :plan="studentPreviewPlan"
+      :refreshable="false"
+      :token="authStore.token || null"
+    />
   </div>
 </template>
 
@@ -434,6 +443,12 @@ import { streamCompanionReply } from '@/utils/companionStream';
 import { richTextToExcerpt, richTextToPlainText } from '@/utils/richText';
 import TaskHtmlPromptDialog from './components/TaskHtmlPromptDialog.vue';
 import LessonPlanTaskEditorCard from './components/LessonPlanTaskEditorCard.vue';
+import StudentViewPreviewDrawer from './components/student-view/StudentViewPreviewDrawer.vue';
+import {
+  buildStudentPreviewPlanFromForm,
+  collectStudentPreviewResources,
+} from './components/student-view/studentViewPreview.utils';
+import type { StudentPreviewPlan } from './components/student-view/studentViewPreview.types';
 import TaskTemplatePickerDropdown from './components/TaskTemplatePickerDropdown.vue';
 import TaskTemplateLibraryDialog from './components/TaskTemplateLibraryDialog.vue';
 import TaskTemplateSaveDialog from './components/TaskTemplateSaveDialog.vue';
@@ -806,6 +821,58 @@ const taskDataSubmitBindings: TaskDataSubmitEndpointBindings = {
   taskDataSubmitAlertTitle,
   taskDataSubmitAlertDescription,
 };
+
+const studentPreviewVisible = ref(false);
+const studentPreviewTaskKey = ref<string | null>(null);
+
+/** 学生端预览用的课次信息：优先取已保存学案，其次按当前选择的课次在课程体系里查 */
+const studentPreviewLessonMeta = computed(() => {
+  const lessonId = planForm.value.lesson_id;
+  const detailLesson = selectedPlanDetail.value?.lesson;
+  if (detailLesson && (!lessonId || detailLesson.id === lessonId)) {
+    return {
+      bookTitle: detailLesson.book_name || '',
+      unitTitle: detailLesson.unit_title || '',
+      lessonTitle: detailLesson.title || '',
+    };
+  }
+  if (lessonId) {
+    for (const book of curriculumBooks.value) {
+      for (const unit of book.units) {
+        const hit = unit.lessons.find((lesson) => lesson.id === lessonId);
+        if (hit) {
+          return { bookTitle: book.name, unitTitle: unit.title, lessonTitle: hit.title };
+        }
+      }
+    }
+  }
+  return { bookTitle: '', unitTitle: '', lessonTitle: '' };
+});
+
+const studentPreviewPlan = computed<StudentPreviewPlan | null>(() => {
+  // 未打开预览时不构建（内联 srcdoc 拼接较重），避免每次表单输入都重复计算
+  if (!studentPreviewVisible.value) {
+    return null;
+  }
+  return buildStudentPreviewPlanFromForm({
+    title: planForm.value.title,
+    content: planForm.value.content,
+    assignedDate: planForm.value.assigned_date,
+    bookTitle: studentPreviewLessonMeta.value.bookTitle,
+    unitTitle: studentPreviewLessonMeta.value.unitTitle,
+    lessonTitle: studentPreviewLessonMeta.value.lessonTitle,
+    tasks: planForm.value.tasks,
+    assetBindings: taskAssetBindings,
+    resourcesByTaskId: collectStudentPreviewResources(selectedPlanDetail.value),
+  });
+});
+
+/** 从当前编辑的任务标签直接跳到对应任务的学生视角 */
+function openStudentPreview() {
+  const activeTabKey = editorTaskTabKey.value;
+  studentPreviewTaskKey.value = activeTabKey.startsWith('task:') ? activeTabKey.slice('task:'.length) : null;
+  studentPreviewVisible.value = true;
+}
 
 const routePlanId = computed(() => {
   const parsed = Number(route.params.planId);

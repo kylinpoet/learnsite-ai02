@@ -35,6 +35,13 @@ class ClassCodeRequest(BaseModel):
     class_code: str
 
 
+class ClassRosterRequest(BaseModel):
+    """学生登录页取名单：class_id 来自公开班级列表，class_code 是老师投屏的快捷入口。"""
+
+    class_id: int | None = None
+    class_code: str | None = None
+
+
 class ClassRosterStudent(BaseModel):
     user_id: int
     display_name: str
@@ -51,7 +58,7 @@ class ClassRosterPayload(BaseModel):
 
 
 class ClassLoginRequest(BaseModel):
-    class_code: str
+    class_id: int
     student_user_id: int
     password: str
 

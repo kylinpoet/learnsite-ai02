@@ -14,6 +14,7 @@
         <n-tag v-if="session" round :type="session.status === 'active' ? 'success' : 'warning'">
           {{ session.status === 'active' ? '进行中' : '已结束' }}
         </n-tag>
+        <n-button v-if="session" secondary size="small" @click="openStudentPreview()">预览学生端</n-button>
         <n-button v-if="session" secondary size="small" @click="openPlanEditor">编辑学案</n-button>
         <n-button secondary size="small" @click="go('/staff/submissions')">提交批改</n-button>
         <n-button v-if="session" secondary size="small" @click="openAttendance">签到考勤</n-button>
@@ -109,171 +110,188 @@
         </article>
       </div>
 
-      <CompactSeatMap
-        :cells="seatCells"
-        :class-label="session.class.name"
-        :cols="seatCols"
-        :room-label="roomInfo?.name ?? null"
-        :updated-text="seatFootText"
-      />
+      <!-- 主栏座位与任务进度；课堂操作常驻右栏，不再向下占用主栏高度 -->
+      <div class="ls-page realtime-grid">
+        <div class="ls-main">
+          <CompactSeatMap
+            :cells="seatCells"
+            :class-label="session.class.name"
+            :cols="seatCols"
+            :room-label="roomInfo?.name ?? null"
+            :updated-text="seatFootText"
+          />
 
-      <SaPanel title="任务进度">
-        <template #actions>
-          <span class="section-note">阅读任务看已读确认，提交任务看已交/已评</span>
-        </template>
-        <n-empty v-if="!session.tasks.length" description="当前学案还没有任务" />
-        <div v-else class="task-list">
-          <article v-for="task in session.tasks" :key="task.id" class="task-item">
-            <div class="task-item__head">
-              <p class="task-item__title">{{ task.sort_order }}. {{ task.title }}</p>
-              <div class="task-item__tags">
-                <n-tag round size="small">{{ taskTypeLabel(task.task_type) }}</n-tag>
-                <n-tag round size="small" type="info">
-                  {{ task.submission_scope === 'group' ? '小组' : '个人' }} · {{ taskSlotLabel(task.progress) }}
-                </n-tag>
-              </div>
-            </div>
+          <SaPanel title="任务进度">
+            <template #actions>
+              <span class="section-note">阅读任务看已读确认，提交任务看已交/已评</span>
+            </template>
+            <n-empty v-if="!session.tasks.length" description="当前学案还没有任务" />
+            <div v-else class="task-list">
+              <article v-for="task in session.tasks" :key="task.id" class="task-item">
+                <div class="task-item__head">
+                  <p class="task-item__title">{{ task.sort_order }}. {{ task.title }}</p>
+                  <div class="task-item__tags">
+                    <n-tag round size="small">{{ taskTypeLabel(task.task_type) }}</n-tag>
+                    <n-tag round size="small" type="info">
+                      {{ task.submission_scope === 'group' ? '小组' : '个人' }} · {{ taskSlotLabel(task.progress) }}
+                    </n-tag>
+                  </div>
+                </div>
 
-            <div v-if="task.progress.mode === 'reading'" class="task-bars">
-              <div class="task-bar">
-                <span class="task-bar__label">已读 {{ task.progress.completed_count }}/{{ task.progress.slot_total }}</span>
-                <n-progress
-                  :height="8"
-                  :percentage="progressPercent(task.progress.completed_count, task.progress.slot_total)"
-                  :show-indicator="false"
-                  status="success"
-                />
-              </div>
-              <div class="task-bar">
-                <span class="task-bar__label">未读 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
-                <n-progress
-                  :height="8"
-                  :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
-                  :show-indicator="false"
-                  status="error"
-                />
-              </div>
-            </div>
+                <div v-if="task.progress.mode === 'reading'" class="task-bars">
+                  <div class="task-bar">
+                    <span class="task-bar__label">已读 {{ task.progress.completed_count }}/{{ task.progress.slot_total }}</span>
+                    <n-progress
+                      :height="8"
+                      :percentage="progressPercent(task.progress.completed_count, task.progress.slot_total)"
+                      :show-indicator="false"
+                      status="success"
+                    />
+                  </div>
+                  <div class="task-bar">
+                    <span class="task-bar__label">未读 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
+                    <n-progress
+                      :height="8"
+                      :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
+                      :show-indicator="false"
+                      status="error"
+                    />
+                  </div>
+                </div>
 
-            <div v-else class="task-bars">
-              <div class="task-bar">
-                <span class="task-bar__label">已交 {{ task.progress.completed_count }}/{{ task.progress.slot_total }}</span>
-                <n-progress
-                  :height="8"
-                  :percentage="progressPercent(task.progress.completed_count, task.progress.slot_total)"
-                  :show-indicator="false"
-                  status="success"
-                />
-              </div>
-              <div class="task-bar">
-                <span class="task-bar__label">待评 {{ task.progress.submitted_count }}/{{ task.progress.slot_total }}</span>
-                <n-progress
-                  :height="8"
-                  :percentage="progressPercent(task.progress.submitted_count, task.progress.slot_total)"
-                  :show-indicator="false"
-                  status="warning"
-                />
-              </div>
-              <div class="task-bar">
-                <span class="task-bar__label">未交 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
-                <n-progress
-                  :height="8"
-                  :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
-                  :show-indicator="false"
-                  status="error"
-                />
-              </div>
-            </div>
+                <div v-else class="task-bars">
+                  <div class="task-bar">
+                    <span class="task-bar__label">已交 {{ task.progress.completed_count }}/{{ task.progress.slot_total }}</span>
+                    <n-progress
+                      :height="8"
+                      :percentage="progressPercent(task.progress.completed_count, task.progress.slot_total)"
+                      :show-indicator="false"
+                      status="success"
+                    />
+                  </div>
+                  <div class="task-bar">
+                    <span class="task-bar__label">待评 {{ task.progress.submitted_count }}/{{ task.progress.slot_total }}</span>
+                    <n-progress
+                      :height="8"
+                      :percentage="progressPercent(task.progress.submitted_count, task.progress.slot_total)"
+                      :show-indicator="false"
+                      status="warning"
+                    />
+                  </div>
+                  <div class="task-bar">
+                    <span class="task-bar__label">未交 {{ task.progress.pending_count }}/{{ task.progress.slot_total }}</span>
+                    <n-progress
+                      :height="8"
+                      :percentage="progressPercent(task.progress.pending_count, task.progress.slot_total)"
+                      :show-indicator="false"
+                      status="error"
+                    />
+                  </div>
+                </div>
 
-            <div v-if="task.progress.mode !== 'reading'" class="task-item__actions">
-              <n-button size="tiny" secondary type="warning" @click="openTaskReview(task.id, 'pending_submit')">
-                看未交
-              </n-button>
-              <n-button size="tiny" secondary type="success" @click="openTaskReview(task.id, 'pending_review')">
-                看待评
-              </n-button>
-              <n-button size="tiny" secondary type="primary" @click="openTaskReview(task.id)">
-                查看提交
-              </n-button>
+                <div class="task-item__actions">
+                  <template v-if="task.progress.mode !== 'reading'">
+                    <n-button size="tiny" secondary type="warning" @click="openTaskReview(task.id, 'pending_submit')">
+                      看未交
+                    </n-button>
+                    <n-button size="tiny" secondary type="success" @click="openTaskReview(task.id, 'pending_review')">
+                      看待评
+                    </n-button>
+                    <n-button size="tiny" secondary type="primary" @click="openTaskReview(task.id)">
+                      查看提交
+                    </n-button>
+                  </template>
+                  <n-button size="tiny" secondary type="info" @click="openStudentPreview(task.id)">
+                    学生视角
+                  </n-button>
+                </div>
+              </article>
             </div>
-          </article>
+          </SaPanel>
         </div>
-      </SaPanel>
 
-      <!-- 课堂操作默认收起：投影时页面保持只读观感，需要时再展开 -->
-      <SaPanel>
-        <template #header>
-          <button class="section-toggle" type="button" @click="showOperations = !showOperations">
-            {{ showOperations ? '收起课堂操作' : '展开课堂操作（开关 / 点名 / 下线）' }}
-          </button>
-        </template>
-        <div v-if="showOperations" class="operations-grid">
-          <article class="operation-card">
-            <p class="operation-card__title">课堂开关</p>
-            <p class="section-note">按课堂实时切换协作能力，调整后立即生效。</p>
-            <label v-for="item in session.switch_config" :key="item.key" class="switch-item">
-              <div class="switch-item__meta">
-                <span class="switch-item__name">{{ item.label }}</span>
-                <p class="section-note">{{ item.description }}</p>
-              </div>
-              <n-switch
-                :disabled="session.status !== 'active'"
-                :loading="switchUpdatingKey === item.key"
-                :value="session.switches[item.key] ?? item.default_enabled"
-                @update:value="(value: string | number | boolean) => onSwitchChange(item.key, Boolean(value))"
-              />
-            </label>
-          </article>
+        <!-- 课堂操作常驻右栏：投影时无需展开，也不再占用主栏高度 -->
+        <aside class="ls-rail realtime-ops">
+          <SaPanel description="调整后立即生效，学生端实时同步。" title="课堂操作">
+            <div class="operations-grid">
+              <article class="operation-card">
+                <p class="operation-card__title">课堂开关</p>
+                <label v-for="item in session.switch_config" :key="item.key" class="switch-item">
+                  <div class="switch-item__meta">
+                    <span class="switch-item__name">{{ item.label }}</span>
+                    <p class="section-note">{{ item.description }}</p>
+                  </div>
+                  <n-switch
+                    :disabled="session.status !== 'active'"
+                    :loading="switchUpdatingKey === item.key"
+                    :value="session.switches[item.key] ?? item.default_enabled"
+                    @update:value="(value: string | number | boolean) => onSwitchChange(item.key, Boolean(value))"
+                  />
+                </label>
+              </article>
 
-          <article class="operation-card">
-            <p class="operation-card__title">随机点名</p>
-            <div class="operation-row">
-              <n-switch v-model:value="rollCallPendingOnly" :disabled="session.status !== 'active'">
-                <template #checked>优先未签到</template>
-                <template #unchecked>全班随机</template>
-              </n-switch>
-              <n-button
-                :disabled="session.status !== 'active'"
-                :loading="isRollingCall"
-                size="small"
-                type="primary"
-                @click="runRollCall"
-              >
-                点名
-              </n-button>
+              <article class="operation-card">
+                <p class="operation-card__title">随机点名</p>
+                <div class="operation-row">
+                  <n-switch v-model:value="rollCallPendingOnly" :disabled="session.status !== 'active'">
+                    <template #checked>优先未签到</template>
+                    <template #unchecked>全班随机</template>
+                  </n-switch>
+                  <n-button
+                    :disabled="session.status !== 'active'"
+                    :loading="isRollingCall"
+                    size="small"
+                    type="primary"
+                    @click="runRollCall"
+                  >
+                    点名
+                  </n-button>
+                </div>
+                <p v-if="lastRollCall" class="roll-call-result">
+                  {{ lastRollCall.student.display_name }}（{{ lastRollCall.student.student_no }}）
+                  <span class="section-note">
+                    · {{ lastRollCall.student.checked_in_today ? '今日已签到' : '今日未签到' }}
+                    {{ lastRollCall.dedupe_applied ? ' · 已去重' : '' }}
+                  </span>
+                </p>
+
+                <p class="operation-card__title operation-card__title--spaced">全班下线</p>
+                <div class="operation-row">
+                  <n-input
+                    v-model:value="forceOfflineNote"
+                    :disabled="session.status !== 'active'"
+                    maxlength="200"
+                    placeholder="可选：记录下线原因"
+                    size="small"
+                  />
+                  <n-button
+                    :disabled="session.status !== 'active'"
+                    :loading="isForcingOffline"
+                    size="small"
+                    secondary
+                    type="error"
+                    @click="forceOfflineClass"
+                  >
+                    下线
+                  </n-button>
+                </div>
+              </article>
             </div>
-            <p v-if="lastRollCall" class="roll-call-result">
-              {{ lastRollCall.student.display_name }}（{{ lastRollCall.student.student_no }}）
-              <span class="section-note">
-                · {{ lastRollCall.student.checked_in_today ? '今日已签到' : '今日未签到' }}
-                {{ lastRollCall.dedupe_applied ? ' · 已去重' : '' }}
-              </span>
-            </p>
-
-            <p class="operation-card__title operation-card__title--spaced">全班下线</p>
-            <div class="operation-row">
-              <n-input
-                v-model:value="forceOfflineNote"
-                :disabled="session.status !== 'active'"
-                maxlength="200"
-                placeholder="可选：记录下线原因"
-                size="small"
-              />
-              <n-button
-                :disabled="session.status !== 'active'"
-                :loading="isForcingOffline"
-                size="small"
-                secondary
-                type="error"
-                @click="forceOfflineClass"
-              >
-                下线
-              </n-button>
-            </div>
-          </article>
-        </div>
-      </SaPanel>
+          </SaPanel>
+        </aside>
+      </div>
     </template>
+
+    <StudentViewPreviewDrawer
+      v-model:show="studentPreviewVisible"
+      :error="studentPreviewError"
+      :initial-task-key="studentPreviewTaskKey"
+      :loading="studentPreviewLoading"
+      :plan="studentPreviewPlan"
+      :refreshing="studentPreviewLoading"
+      :token="authStore.token || null"
+      @refresh="loadStudentPreview"
+    />
   </div>
 </template>
 
@@ -289,6 +307,10 @@ import SaPanel from '@/components/sa/SaPanel.vue';
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling';
 import { useAuthStore } from '@/stores/auth';
 import CompactSeatMap from '@/modules/staff-dashboard/components/CompactSeatMap.vue';
+import StudentViewPreviewDrawer from '@/modules/staff-lesson-plan/components/student-view/StudentViewPreviewDrawer.vue';
+import { buildStudentPreviewPlanFromDetail } from '@/modules/staff-lesson-plan/components/student-view/studentViewPreview.utils';
+import type { StudentPreviewPlan } from '@/modules/staff-lesson-plan/components/student-view/studentViewPreview.types';
+import type { PlanDetail } from '@/modules/staff-lesson-plan/lessonPlan.types';
 import type {
   ClassLivePayload,
   LiveStudent,
@@ -359,13 +381,19 @@ const isRollingCall = ref(false);
 const isForcingOffline = ref(false);
 const switchUpdatingKey = ref<string | null>(null);
 const errorMessage = ref('');
-const showOperations = ref(false);
 const rollCallPendingOnly = ref(true);
 const forceOfflineNote = ref('');
 const lastRollCall = ref<RollCallResult | null>(null);
 const lastLoadedAt = ref<number | null>(null);
 
 const noLiveSession = ref(false);
+
+const studentPreviewVisible = ref(false);
+const studentPreviewPlan = ref<StudentPreviewPlan | null>(null);
+const studentPreviewTaskKey = ref<string | null>(null);
+const studentPreviewLoading = ref(false);
+const studentPreviewError = ref('');
+let studentPreviewRequestId = 0;
 
 const hasSessionParam = computed(() => {
   const raw = route.params.sessionId;
@@ -509,6 +537,41 @@ function go(path: string) {
 function openPlanEditor() {
   if (!session.value) return;
   void router.push(`/staff/lesson-plans/${session.value.plan.id}`);
+}
+
+/** 学生视角预览：教师对照查看学生打开任务时看到的页面 */
+async function loadStudentPreview() {
+  const current = session.value;
+  if (!current || !authStore.token) return;
+  const requestId = ++studentPreviewRequestId;
+  studentPreviewLoading.value = true;
+  studentPreviewError.value = '';
+  try {
+    const payload = await apiGet<{ plan: PlanDetail }>(
+      `/lesson-plans/staff/${current.plan.id}`,
+      authStore.token
+    );
+    if (requestId !== studentPreviewRequestId) return;
+    studentPreviewPlan.value = buildStudentPreviewPlanFromDetail({
+      plan: payload.plan,
+      token: authStore.token,
+    });
+  } catch (error) {
+    if (requestId !== studentPreviewRequestId) return;
+    studentPreviewPlan.value = null;
+    studentPreviewError.value = error instanceof Error ? error.message : '加载学生端预览失败';
+  } finally {
+    if (requestId === studentPreviewRequestId) {
+      studentPreviewLoading.value = false;
+    }
+  }
+}
+
+async function openStudentPreview(taskId: number | null = null) {
+  if (!session.value) return;
+  studentPreviewTaskKey.value = taskId ? `task-${taskId}` : null;
+  studentPreviewVisible.value = true;
+  await loadStudentPreview();
 }
 
 function openAttendance() {
@@ -749,6 +812,95 @@ onMounted(() => {
   gap: var(--ls-gap-md, 12px);
 }
 
+/* 主栏 8 列 + 操作右栏 4 列：操作常驻侧边，不向下占用主栏高度 */
+.realtime-grid {
+  align-items: start;
+}
+
+.realtime-ops {
+  position: sticky;
+  top: 64px;
+  grid-column: span 4;
+  grid-template-columns: minmax(0, 1fr);
+  align-self: start;
+  min-width: 0;
+}
+
+/* 面板不超过可视高度：投影机 768 高时内部滚动，末行仍可操作 */
+.realtime-ops .sa-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 84px);
+}
+
+.realtime-ops .sa-panel :deep(.sa-panel__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 12px 14px;
+}
+
+.realtime-ops .operations-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+/* 右栏内行更紧凑：默认展开后仍能一屏看完 7 个开关 */
+.realtime-ops .operation-card {
+  gap: 6px;
+}
+
+.realtime-ops .switch-item {
+  padding: 5px 10px;
+}
+
+.realtime-ops .switch-item .section-note {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.realtime-ops .sa-panel :deep(.sa-panel__head) {
+  padding: 11px 14px 9px;
+}
+
+.realtime-ops .sa-panel :deep(.sa-panel__title) {
+  font-size: 14px;
+}
+
+.realtime-ops .sa-panel :deep(.sa-panel__desc) {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+}
+
+/* 1366 一体机/投影仍保持 8+4 并排（覆盖全局 ls-main 在 1439 以下占满 12 列的规则） */
+@media (min-width: 1081px) and (max-width: 1439px) {
+  .realtime-grid > .ls-main {
+    grid-column: span 8;
+  }
+}
+
+@media (max-width: 1080px) {
+  .realtime-ops {
+    position: static;
+    grid-column: 1 / -1;
+  }
+
+  /* 堆叠在下方时不再限高，让面板随页面完整展开 */
+  .realtime-ops .sa-panel {
+    max-height: none;
+  }
+
+  .realtime-ops .sa-panel :deep(.sa-panel__body) {
+    overflow-y: visible;
+  }
+
+  .realtime-ops .operations-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+}
+
 .realtime-card {
   border: 1px solid var(--ls-border);
   border-radius: 18px;
@@ -960,20 +1112,6 @@ onMounted(() => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-}
-
-.section-toggle {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--ls-muted);
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.section-toggle:hover {
-  color: var(--ls-primary);
 }
 
 .operations-grid {

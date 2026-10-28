@@ -1,214 +1,149 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader eyebrow="学生网盘" :description="heroCopy" :title="pageTitle">
+  <div class="sw-drive">
+    <StudentPageHead title="网盘" :sub="headSub">
       <template #actions>
-        <div class="action-group">
-          <n-button :loading="isLoading" type="primary" @click="loadDrive">刷新网盘</n-button>
-          <n-button :disabled="!canUseCurrentSpace" secondary @click="openFilePicker">选择文件</n-button>
-          <n-button
-            v-if="selectedFiles.length"
-            :disabled="!canUseCurrentSpace"
-            :loading="isUploading"
-            type="success"
-            @click="uploadSelectedFiles"
-          >
-            {{ currentUploadLabel }}
-          </n-button>
-          <n-button v-if="selectedFiles.length" :disabled="isUploading" secondary @click="clearSelectedFiles">
-            清空选择
-          </n-button>
-        </div>
+        <n-button :disabled="!canUseCurrentSpace || isUploading" type="primary" @click="openFilePicker">
+          上传文件
+        </n-button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <n-tabs v-model:value="activeTab" @update:value="handleTabChange">
+    <div v-if="currentSpace" class="sw-progress">
+      <span class="sw-progress__track">
+        <span class="sw-progress__fill" :style="{ width: `${usagePercent}%` }" />
+      </span>
+      <span class="sw-progress__label">
+        {{ currentSpace.usage_percent }}% · 剩余 {{ formatBytes(currentSpace.remaining_bytes) }}
+      </span>
+    </div>
+
+    <n-tabs v-model:value="activeTab" type="line" @update:value="handleTabChange">
       <n-tab-pane name="personal" tab="我的网盘" />
       <n-tab-pane name="group" tab="小组网盘" />
     </n-tabs>
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
-
-    <div v-else-if="currentSpace && canUseCurrentSpace" class="page-stack">
-      <div class="metric-grid">
-        <article class="mini-panel">
-          <p class="metric-label">文件总数</p>
-          <p class="metric-value">{{ currentSpace.file_count }}</p>
-          <p class="metric-note">当前空间中已经保存的文件数量。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">已用空间</p>
-          <p class="metric-value metric-value--small">{{ formatBytes(currentSpace.used_bytes) }}</p>
-          <p class="metric-note">剩余 {{ formatBytes(currentSpace.remaining_bytes) }}</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">总容量</p>
-          <p class="metric-value metric-value--small">{{ currentSpace.quota_mb }} MB</p>
-          <p class="metric-note">当前按系统默认空间额度管理。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">使用率</p>
-          <p class="metric-value metric-value--small">{{ currentSpace.usage_percent }}%</p>
-          <p class="metric-note">空间紧张时可删除旧文件释放容量。</p>
-        </article>
-        <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
-          <p class="metric-label">小组成员</p>
-          <p class="metric-value">{{ groupSpace.member_count }}</p>
-          <p class="metric-note">{{ roleLabel(groupSpace.my_role) }} · {{ groupSpace.class_name || '当前班级' }}</p>
-        </article>
-        <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
-          <p class="metric-label">删除权限</p>
-          <p class="metric-value metric-value--small">{{ groupDeleteRoleLabel }}</p>
-          <p class="metric-note">{{ groupDeleteRuleText }}</p>
-        </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body">
+        <n-skeleton :rows="8" animated />
       </div>
+    </div>
 
-      <SaPanel title="空间使用情况">
-        <template #actions>
-          <n-tag round :type="isGroupTab ? 'warning' : 'success'">
-            {{ currentSpace.display_name }}
-          </n-tag>
-        </template>
-
-        <n-progress
-          :percentage="Math.min(currentSpace.usage_percent, 100)"
-          :stroke-width="18"
-          status="success"
-        />
-        <p class="section-note">
-          已用 {{ formatBytes(currentSpace.used_bytes) }} / 总容量 {{ currentSpace.quota_mb }} MB
-        </p>
-        <p v-if="isGroupTab && groupSpace?.enabled" class="section-note">
-          当前由 {{ groupSpace.member_count }} 位组员共享，适合放置过程稿、参考资料和协作文档。
-        </p>
-      </SaPanel>
-
-      <SaPanel :description="currentSpaceNote" title="文件列表">
-        <template #actions>
-          <div class="action-group compact-actions">
-            <n-button :disabled="!canUseCurrentSpace" secondary @click="openFilePicker">选择文件</n-button>
-            <n-button
-              v-if="selectedFiles.length"
-              :disabled="!canUseCurrentSpace"
-              :loading="isUploading"
-              type="primary"
-              @click="uploadSelectedFiles"
-            >
-              {{ currentUploadLabel }}
-            </n-button>
-          </div>
-        </template>
-
+    <template v-else-if="currentSpace">
+      <StudentPanel
+        :title="isGroupTab ? '小组文件' : '我的文件'"
+        :count="`${currentSpace.file_count} 个`"
+        flush
+      >
         <input ref="fileInputRef" class="file-input" multiple type="file" @change="handleFileChange" />
 
-        <div v-if="selectedFiles.length" class="selected-files-panel">
-          <p class="selected-files-title">待上传文件</p>
-          <div class="stack-list">
-            <article v-for="file in selectedFiles" :key="selectedFileKey(file)" class="file-item">
-              <div>
-                <p class="file-name">{{ file.name }}</p>
-                <p class="file-meta">{{ formatBytes(file.size) }}</p>
-              </div>
-              <n-button text type="error" @click="removeSelectedFile(file.name)">移除</n-button>
-            </article>
+        <div v-if="selectedFiles.length" class="sw-upload-bar">
+          <div class="sw-upload-bar__main">
+            <p class="sw-upload-bar__title">
+              待上传 {{ selectedFiles.length }} 个文件 · {{ formatBytes(selectedTotalBytes) }}
+            </p>
+            <p class="sw-upload-bar__files">
+              <button
+                v-for="file in selectedFiles"
+                :key="selectedFileKey(file)"
+                type="button"
+                :title="`移除 ${file.name}`"
+                class="sw-chip sw-upload-bar__file"
+                @click="removeSelectedFile(file.name)"
+              >
+                {{ file.name }}
+              </button>
+            </p>
+          </div>
+          <div class="sw-upload-bar__actions">
+            <n-button :disabled="isUploading" size="small" @click="clearSelectedFiles">清空</n-button>
+            <n-button :loading="isUploading" size="small" type="primary" @click="uploadSelectedFiles">
+              开始上传
+            </n-button>
           </div>
         </div>
 
         <SaDataTable
           :data="currentSpace.files"
-          :scroll-x="1050"
-          :empty-text="currentEmptyDescription"
+          :scroll-x="880"
           row-key="id"
-          stripe
         >
-          <SaTableColumn label="文件名" min-width="280">
+          <template #empty>
+            <StudentEmpty class="sw-drive-empty" :text="currentEmptyDescription" />
+          </template>
+          <SaTableColumn label="文件名" min-width="260">
             <template #default="{ row }">
-              <div>
-                <strong>{{ row.name }}</strong>
-                <p class="table-note">
-                  {{ row.original_name !== row.name ? `原始文件名：${row.original_name}` : '已按当前名称保存' }}
-                </p>
-              </div>
+              <span class="sw-row__title">{{ row.name }}</span>
+              <span class="sw-row__meta">
+                <span>{{ row.uploaded_by_name || '未知成员' }} 上传</span>
+                <span v-if="isCurrentUserUploader(row)">我上传的</span>
+                <span v-if="row.original_name !== row.name">原名 {{ row.original_name }}</span>
+              </span>
             </template>
           </SaTableColumn>
-          <SaTableColumn label="上传者" min-width="170">
+          <SaTableColumn label="大小" width="110">
             <template #default="{ row }">
-              <div>
-                <strong>{{ row.uploaded_by_name || '未知成员' }}</strong>
-                <p class="table-note">
-                  {{ row.uploaded_by_student_no || '暂无学号' }}
-                  <span v-if="isCurrentUserUploader(row)"> · 我上传的</span>
-                </p>
-              </div>
+              <span class="sw-num">{{ formatBytes(row.size_bytes) }}</span>
             </template>
           </SaTableColumn>
-          <SaTableColumn label="类型" min-width="100">
-            <template #default="{ row }">{{ row.ext.toUpperCase() }}</template>
-          </SaTableColumn>
-          <SaTableColumn label="大小" min-width="120">
-            <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
-          </SaTableColumn>
-          <SaTableColumn label="更新时间" min-width="170">
-            <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
-          </SaTableColumn>
-          <SaTableColumn fixed="right" label="操作" min-width="210">
+          <SaTableColumn label="更新时间" width="150">
             <template #default="{ row }">
-              <div class="row-actions">
-                <n-space :size="8" :wrap="true">
-                  <n-button
-                    :loading="downloadingFileId === row.id"
-                    text
-                    type="primary"
-                    @click="downloadFile(row)"
-                  >
-                    下载
-                  </n-button>
-                  <n-button
-                    :disabled="!row.can_delete"
-                    :loading="deletingFileId === row.id"
-                    text
-                    type="error"
-                    @click="deleteFile(row)"
-                  >
-                    删除
-                  </n-button>
-                </n-space>
-                <p v-if="isGroupTab && !row.can_delete" class="action-note">仅上传者本人或组长可删除</p>
-              </div>
+              <span class="sw-num">{{ formatDateTime(row.updated_at) }}</span>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn fixed="right" label="操作" width="140">
+            <template #default="{ row }">
+              <n-space :size="12" :wrap="false">
+                <n-button
+                  :loading="downloadingFileId === row.id"
+                  :disabled="downloadingFileId !== null && downloadingFileId !== row.id"
+                  text
+                  @click="downloadFile(row)"
+                >
+                  下载
+                </n-button>
+                <n-button
+                  :disabled="!row.can_delete"
+                  :loading="deletingFileId === row.id"
+                  text
+                  @click="deleteFile(row)"
+                >
+                  删除
+                </n-button>
+              </n-space>
             </template>
           </SaTableColumn>
         </SaDataTable>
-      </SaPanel>
-    </div>
+      </StudentPanel>
+    </template>
 
-    <SaPanel v-else :title="isGroupTab ? '小组网盘' : '个人网盘'">
-      <div class="group-placeholder">
-        <p>
-          {{
-            currentSpaceDisabledMessage ||
-            (isGroupTab ? '当前还没有可用的小组空间。' : '当前个人网盘暂不可用，请稍后重试。')
-          }}
-        </p>
-        <n-button v-if="isGroupTab" secondary @click="goToGroups">前往小组页</n-button>
-        <n-button v-else secondary @click="loadDrive">刷新状态</n-button>
+    <StudentPanel v-else :title="isGroupTab ? '小组网盘' : '个人网盘'">
+      <StudentEmpty
+        :text="
+          currentSpaceDisabledMessage ||
+          (isGroupTab ? '当前还没有可用的小组空间。' : '当前个人网盘暂不可用，请稍后重试。')
+        "
+      />
+      <div class="action-group">
+        <n-button v-if="isGroupTab" @click="goToGroups">前往小组页</n-button>
+        <n-button v-else @click="loadDrive">刷新状态</n-button>
       </div>
-    </SaPanel>
+    </StudentPanel>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NProgress, NSkeleton, NSpace, NTabPane, NTabs, NTag } from 'naive-ui';
+import { NAlert, NButton, NSkeleton, NSpace, NTabPane, NTabs } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiGetBlob, apiUpload } from '@/api/http';
 import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
 import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
 
@@ -326,50 +261,31 @@ const currentSpaceDisabledMessage = computed(() => {
   return personalSpace.value?.message || '';
 });
 
-const pageTitle = computed(() => {
-  if (currentSpace.value) {
-    return currentSpace.value.display_name;
-  }
-  return isGroupTab.value ? '小组共享网盘' : '我的个人网盘';
-});
+const usagePercent = computed(() => Math.min(currentSpace.value?.usage_percent ?? 0, 100));
 
-const groupDeleteRoleLabel = computed(() => (groupSpace.value?.my_role === 'leader' ? '组长管理' : '仅可删除自己上传'));
-
-const groupDeleteRuleText = computed(() => {
-  if (!groupSpace.value?.enabled) {
-    return '当前还没有可用的小组共享空间。';
-  }
-  if (groupSpace.value.my_role === 'leader') {
-    return '你当前是组长，可以删除本组全部共享文件。';
-  }
-  return '你可以上传、下载，并删除自己上传的共享文件。';
-});
-
-const heroCopy = computed(() => {
-  if (isGroupTab.value) {
-    if (groupSpace.value?.enabled) {
-      return `${groupSpace.value.group_name} · ${groupSpace.value.class_name}，当前组员共享同一份资料空间。${groupDeleteRuleText.value}`;
-    }
-    return '当前还没有可用的小组共享空间，可先去小组页查看分组信息。';
-  }
-  return '这里用于保存你的个人学习资料，支持上传、下载和删除自己的网盘文件。';
-});
-
-const currentUploadLabel = computed(() =>
-  isGroupTab.value
-    ? `上传到小组网盘${selectedFiles.value.length ? ` (${selectedFiles.value.length})` : ''}`
-    : `上传到个人网盘${selectedFiles.value.length ? ` (${selectedFiles.value.length})` : ''}`
+const groupPermissionText = computed(() =>
+  groupSpace.value?.my_role === 'leader' ? '组长可删除全部文件' : '仅可删除自己上传的文件'
 );
 
-const currentSpaceNote = computed(() => {
-  if (isGroupTab.value) {
-    return `组员共享同一份文件列表。${groupDeleteRuleText.value}`;
+const headSub = computed(() => {
+  const space = currentSpace.value;
+  if (!space) {
+    return isGroupTab.value ? '小组空间 · 暂不可用' : '个人空间 · 暂不可用';
   }
-  return '支持上传、下载和删除。当前先不做文件夹层级。';
+  const scope = isGroupTab.value ? groupSpace.value?.group_name || '小组空间' : '个人空间';
+  const parts = [scope, `已用 ${formatBytes(space.used_bytes)} / ${space.quota_mb} MB`, `${space.file_count} 个文件`];
+  if (isGroupTab.value) {
+    parts.push(groupPermissionText.value);
+  }
+  return parts.join(' · ');
 });
 
+const selectedTotalBytes = computed(() =>
+  selectedFiles.value.reduce((total, file) => total + file.size, 0)
+);
+
 const currentEmptyDescription = computed(() =>
-  isGroupTab.value ? '小组网盘还是空的，先上传一份协作资料吧。' : '个人网盘还是空的，先上传一个文件吧。'
+  isGroupTab.value ? '小组网盘还是空的，先上传一份协作资料。' : '个人网盘还是空的，先上传一个文件。'
 );
 
 function formatBytes(bytes: number) {
@@ -387,16 +303,6 @@ function formatDateTime(value: string | null) {
     return '暂无记录';
   }
   return value.replace('T', ' ').slice(0, 16);
-}
-
-function roleLabel(role: string | null | undefined) {
-  if (role === 'leader') {
-    return '组长';
-  }
-  if (role === 'member') {
-    return '组员';
-  }
-  return role || '未分配';
 }
 
 function selectedFileKey(file: File) {
@@ -595,100 +501,96 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.action-group,
-.toolbar-row {
+.sw-drive {
+  display: grid;
+  gap: var(--sw-section-gap);
+}
+
+.sw-drive :deep(.n-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.sw-num {
+  font-variant-numeric: tabular-nums;
+}
+
+.action-group {
   display: flex;
-  gap: 10px;
   flex-wrap: wrap;
-}
-
-.toolbar-row {
-  justify-content: space-between;
-  align-items: center;
-}
-
-.compact-actions {
-  justify-content: flex-end;
-}
-
-.section-note,
-.table-note,
-.group-placeholder p,
-.action-note {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.selected-files-panel {
-  margin-bottom: 18px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--ls-primary-soft);
-}
-
-.selected-files-title,
-.file-name,
-.file-meta {
-  margin: 0;
-}
-
-.selected-files-title {
-  margin-bottom: 10px;
-  font-weight: 700;
-}
-
-.file-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 0;
-  border-bottom: 1px dashed var(--ls-border);
-}
-
-.file-item:last-child {
-  border-bottom: none;
-}
-
-.file-name {
-  font-weight: 600;
-}
-
-.file-meta,
-.table-note,
-.action-note {
-  margin-top: 4px;
-  font-size: 12px;
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .file-input {
   display: none;
 }
 
-.group-placeholder,
-.row-actions {
-  display: grid;
-  gap: 14px;
+/* 待上传：表上方一行提示条 */
+.sw-upload-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 18px;
+  border-bottom: 1px solid var(--sw-line-soft);
+  background: var(--sw-surface);
 }
 
-.metric-value--small {
-  font-size: 22px;
+.sw-upload-bar__main {
+  min-width: 0;
 }
 
-@media (max-width: 900px) {
-  .toolbar-row {
-    flex-direction: column;
+.sw-upload-bar__title {
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-upload-bar__files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+}
+
+.sw-upload-bar__file {
+  display: inline-block;
+  max-width: 210px;
+  height: 20px;
+  padding: 0 8px;
+  overflow: hidden;
+  border: 0;
+  color: var(--sw-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.sw-upload-bar__file:hover {
+  background: var(--sw-surface-3);
+  color: var(--sw-ink);
+}
+
+.sw-upload-bar__actions {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+@media (max-width: 720px) {
+  .sw-upload-bar {
     align-items: flex-start;
-  }
-
-  .compact-actions {
-    justify-content: flex-start;
-  }
-
-  .file-item {
     flex-direction: column;
-    align-items: stretch;
+  }
+
+  .sw-upload-bar__actions {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 </style>

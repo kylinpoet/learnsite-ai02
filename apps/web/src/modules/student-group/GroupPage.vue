@@ -1,19 +1,17 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="在这里查看小组成员、今日到课状态和共享网盘，便于分工协作、资料共享与共同完成任务。"
-      eyebrow="小组协作"
-      :title="pageTitle"
-    >
+  <div class="sw-group">
+    <StudentPageHead :title="pageTitle" :sub="headerSub">
       <template #actions>
-        <div class="action-group">
-          <n-button :loading="isLoading" type="primary" @click="loadGroup">刷新小组</n-button>
-          <n-button :disabled="!groupData?.shared_drive.enabled" secondary @click="goToGroupDrive">
-            打开小组网盘
-          </n-button>
-        </div>
+        <n-button
+          type="primary"
+          :disabled="!groupData?.shared_drive.enabled"
+          @click="goToGroupDrive"
+        >
+          打开小组网盘
+        </n-button>
+        <n-button :loading="isLoading" @click="loadGroup">刷新</n-button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
     <n-alert
@@ -23,198 +21,104 @@
       type="warning"
     />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
-
-    <n-empty
-      v-else-if="groupData && !groupData.group"
-      description="当前还没有加入小组，暂时无法使用小组协作页。"
-    />
-
-    <div v-else-if="groupData?.group" class="page-stack">
-      <div class="metric-grid">
-        <article class="mini-panel">
-          <p class="metric-label">当前小组</p>
-          <p class="metric-value metric-value--small">{{ groupData.group.name }}</p>
-          <p class="metric-note">{{ groupData.group.class_name }} · 第 {{ groupData.group.group_no }} 组</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">成员人数</p>
-          <p class="metric-value">{{ groupData.today_summary.member_count }}</p>
-          <p class="metric-note">组长和组员都在这里统一查看。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">今日已到课</p>
-          <p class="metric-value">{{ groupData.today_summary.checked_in_count }}</p>
-          <p class="metric-note">按登录 IP 自动签到后的实时结果。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">共享文件</p>
-          <p class="metric-value">{{ groupData.shared_drive.file_count ?? 0 }}</p>
-          <p class="metric-note">可直接进入小组网盘继续上传与整理。</p>
-        </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body">
+        <n-skeleton :rows="6" animated />
       </div>
-
-      <div class="detail-grid">
-        <SaPanel title="成员面板">
-          <template #actions>
-            <n-tag round type="success">
-              组长 {{ groupData.group.leader_name || '待设置' }}
-            </n-tag>
-          </template>
-
-          <div class="group-summary">
-            <p class="group-summary-title">{{ groupData.group.name }}</p>
-            <p class="group-summary-note">
-              {{ groupData.group.description || '当前小组负责课堂协作、资料共享与作品共创。' }}
-            </p>
-            <p class="group-summary-note">
-              我的身份：{{ roleLabel(groupData.group.me_role) }}
-            </p>
-          </div>
-
-          <SaDataTable :data="groupData.members" row-key="user_id" stripe>
-            <SaTableColumn label="成员" min-width="220">
-              <template #default="{ row }">
-                <div>
-                  <p class="member-name">{{ row.name }}</p>
-                  <p class="table-note">{{ row.student_no }}</p>
-                </div>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="身份" min-width="120">
-              <template #default="{ row }">
-                <n-tag round :type="row.role === 'leader' ? 'success' : 'info'">
-                  {{ roleLabel(row.role) }}
-                </n-tag>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="座位" min-width="150">
-              <template #default="{ row }">
-                <span>{{ row.seat_label || '未绑定' }}</span>
-                <p class="table-note">{{ row.room_name || '暂无机房信息' }}</p>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="到课状态" min-width="180">
-              <template #default="{ row }">
-                <n-tag round :type="row.checked_in_today ? 'success' : 'warning'">
-                  {{ row.checked_in_today ? '已签到' : '未签到' }}
-                </n-tag>
-                <p class="table-note">
-                  {{ row.checked_in_at ? formatDateTime(row.checked_in_at) : '等待登录签到' }}
-                </p>
-              </template>
-            </SaTableColumn>
-          </SaDataTable>
-        </SaPanel>
-
-        <SaPanel title="共享网盘概览">
-          <template #actions>
-            <n-tag round type="warning">{{ groupData.shared_drive.display_name || '小组共享网盘' }}</n-tag>
-          </template>
-
-          <n-progress
-            :percentage="Math.min(groupData.shared_drive.usage_percent ?? 0, 100)"
-            :stroke-width="18"
-            status="success"
-          />
-          <p class="section-note">
-            已用 {{ formatBytes(groupData.shared_drive.used_bytes ?? 0) }} / 总容量
-            {{ groupData.shared_drive.quota_mb ?? 0 }} MB
-          </p>
-          <p class="section-note">
-            剩余 {{ formatBytes(groupData.shared_drive.remaining_bytes ?? 0) }}，当前共
-            {{ groupData.shared_drive.file_count ?? 0 }} 个文件。
-          </p>
-
-          <div class="recent-file-block">
-            <div class="info-row">
-              <span>最近文件</span>
-              <n-button text type="primary" @click="goToGroupDrive">去整理</n-button>
-            </div>
-
-            <div v-if="groupData.shared_drive.recent_files.length" class="recent-file-list">
-              <article
-                v-for="file in groupData.shared_drive.recent_files"
-                :key="file.id"
-                class="recent-file-item"
-              >
-                <div>
-                  <p class="member-name">{{ file.name }}</p>
-                  <p class="table-note">
-                    {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB ·
-                    {{ formatDateTime(file.updated_at) }}
-                  </p>
-                </div>
-              </article>
-            </div>
-            <n-empty v-else description="小组网盘还没有文件，先上传一份协作资料吧。" />
-          </div>
-        </SaPanel>
-      </div>
-
-      <SaPanel title="课堂动态">
-        <template #actions>
-          <n-tag round type="info">{{ groupData.activity_feed.length }} 条最新记录</n-tag>
-        </template>
-
-        <div v-if="groupData.activity_feed.length" class="activity-feed">
-          <article v-for="event in groupData.activity_feed" :key="event.id" class="activity-item">
-            <div class="info-row">
-              <div>
-                <p class="member-name">{{ event.title }}</p>
-                <p class="table-note">{{ event.description }}</p>
-              </div>
-              <n-tag round :type="activityTagType(event.event_type)">{{ event.event_label }}</n-tag>
-            </div>
-            <p class="table-note">
-              {{ formatDateTime(event.occurred_at) }}
-              <span v-if="event.actor_name"> · {{ event.actor_name }}</span>
-              <span v-if="event.actor_student_no"> · {{ event.actor_student_no }}</span>
-            </p>
-          </article>
-        </div>
-        <n-empty v-else description="当前还没有可展示的小组课堂动态。" />
-      </SaPanel>
-
-      <SaPanel title="操作日志">
-        <template #actions>
-          <n-tag round type="warning">{{ groupData.operation_logs.length }} 条可追溯记录</n-tag>
-        </template>
-
-        <div v-if="groupData.operation_logs.length" class="activity-feed">
-          <article v-for="log in groupData.operation_logs" :key="`log-${log.id}`" class="activity-item">
-            <div class="info-row">
-              <div>
-                <p class="member-name">{{ log.title }}</p>
-                <p class="table-note">{{ log.description }}</p>
-              </div>
-              <n-tag round :type="operationTagType(log.event_type)">{{ log.event_label }}</n-tag>
-            </div>
-            <p class="table-note">
-              {{ formatDateTime(log.occurred_at) }}
-              <span v-if="log.actor_name"> 路 {{ log.actor_name }}</span>
-              <span v-if="log.actor_role"> 路 {{ roleLabel(log.actor_role) }}</span>
-            </p>
-          </article>
-        </div>
-        <n-empty v-else description="当前还没有小组协作操作日志。" />
-      </SaPanel>
     </div>
+
+    <StudentPanel v-else-if="groupData && !groupData.group" title="小组">
+      <StudentEmpty text="还没有加入小组。分配小组后，这里会显示成员、今日到课和组网盘。" />
+    </StudentPanel>
+
+    <template v-else-if="groupData?.group">
+      <StudentStatStrip :items="statItems" />
+
+      <div class="sw-grid-2">
+        <StudentPanel title="成员" :count="`${groupData.members.length} 人`" flush>
+          <template v-if="groupData.members.length">
+            <article v-for="member in groupData.members" :key="member.user_id" class="sw-row">
+              <span class="sw-row__main">
+                <span class="sw-row__title">
+                  {{ member.name }}
+                  <span class="sw-group__role">{{ roleLabel(member.role) }}</span>
+                </span>
+                <span class="sw-row__meta">
+                  <span>{{ member.student_no }}</span>
+                  <span>{{ member.seat_label || '未绑定座位' }}</span>
+                  <span v-if="member.checked_in_at">{{ formatDateTime(member.checked_in_at) }} 签到</span>
+                </span>
+              </span>
+              <span
+                :class="['sw-chip', member.checked_in_today ? 'sw-chip--done' : 'sw-chip--todo']"
+              >
+                {{ member.checked_in_today ? '已到课' : '未签到' }}
+              </span>
+            </article>
+          </template>
+          <StudentEmpty v-else box text="小组还没有成员，请联系教师分配。" />
+        </StudentPanel>
+
+        <StudentPanel
+          title="共享网盘"
+          :count="groupData.shared_drive.enabled ? `${groupData.shared_drive.file_count ?? 0} 个文件` : undefined"
+          flush
+        >
+          <template v-if="groupData.shared_drive.enabled && recentFiles.length">
+            <div v-for="file in recentFiles" :key="file.id" class="sw-row">
+              <span class="sw-row__main">
+                <span class="sw-row__title">{{ file.name }}</span>
+                <span class="sw-row__meta">
+                  <span>{{ file.ext.toUpperCase() }}</span>
+                  <span>{{ formatDateTime(file.updated_at) }}</span>
+                </span>
+              </span>
+              <span class="sw-row__value">{{ file.size_kb }} KB</span>
+            </div>
+          </template>
+          <StudentEmpty
+            v-else-if="groupData.shared_drive.enabled"
+            box
+            text="网盘还没有文件，打开小组网盘上传第一份协作资料。"
+          />
+          <StudentEmpty
+            v-else
+            box
+            :text="groupData.shared_drive.message || '小组网盘暂未开放，请联系教师。'"
+          />
+        </StudentPanel>
+      </div>
+
+      <StudentPanel title="最近动态" :count="`${timeline.length} 条`" flush>
+        <template v-if="timeline.length">
+          <article v-for="item in timeline" :key="item.key" class="sw-row">
+            <span class="sw-row__main">
+              <span class="sw-row__title">{{ item.title }}</span>
+              <span class="sw-row__meta">
+                <span>{{ formatDateTime(item.occurredAt) }}</span>
+                <span v-if="item.description">{{ item.description }}</span>
+                <span v-if="item.actor">{{ item.actor }}</span>
+              </span>
+            </span>
+            <span :class="['sw-chip', item.chip]">{{ item.label }}</span>
+          </article>
+        </template>
+        <StudentEmpty v-else box text="今天还没有小组动态，签到、上传文件或提交作品后会出现在这里。" />
+      </StudentPanel>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NProgress, NSkeleton, NTag } from 'naive-ui';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
+import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type GroupMember = {
@@ -328,6 +232,16 @@ type GroupPayload = {
   };
 };
 
+type TimelineEntry = {
+  key: string;
+  title: string;
+  description: string;
+  label: string;
+  occurredAt: string | null;
+  actor: string;
+  chip: string;
+};
+
 const router = useRouter();
 const authStore = useAuthStore();
 
@@ -342,6 +256,81 @@ const discussionBlockedMessage = computed(() => {
     return '';
   }
   return discussionCapability.enabled ? '' : discussionCapability.message || '课堂暂时关闭了小组讨论。';
+});
+
+const headerSub = computed(() => {
+  const group = groupData.value?.group;
+  if (!group) {
+    return '';
+  }
+  const summary = groupData.value?.today_summary;
+  return [
+    `我是${roleLabel(group.me_role)}`,
+    group.leader_name ? `组长 ${group.leader_name}` : '组长待设置',
+    `今日到课 ${summary?.checked_in_count ?? 0}/${summary?.member_count ?? 0}`,
+  ].join(' · ');
+});
+
+const recentFiles = computed(() => groupData.value?.shared_drive.recent_files || []);
+
+const statItems = computed<StudentStatItem[]>(() => {
+  const summary = groupData.value?.today_summary;
+  const drive = groupData.value?.shared_drive;
+  return [
+    {
+      label: '成员',
+      value: summary?.member_count ?? 0,
+      unit: '人',
+      note: groupData.value?.group?.leader_name
+        ? `组长 ${groupData.value.group.leader_name}`
+        : '组长待设置',
+    },
+    {
+      label: '今日到课',
+      value: summary?.checked_in_count ?? 0,
+      unit: `/ ${summary?.member_count ?? 0} 人`,
+      note: summary?.pending_count ? `${summary.pending_count} 人未签到` : '全员已签到',
+    },
+    {
+      label: '共享文件',
+      value: drive?.file_count ?? 0,
+      unit: '个',
+      note: drive?.display_name || '小组共享网盘',
+    },
+    {
+      label: '组网盘已用',
+      value: formatBytes(drive?.used_bytes ?? 0),
+      note: `剩余 ${formatBytes(drive?.remaining_bytes ?? 0)} · 共 ${drive?.quota_mb ?? 0} MB`,
+    },
+  ];
+});
+
+const timeline = computed<TimelineEntry[]>(() => {
+  const activities: TimelineEntry[] = (groupData.value?.activity_feed || []).map((event) => ({
+    key: `activity-${event.id}`,
+    title: event.title,
+    description: event.description,
+    label: event.event_label,
+    occurredAt: event.occurred_at,
+    actor: [event.actor_name, event.actor_student_no].filter(Boolean).join(' · '),
+    chip: activityChip(event.event_type),
+  }));
+  const logs: TimelineEntry[] = (groupData.value?.operation_logs || []).map((log) => ({
+    key: `log-${log.id}`,
+    title: log.title,
+    description: log.description,
+    label: log.event_label,
+    occurredAt: log.occurred_at,
+    actor: [log.actor_name, log.actor_role ? roleLabel(log.actor_role) : null]
+      .filter(Boolean)
+      .join(' · '),
+    chip: operationChip(log.event_type),
+  }));
+  return [...activities, ...logs].sort((left, right) => {
+    const leftTime = left.occurredAt ? Date.parse(left.occurredAt) : 0;
+    const rightTime = right.occurredAt ? Date.parse(right.occurredAt) : 0;
+    return rightTime - leftTime;
+  });
 });
 
 function formatBytes(bytes = 0) {
@@ -380,33 +369,27 @@ function roleLabel(role: string | null | undefined) {
   return role || '未分配';
 }
 
-function activityTagType(eventType: string) {
+function activityChip(eventType: string) {
   if (eventType === 'attendance') {
-    return 'success';
-  }
-  if (eventType === 'drive_upload') {
-    return 'warning';
+    return 'sw-chip--done';
   }
   if (eventType === 'submission_reviewed') {
-    return 'error';
+    return 'sw-chip--warn';
   }
-  return 'info';
+  return 'sw-chip--todo';
 }
 
-function operationTagType(eventType: string) {
+function operationChip(eventType: string) {
   if (eventType.includes('deleted')) {
-    return 'error';
+    return 'sw-chip--danger';
   }
   if (eventType.includes('reviewed')) {
-    return 'warning';
+    return 'sw-chip--warn';
   }
   if (eventType.includes('submitted')) {
-    return 'success';
+    return 'sw-chip--done';
   }
-  if (eventType.includes('draft')) {
-    return 'info';
-  }
-  return 'primary';
+  return 'sw-chip--todo';
 }
 
 async function loadGroup() {
@@ -443,81 +426,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.action-group,
-.group-summary,
-.recent-file-list,
-.activity-feed {
+.sw-group {
   display: grid;
-  gap: 10px;
+  gap: var(--sw-section-gap);
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
-  gap: 16px;
-  align-items: start;
+.sw-group__role {
+  margin-left: 6px;
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 
-@media (max-width: 1200px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 560px) {
+  .sw-group__role {
+    display: block;
+    margin-left: 0;
   }
-}
-
-.group-summary {
-  margin-bottom: 16px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--ls-primary-soft);
-}
-
-.group-summary-title,
-.group-summary-note,
-.member-name,
-.table-note,
-.section-note {
-  margin: 0;
-}
-
-.group-summary-title,
-.member-name {
-  font-weight: 700;
-}
-
-.group-summary-note,
-.table-note,
-.section-note {
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.table-note {
-  margin-top: 4px;
-  font-size: 12px;
-}
-
-.recent-file-block {
-  margin-top: 18px;
-  display: grid;
-  gap: 12px;
-}
-
-.recent-file-item {
-  padding: 14px 0;
-  border-bottom: 1px dashed var(--ls-border);
-}
-
-.recent-file-item:last-child {
-  border-bottom: none;
-}
-
-.activity-item {
-  padding: 14px 16px;
-  border-radius: 16px;
-  background: var(--ls-primary-soft);
-}
-
-.metric-value--small {
-  font-size: 22px;
 }
 </style>

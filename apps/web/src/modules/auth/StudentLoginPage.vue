@@ -5,12 +5,13 @@
         <p class="eyebrow">{{ appStore.title }}</p>
         <h1>学生登录</h1>
         <p class="hero-copy">
-          输入黑板上的班级码，点自己的名字，再输密码即可进入学习空间；不知道班级码也可以按年级选班级。
-          只想看看这节课讲什么，用班级码选择「仅旁听」即可，不需要账号。
+          选自己的班级，点名单里的名字，再输密码即可进入学习空间；不用记学号。
+          老师投屏了班级码的话，直接输入班级码也能进本班。
+          只想看看这节课讲什么，进入班级后选择「仅旁听」即可，不需要账号。
         </p>
 
         <div class="auth-pill-row">
-          <span class="auth-pill">班级码进班</span>
+          <span class="auth-pill">选班级</span>
           <span class="auth-pill">点名字登录</span>
           <span class="auth-pill">仅旁听</span>
         </div>
@@ -25,84 +26,75 @@
       </div>
 
       <SaPanel panel-class="auth-form-panel">
-        <!-- 第一步：班级码 -->
-        <template v-if="step === 'code' && loginMode === 'class'">
+        <!-- 第一步：选班级 -->
+        <template v-if="step === 'class'">
           <div class="auth-form-panel__top">
             <span class="auth-form-panel__tag">第 1 步 / 共 3 步</span>
-            <p class="auth-form-panel__title">输入班级码</p>
+            <p class="auth-form-panel__title">先选择你在的班级</p>
           </div>
 
-          <n-alert
-            :closable="false"
-            class="student-login-page__alert"
-            show-icon
-            title="班级码写在黑板或投影上，6 位字母数字"
-            type="info"
-          />
+          <n-skeleton v-if="isLoadingClasses" :rows="5" animated />
 
-          <n-form :show-feedback="false" @submit.prevent="submitClassCode">
-            <n-form-item label="班级码">
-              <n-input
-                ref="classCodeFieldRef"
-                v-model:value="classCodeInput"
-                :maxlength="6"
-                class="class-code-input"
-                placeholder="例如 7K3M9Q"
-                size="large"
-                @input="onClassCodeInput"
-                @keyup.enter="submitClassCode"
-              />
-            </n-form-item>
+          <template v-else>
+            <div class="grade-chip-row">
+              <button
+                v-for="item in gradeFilters"
+                :key="String(item.value)"
+                :class="['grade-chip', { 'grade-chip--active': pickedGradeNo === item.value }]"
+                type="button"
+                @click="pickedGradeNo = item.value"
+              >
+                {{ item.label }}
+              </button>
+            </div>
 
-            <p v-if="pickedClassName" class="class-code-hint">
-              正在进入 {{ pickedClassName }}，请输入该班班级码（班级码不公开名单）。
-            </p>
+            <div v-if="visibleClasses.length" class="class-chip-grid">
+              <button
+                v-for="item in visibleClasses"
+                :key="item.id"
+                class="class-chip"
+                type="button"
+                @click="openRosterByClass(item)"
+              >
+                {{ item.class_name }}
+              </button>
+            </div>
+            <n-empty v-else :description="classLoadError ? '班级列表加载失败' : '还没有可选的班级'" size="small" />
 
+            <n-alert v-if="classLoadError" :closable="false" :title="classLoadError" type="error" />
             <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-            <div class="action-row">
-              <n-button
-                :disabled="classCodeInput.length !== 6"
-                :loading="isSubmitting"
-                attr-type="submit"
-                size="large"
-                type="primary"
-              >
-                进入本班
-              </n-button>
+            <div v-if="classLoadError" class="action-row">
+              <n-button size="large" type="primary" @click="ensureClassOptions(true)">重新加载班级</n-button>
             </div>
-          </n-form>
 
-          <div class="class-picker-block">
-            <button class="class-picker-toggle" type="button" @click="showClassPicker = !showClassPicker">
-              {{ showClassPicker ? '收起班级列表' : '不知道班级码？按年级选班级' }}
-            </button>
-
-            <div v-if="showClassPicker" class="class-picker-body">
-              <n-select
-                :options="gradeOptions"
-                :value="pickedGradeNo"
-                placeholder="选择年级"
-                size="large"
-                @update:value="onGradeChange"
-              />
-              <div v-if="pickedGradeClasses.length" class="class-chip-grid">
-                <button
-                  v-for="item in pickedGradeClasses"
-                  :key="item.id"
-                  class="class-chip"
-                  type="button"
-                  @click="openRosterByClass(item.id)"
+            <!-- 班级码是「更快进班」的快捷方式：老师投屏的码，输完直接跳到本班名单 -->
+            <div class="class-code-block">
+              <p class="class-code-block__label">有班级码？直接进班</p>
+              <div class="class-code-block__row">
+                <n-input
+                  v-model:value="classCodeInput"
+                  :maxlength="6"
+                  class="class-code-input"
+                  placeholder="例如 7K3M9Q"
+                  size="large"
+                  @input="onClassCodeInput"
+                  @keyup.enter="submitClassCode"
+                />
+                <n-button
+                  :disabled="classCodeInput.length !== 6"
+                  :loading="isSubmitting"
+                  size="large"
+                  type="primary"
+                  @click="submitClassCode"
                 >
-                  {{ item.class_name }}
-                </button>
+                  进班
+                </n-button>
               </div>
-              <n-empty v-else description="先选择年级" size="small" />
             </div>
-          </div>
+          </template>
 
           <div class="auth-link-stack auth-link-stack--footer">
-            <button class="link-button" type="button" @click="switchToUsernameLogin">用学号登录</button>
             <RouterLink to="/login/staff">切换到教师登录</RouterLink>
             <RouterLink to="/rules">查看课堂守则</RouterLink>
           </div>
@@ -111,14 +103,14 @@
         <!-- 第二步：点名字 -->
         <template v-else-if="step === 'roster' && roster">
           <div class="auth-form-panel__top">
-            <span class="auth-form-panel__tag">第 2 步 / 共 3 步 · 班级码 {{ roster.class_code }}</span>
+            <span class="auth-form-panel__tag">第 2 步 / 共 3 步 · {{ roster.class_name }}</span>
             <p class="auth-form-panel__title">{{ roster.class_name }} · 找到你自己的名字</p>
           </div>
 
           <n-input
             v-model:value="rosterFilter"
             clearable
-            placeholder="输入姓名或学号筛选"
+            placeholder="输入姓名筛选"
             size="large"
           />
 
@@ -133,16 +125,15 @@
               @click="pickStudent(student)"
             >
               <span class="roster-card__name">{{ student.display_name }}</span>
-              <span class="roster-card__meta">
-                {{ student.student_no }}
-                <template v-if="student.seat_label"> · {{ student.seat_label }} 号机</template>
+              <span v-if="rosterMeta.get(student.user_id)" class="roster-card__meta">
+                {{ rosterMeta.get(student.user_id) }}
               </span>
             </button>
           </div>
           <n-empty v-if="!filteredRoster.length" description="没有匹配的同学，换个关键词试试" />
 
           <div class="action-row action-row--split">
-            <n-button secondary size="large" @click="backToCode">返回</n-button>
+            <n-button secondary size="large" @click="backToClass">返回选班级</n-button>
             <n-button size="large" tertiary @click="startGuestObserve">不登录，仅旁听</n-button>
           </div>
         </template>
@@ -151,12 +142,13 @@
         <template v-else-if="step === 'password' && pickedStudent">
           <div class="auth-form-panel__top">
             <span class="auth-form-panel__tag">第 3 步 / 共 3 步 · {{ roster?.class_name }}</span>
-            <p class="auth-form-panel__title">{{ pickedStudent.display_name }}（{{ pickedStudent.student_no }}）</p>
+            <p class="auth-form-panel__title">{{ pickedStudent.display_name }}</p>
           </div>
 
           <n-form :show-feedback="false" @submit.prevent="submitPassword">
             <n-form-item label="密码">
               <n-input
+                ref="passwordFieldRef"
                 v-model:value="passwordInput"
                 placeholder="请输入你的密码"
                 show-password-on="click"
@@ -176,53 +168,14 @@
             </div>
           </n-form>
         </template>
-
-        <!-- 学号登录（兜底入口） -->
-        <template v-else>
-          <div class="auth-form-panel__top">
-            <span class="auth-form-panel__tag">备用入口</span>
-            <p class="auth-form-panel__title">输入学号和密码进入学习空间</p>
-          </div>
-
-          <n-alert
-            :closable="false"
-            class="student-login-page__alert"
-            show-icon
-            title="请使用学校分配的学号和密码登录"
-            type="info"
-          />
-
-          <n-form :show-feedback="false" label-placement="top" @submit.prevent="submitUsernameLogin">
-            <n-form-item label="学号">
-              <n-input v-model:value="usernameForm.username" placeholder="请输入学号" />
-            </n-form-item>
-            <n-form-item label="密码">
-              <n-input
-                v-model:value="usernameForm.password"
-                placeholder="请输入密码"
-                show-password-on="click"
-                type="password"
-              />
-            </n-form-item>
-            <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-            <div class="action-row">
-              <n-button :loading="isSubmitting" attr-type="submit" type="primary">登录</n-button>
-              <div class="auth-link-stack">
-                <button class="link-button" type="button" @click="switchToClassLogin">用班级码登录</button>
-                <RouterLink to="/login/staff">切换到教师登录</RouterLink>
-                <RouterLink to="/rules">查看课堂守则</RouterLink>
-              </div>
-            </div>
-          </n-form>
-        </template>
       </SaPanel>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NSelect } from 'naive-ui';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NSkeleton } from 'naive-ui';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
@@ -258,103 +211,112 @@ const router = useRouter();
 const authStore = useAuthStore();
 const appStore = useAppStore();
 
-const step = ref<'code' | 'roster' | 'password'>('code');
-const loginMode = ref<'class' | 'username'>('class');
+const step = ref<'class' | 'roster' | 'password'>('class');
 const isSubmitting = ref(false);
 const errorMessage = ref('');
 
-const classCodeInput = ref('');
 const classOptions = ref<ClassOptionGrade[]>([]);
-const showClassPicker = ref(false);
+const isLoadingClasses = ref(true);
+const classLoadError = ref('');
 const pickedGradeNo = ref<number | null>(null);
-const pickedClassName = ref('');
-const classCodeFieldRef = ref<{ focus: () => void } | null>(null);
+const classCodeInput = ref('');
 
 const roster = ref<RosterPayload | null>(null);
 const rosterFilter = ref('');
 const pickedStudent = ref<RosterStudent | null>(null);
 const passwordInput = ref('');
-
-const usernameForm = reactive({ username: '', password: '' });
+const passwordFieldRef = ref<{ focus: () => void } | null>(null);
 
 /** 点名字 / 输密码这两步把版面让给名单：48 个名字比介绍文案更需要空间 */
-const isNamePickingStep = computed(() => loginMode.value === 'class' && step.value !== 'code');
+const isNamePickingStep = computed(() => step.value !== 'class');
 
-const gradeOptions = computed(() =>
-  classOptions.value.map((item) => ({ label: `${item.grade_no} 年级`, value: item.grade_no })),
-);
+const gradeFilters = computed(() => [
+  { label: '全部', value: null as number | null },
+  ...classOptions.value.map((item) => ({ label: `${item.grade_no} 年级`, value: item.grade_no as number | null })),
+]);
 
-const pickedGradeClasses = computed(
-  () => classOptions.value.find((item) => item.grade_no === pickedGradeNo.value)?.classes || [],
-);
+const visibleClasses = computed(() => {
+  const all = classOptions.value.flatMap((grade) => grade.classes);
+  if (pickedGradeNo.value === null) return all;
+  return all.filter((item) => item.grade_no === pickedGradeNo.value);
+});
 
 const filteredRoster = computed(() => {
   const students = roster.value?.students || [];
   const keyword = rosterFilter.value.trim().toLowerCase();
   if (!keyword) return students;
-  return students.filter(
-    (student) =>
-      student.display_name.toLowerCase().includes(keyword) || student.student_no.includes(keyword),
-  );
+  return students.filter((student) => student.display_name.toLowerCase().includes(keyword));
+});
+
+/**
+ * 名单卡片上的补充信息：机位号用于机房辨认。本班有重名时才补学号，
+ * 避免把学号当作常规身份信息公开展示（班级名单现在不需要口令即可查看）。
+ */
+const rosterMeta = computed(() => {
+  const students = roster.value?.students || [];
+  const nameCount = new Map<string, number>();
+  for (const student of students) {
+    nameCount.set(student.display_name, (nameCount.get(student.display_name) || 0) + 1);
+  }
+  const meta = new Map<number, string>();
+  for (const student of students) {
+    const parts: string[] = [];
+    if (student.seat_label) parts.push(`${student.seat_label} 号机`);
+    if ((nameCount.get(student.display_name) || 0) > 1) parts.push(`学号 ${student.student_no}`);
+    meta.set(student.user_id, parts.join(' · '));
+  }
+  return meta;
 });
 
 function resetError() {
   errorMessage.value = '';
 }
 
-function onClassCodeInput(value: string) {
-  classCodeInput.value = value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6);
-}
-
-async function ensureClassOptions() {
-  if (classOptions.value.length) return;
+async function ensureClassOptions(force = false) {
+  if (classOptions.value.length && !force) return;
+  isLoadingClasses.value = true;
+  classLoadError.value = '';
   try {
     classOptions.value = await apiGet<ClassOptionGrade[]>('/auth/class/options');
-  } catch {
-    // 班级列表只是兜底入口，取不到不影响班级码登录
+  } catch (error) {
     classOptions.value = [];
+    classLoadError.value = error instanceof Error ? error.message : '无法加载班级列表，请检查网络后重试';
+  } finally {
+    isLoadingClasses.value = false;
   }
 }
 
-function onGradeChange(value: number | null) {
-  pickedGradeNo.value = value;
-}
-
-async function loadRoster(code: string) {
+async function openRoster(target: { class_id?: number; class_code?: string }, fallbackMessage: string) {
   resetError();
   isSubmitting.value = true;
   try {
-    roster.value = await apiPost<RosterPayload>('/auth/class/roster', { class_code: code });
+    roster.value = await apiPost<RosterPayload>('/auth/class/roster', target);
     rosterFilter.value = '';
     pickedStudent.value = null;
     passwordInput.value = '';
     step.value = 'roster';
-    return true;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '班级码无效，请核对后重试';
-    return false;
+    errorMessage.value = error instanceof Error ? error.message : fallbackMessage;
   } finally {
     isSubmitting.value = false;
   }
 }
 
-async function submitClassCode() {
+function openRosterByClass(target: ClassOptionItem) {
+  return openRoster({ class_id: target.id }, '无法加载本班名单，请重试');
+}
+
+/** 班级码只作为「直接进班」的快捷方式：老师投屏的 6 位码，输完即进本班名单。 */
+function onClassCodeInput(value: string) {
+  classCodeInput.value = value.toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6);
+}
+
+function submitClassCode() {
   if (classCodeInput.value.length !== 6) {
     errorMessage.value = '班级码是 6 位字母数字';
     return;
   }
-  await loadRoster(classCodeInput.value);
-}
-
-async function openRosterByClass(classId: number) {
-  const target = classOptions.value.flatMap((grade) => grade.classes).find((item) => item.id === classId);
-  if (!target) return;
-  // 班级码是名单的口令，按班级选择只负责帮你确认「我在哪个班」，名字仍然要班级码才放出来。
-  resetError();
-  pickedClassName.value = target.class_name;
-  classCodeInput.value = '';
-  showClassPicker.value = false;
-  classCodeFieldRef.value?.focus();
+  void openRoster({ class_code: classCodeInput.value }, '班级码无效，请核对黑板上的码，或直接选班级');
 }
 
 function pickStudent(student: RosterStudent) {
@@ -362,11 +324,12 @@ function pickStudent(student: RosterStudent) {
   pickedStudent.value = student;
   passwordInput.value = '';
   step.value = 'password';
+  void nextTick(() => passwordFieldRef.value?.focus());
 }
 
-function backToCode() {
+function backToClass() {
   resetError();
-  step.value = 'code';
+  step.value = 'class';
   roster.value = null;
   pickedStudent.value = null;
 }
@@ -384,7 +347,7 @@ async function submitPassword() {
   isSubmitting.value = true;
   try {
     const payload = await apiPost<LoginPayload>('/auth/student/login-by-class', {
-      class_code: roster.value.class_code,
+      class_id: roster.value.class_id,
       student_user_id: pickedStudent.value.user_id,
       password: passwordInput.value,
     });
@@ -400,32 +363,6 @@ async function submitPassword() {
 async function startGuestObserve() {
   if (!roster.value) return;
   await router.push(`/class/${roster.value.class_code}`);
-}
-
-async function submitUsernameLogin() {
-  resetError();
-  isSubmitting.value = true;
-  try {
-    const payload = await apiPost<LoginPayload>('/auth/student/login', usernameForm);
-    authStore.setSession(payload.access_token, payload.user, payload.expires_at);
-    await router.push('/student/home');
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
-  } finally {
-    isSubmitting.value = false;
-  }
-}
-
-function switchToUsernameLogin() {
-  resetError();
-  loginMode.value = 'username';
-}
-
-function switchToClassLogin() {
-  resetError();
-  loginMode.value = 'class';
-  step.value = 'code';
-  void ensureClassOptions();
 }
 
 onMounted(() => {
@@ -526,17 +463,6 @@ onMounted(() => {
   border-radius: 14px;
 }
 
-/* 班级码：投屏上要一眼可读，字形放大并拉开字距 */
-.class-code-input :deep(.n-input__input-el) {
-  height: 62px;
-  line-height: 62px;
-  font-size: 28px;
-  font-weight: 800;
-  letter-spacing: 0.28em;
-  text-align: center;
-  text-transform: uppercase;
-}
-
 .action-row {
   gap: 12px;
   flex-wrap: wrap;
@@ -564,38 +490,33 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-.class-picker-block {
-  margin-top: 18px;
-  border-top: 1px dashed var(--ls-border);
-  padding-top: 14px;
+.grade-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.class-picker-toggle,
-.link-button {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--ls-primary);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.class-picker-toggle:hover,
-.link-button:hover {
-  text-decoration: underline;
-}
-
-.class-picker-body {
-  display: grid;
-  gap: 10px;
-  margin-top: 12px;
-}
-
-.class-code-hint {
-  margin: -4px 0 12px;
+.grade-chip {
+  border: 1px solid var(--ls-border);
+  border-radius: 999px;
+  background: var(--ls-input-bg);
+  padding: 7px 14px;
   color: var(--ls-muted);
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.grade-chip:hover {
+  border-color: var(--ls-primary);
+  color: var(--ls-text);
+}
+
+.grade-chip--active {
+  border-color: var(--ls-primary);
+  background: var(--ls-auth-tag-bg);
+  color: var(--ls-auth-tag-text);
 }
 
 .class-chip-grid {
@@ -608,9 +529,9 @@ onMounted(() => {
   border: 1px solid var(--ls-border);
   border-radius: 12px;
   background: var(--ls-input-bg);
-  padding: 10px 8px;
+  padding: 12px 8px;
   color: var(--ls-text);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   cursor: pointer;
   transition: border-color 0.15s ease, transform 0.15s ease;
@@ -619,6 +540,41 @@ onMounted(() => {
 .class-chip:hover {
   border-color: var(--ls-primary);
   transform: translateY(-1px);
+}
+
+/* 班级码：老师投屏的 6 位码，作为「直接进班」的快捷入口 */
+.class-code-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 16px;
+  border-top: 1px solid var(--ls-border);
+}
+
+.class-code-block__label {
+  margin: 0;
+  color: var(--ls-muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.class-code-block__row {
+  display: flex;
+  gap: 10px;
+}
+
+.class-code-input :deep(.n-input__input-el) {
+  height: 44px;
+  line-height: 44px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.class-code-block__row :deep(.n-button) {
+  flex-shrink: 0;
+  min-width: 88px;
 }
 
 /* 名单：48 人同屏点选，卡片做大点击区 */

@@ -1,2202 +1,341 @@
 <template>
-  <div v-if="shouldRender" class="ai-companion-root">
+  <div v-if="shouldRender" class="ai-help-root">
     <button
-      ref="fabRef"
-      class="ai-fab"
-      :class="{ 'is-dragging': dragState.active }"
-      :style="fabStyle"
+      v-show="showLauncher"
+      ref="ballRef"
       type="button"
-      @keydown.enter.prevent="drawerVisible = true"
-      @keydown.space.prevent="drawerVisible = true"
-      @pointerdown="handleFabPointerDown"
+      class="ju-launcher"
+      :class="launcherClass"
+      :style="ballStyle"
+      :title="open ? '收起小榉AI帮' : '问小榉AI帮（可拖到不挡数据的位置）'"
+      :aria-label="open ? '收起 AI 助手小榉AI帮' : '打开 AI 助手小榉AI帮（可拖动）'"
+      :aria-expanded="open"
+      @pointerdown="onPointerDown"
+      @click="onClick"
     >
-      <span class="ai-fab__halo"></span>
-      <span class="ai-fab__icon">AI</span>
-      <span class="ai-fab__copy">
-        <strong>AI 学伴</strong>
-        <small>{{ lessonModeAvailable ? '通用 + 当前学案' : '通用模式' }}</small>
-      </span>
+      <span class="ju-sprite" aria-hidden="true" />
+      <span class="ju-launcher-tip">{{ open ? '收起' : '问小榉AI帮' }}</span>
     </button>
 
-    <n-drawer
-      v-model:show="drawerVisible"
-      :width="drawerSize"
-      placement="right"
-      to="body"
-    >
-      <div class="ai-panel">
-        <header class="ai-panel__hero">
-          <div>
-            <p class="ai-panel__eyebrow">AI Learning Buddy</p>
-            <h3>AI 学伴</h3>
-            <p class="ai-panel__copy">
-              支持通用问答、当前课程学案上下文、多模态附件，以及知识库切换。
-            </p>
-          </div>
-          <div class="ai-panel__hero-tags">
-            <n-tag round>{{ activeProviderLabel }}</n-tag>
-            <n-tag v-if="lessonModeAvailable" round type="success">已识别当前学案</n-tag>
-          </div>
-        </header>
-
-        <n-alert
-          v-if="bootstrapError"
-          :closable="false"
-          :title="bootstrapError"
-          type="error"
-        />
-
-        <div v-if="bootstrapLoading" class="soft-card ai-loading-card">
-          <n-skeleton :rows="10" animated />
-        </div>
-
-        <template v-else-if="bootstrap">
-          <n-tabs v-model:value="activeScope" class="ai-tabs" pane-style="padding: 0">
-            <n-tab-pane name="general" tab="通用学伴" />
-            <n-tab-pane
-              :disabled="!lessonModeAvailable"
-              name="lesson"
-              tab="当前课程学案学伴"
-            />
-          </n-tabs>
-
-          <section
-            v-if="activeScope === 'lesson' && currentContext"
-            class="soft-card ai-context-card"
-          >
-            <div class="ai-context-card__head">
-              <div>
-                <p class="ai-context-card__kicker">{{ contextKindLabel(currentContext.kind) }}</p>
-                <h4>{{ currentContext.title }}</h4>
-              </div>
-              <n-tag round type="warning">{{ currentContext.lesson.unit_title }}</n-tag>
-            </div>
-            <p class="ai-context-card__subtitle">{{ currentContext.subtitle }}</p>
-            <p v-if="currentContext.description" class="section-note">
-              {{ currentContext.description }}
-            </p>
-            <p class="section-note">{{ currentContext.prompt_hint }}</p>
-          </section>
-
-          <section class="soft-card ai-settings-card">
-            <button
-              class="ai-settings-card__toggle"
-              type="button"
-              @click="settingsExpanded = !settingsExpanded"
-            >
-              <div class="ai-settings-card__toggle-copy">
-                <div class="ai-settings-card__head">
-                  <div>
-                    <h4>会话设置</h4>
-                    <p class="section-note">模型服务、对话模式、推理模式和知识库默认收起，需要时再展开。</p>
-                  </div>
-                  <n-tag round type="info">
-                    {{ activeScope === 'lesson' ? '学案模式' : '通用模式' }}
-                  </n-tag>
-                </div>
-                <p class="ai-settings-card__summary">{{ settingsSummary }}</p>
-              </div>
-              <span class="ai-settings-card__toggle-action">{{ settingsExpanded ? '收起' : '展开' }}</span>
-            </button>
-
-            <div v-if="settingsExpanded" class="ai-settings-card__body">
-              <div class="ai-provider-field">
-                <div class="ai-provider-field__head">
-                  <h4>模型服务</h4>
-                  <p class="section-note">默认跟随系统配置，也可临时切换当前会话使用的模型。</p>
-                </div>
-                <n-select
-                  v-model:value="selectedProviderId"
-                  class="full-width"
-                  clearable
-                  :disabled="!bootstrap.providers.length"
-                  :options="providerOptions"
-                  placeholder="跟随系统默认模型服务"
-                />
-                <p v-if="!bootstrap.providers.length" class="section-note">
-                  当前未启用外部模型服务，将使用系统默认学伴。
-                </p>
-              </div>
-              <div class="ai-provider-field">
-                <div class="ai-provider-field__head">
-                  <h4>对话模式</h4>
-                  <p class="section-note">可切换流式输出（逐段生成）或标准输出（一次返回）。</p>
-                </div>
-                <div class="ai-switch-row">
-                  <n-switch v-model:value="streamModeEnabled" :disabled="!streamCapabilityEnabled" />
-                  <span class="ai-switch-row__label">{{ streamModeEnabled && streamCapabilityEnabled ? '流式' : '标准' }}</span>
-                </div>
-              </div>
-              <div class="ai-provider-field">
-                <div class="ai-provider-field__head">
-                  <h4>推理模式</h4>
-                  <p class="section-note">
-                    默认关闭。开启后会在接口调用时请求模型进行额外推理，通常更慢；关闭时可节省回复时间。
-                  </p>
-                </div>
-                <div class="ai-switch-row">
-                  <n-switch v-model:value="thinkingModeEnabled" />
-                  <span class="ai-switch-row__label">{{ thinkingModeEnabled ? '开启' : '关闭' }}</span>
-                </div>
-              </div>
-              <div class="ai-provider-field">
-                <div class="ai-provider-field__head">
-                  <h4>知识库</h4>
-                  <p class="section-note">当前回复会优先参考你选择的知识库。</p>
-                </div>
-                <n-select
-                  v-model:value="activeKnowledgeBaseIds"
-                  class="full-width"
-                  :max-tag-count="1"
-                  multiple
-                  :options="knowledgeBaseOptions"
-                  placeholder="请选择知识库"
-                />
-              </div>
-            </div>
-          </section>
-
-          <section class="ai-chat-shell">
-            <div ref="messageListRef" class="ai-chat-list">
-              <template v-if="activeMessages.length">
-                <article
-                  v-for="message in activeMessages"
-                  :key="message.id"
-                  class="ai-chat-item"
-                  :class="message.role === 'assistant' ? 'is-assistant' : 'is-user'"
-                >
-                  <div class="ai-chat-stack">
-                    <details
-                      v-if="message.role === 'assistant' && (message.reasoningContent || message.reasoningStreaming)"
-                      class="ai-chat-reasoning"
-                    >
-                      <summary class="ai-chat-reasoning__summary">
-                        <strong>模型推理过程</strong>
-                        <span>{{ message.reasoningStreaming ? '生成中' : '点击展开' }}</span>
-                      </summary>
-                      <div class="ai-chat-reasoning__body">
-                        <MarkdownContent
-                          class="ai-chat-reasoning__content"
-                          :content="message.reasoningContent || ''"
-                        />
-                        <span
-                          v-if="message.reasoningStreaming"
-                          aria-hidden="true"
-                          class="ai-chat-bubble__cursor"
-                        ></span>
-                      </div>
-                    </details>
-
-                    <div class="ai-chat-bubble">
-                      <div class="ai-chat-bubble__meta">
-                        <span>{{ message.role === 'assistant' ? 'AI 学伴' : '我' }}</span>
-                        <small>{{ formatMessageTime(message.createdAt) }}</small>
-                      </div>
-                      <div v-if="message.role === 'assistant'" class="ai-chat-bubble__markdown-shell">
-                        <MarkdownContent
-                          class="ai-chat-bubble__markdown"
-                          :content="message.content"
-                        />
-                        <span
-                          v-if="message.streaming"
-                          aria-hidden="true"
-                          class="ai-chat-bubble__cursor"
-                        ></span>
-                      </div>
-                      <p v-else class="ai-chat-bubble__text">{{ message.content }}</p>
-                      <div
-                        v-if="message.attachments?.length"
-                        class="ai-chat-attachments"
-                      >
-                        <span
-                          v-for="attachment in message.attachments"
-                          :key="attachment.id"
-                          class="ai-chat-attachment"
-                        >
-                          {{ attachment.name }} · {{ attachmentKindLabel(attachment.kind) }}
-                        </span>
-                      </div>
-                      <p
-                        v-if="message.role === 'assistant' && (message.providerName || message.warning)"
-                        class="ai-chat-bubble__footnote"
-                      >
-                        {{ assistantFootnote(message) }}
-                      </p>
-                      <div
-                        v-if="message.role === 'assistant' && !message.streaming && message.content"
-                        class="ai-chat-bubble__speech"
-                      >
-                        <n-button
-                          size="small"
-                          text
-                          :disabled="speechLoadingMessageId !== null && speechLoadingMessageId !== message.id"
-                          @click="toggleMessageSpeech(message)"
-                        >
-                          {{ speechButtonLabel(message) }}
-                        </n-button>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-              </template>
-
-              <n-empty
-                v-else-if="activeScope === 'lesson' && !currentContext"
-                description="当前页面还没有可绑定的课程或学案上下文"
-              />
-
-              <div v-else class="soft-card ai-starter-card">
-                <h4>你可以这样开始</h4>
-                <div class="ai-starter-card__actions">
-                  <n-button
-                    v-for="question in activeStarterQuestions"
-                    :key="question"
-                    round
-                    secondary
-                    size="small"
-                    @click="applyStarterQuestion(question)"
-                  >
-                    {{ question }}
-                  </n-button>
-                </div>
-              </div>
-            </div>
-
-            <section class="soft-card ai-composer">
-              <div class="ai-composer__head">
-                <div>
-                  <h4>{{ activeScope === 'lesson' ? '当前学案提问' : '通用提问' }}</h4>
-                  <p class="section-note">
-                    支持图片、文本、文档等附件，图片会附带多模态预览。
-                  </p>
-                </div>
-                <div class="chip-row">
-                  <n-button secondary @click="openAttachmentPicker">添加附件</n-button>
-                  <n-button
-                    v-if="composerAttachments.length"
-                    secondary
-                    type="error"
-                    @click="clearComposerAttachments"
-                  >
-                    清空附件
-                  </n-button>
-                </div>
-              </div>
-
-              <input
-                ref="attachmentInputRef"
-                class="file-input"
-                multiple
-                type="file"
-                @change="handleAttachmentChange"
-              />
-
-              <div
-                v-if="composerAttachments.length"
-                class="ai-composer__attachment-list"
-              >
-                <article
-                  v-for="attachment in composerAttachments"
-                  :key="attachment.id"
-                  class="ai-composer__attachment"
-                >
-                  <img
-                    v-if="attachment.previewUrl"
-                    :alt="attachment.name"
-                    :src="attachment.previewUrl"
-                    class="ai-composer__attachment-preview"
-                  />
-                  <div class="ai-composer__attachment-meta">
-                    <strong>{{ attachment.name }}</strong>
-                    <span>
-                      {{ attachmentKindLabel(attachment.kind) }} · {{ attachment.sizeKb }} KB
-                    </span>
-                    <small v-if="attachment.textContent">已提取文本片段</small>
-                    <small v-else-if="attachment.dataUrl">已生成多模态图片内容</small>
-                    <small v-else>将只发送文件元数据</small>
-                  </div>
-                  <n-button
-                    text
-                    type="error"
-                    @click="removeComposerAttachment(attachment.id)"
-                  >
-                    移除
-                  </n-button>
-                </article>
-              </div>
-
-              <n-input
-                v-model:value="draftMessage"
-                :autosize="{ minRows: 4, maxRows: 8 }"
-                resize="none"
-                type="textarea"
-                @keydown.ctrl.enter.prevent="sendCurrentMessage"
-                @keydown.meta.enter.prevent="sendCurrentMessage"
-              />
-
-              <div class="ai-composer__footer">
-                <span class="section-note ai-composer__shortcut">`Ctrl/Cmd + Enter` 发送</span>
-                <div class="ai-composer__actions">
-                  <n-button
-                    v-if="canAbort"
-                    secondary
-                    type="error"
-                    @click="abortCurrentRequest()"
-                  >
-                    停止生成
-                  </n-button>
-                  <n-button
-                    :disabled="sendDisabled"
-                    :loading="isSending"
-                    type="primary"
-                    @click="sendCurrentMessage"
-                  >
-                    发送
-                  </n-button>
-                </div>
-              </div>
-            </section>
-          </section>
-        </template>
-      </div>
-    </n-drawer>
+    <component
+      :is="PanelComponent"
+      v-if="open"
+      :closing="closing"
+      :panel-style="viewport.w > NARROW_W ? placementStyle : EMPTY_STYLE"
+      :context-query="contextQuery"
+      :page-hint="pageHint"
+      @close="close"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDrawer, NEmpty, NInput, NSelect, NSkeleton, NSwitch, NTabPane, NTabs, NTag } from 'naive-ui';
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  reactive,
-  ref,
-  watch,
-} from 'vue';
-import { ElMessage } from '@/ui/feedback';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
-import { apiGet, apiPost, apiPostBlob } from '@/api/http';
-import MarkdownContent from '@/components/MarkdownContent.vue';
 import { useAuthStore } from '@/stores/auth';
-import { streamCompanionReply } from '@/utils/companionStream';
 
-type Scope = 'general' | 'lesson';
+/**
+ * 入口（圆形头像）必须立刻可见，而面板依赖 Markdown 渲染链（marked + dompurify），
+ * 所以面板按需加载：从没点过小榉AI帮的用户不下载这部分代码。
+ */
+const PanelComponent = defineAsyncComponent(() => import('./assistant/AssistantPanel.vue'));
+
+type Pt = { x: number; y: number };
+type Viewport = { w: number; h: number };
 type ContextQuery = Partial<Record<'course_id' | 'task_id' | 'plan_id' | 'session_id', number>>;
-type FabPosition = { x: number; y: number };
-type CompanionProvider = {
-  id: number;
-  name: string;
-  provider_type: string;
-  base_url: string;
-  model_name: string;
-  is_default: boolean;
-};
-type KnowledgeBase = {
-  id: string;
-  name: string;
-  description: string;
-  scopes: Scope[];
-};
-type CompanionContext = {
-  kind: 'course' | 'plan' | 'task' | 'session';
-  route_key: string;
-  title: string;
-  subtitle: string;
-  description: string;
-  coach_mode: string;
-  recommended_knowledge_base_ids: string[];
-  suggested_questions: string[];
-  identifiers: {
-    course_id: number | null;
-    task_id: number | null;
-    plan_id: number | null;
-    session_id: number | null;
-    lesson_id: number | null;
-  };
-  lesson: {
-    id: number;
-    title: string;
-    unit_title: string;
-    book_title: string;
-  };
-  classroom: {
-    id: number;
-    name: string;
-    status: string;
-    started_at: string;
-  } | null;
-  tasks: Array<{
-    id: number;
-    title: string;
-    task_type: string;
-    sort_order: number;
-    is_required: boolean;
-  }>;
-  prompt_hint: string;
-};
-type BootstrapPayload = {
-  enabled: boolean;
-  user: { role: string; display_name: string };
-  providers: CompanionProvider[];
-  active_provider: CompanionProvider | null;
-  knowledge_bases: KnowledgeBase[];
-  default_knowledge_base_ids: Record<Scope, string[]>;
-  welcome_messages: Record<Scope, string>;
-  starter_questions: Record<Scope, string[]>;
-  capabilities: {
-    multimodal: boolean;
-    course_context: boolean;
-    knowledge_base_select: boolean;
-    streaming?: boolean;
-    thinking?: boolean;
-  };
-};
-type ReplyPayload = {
-  reply: {
-    role: 'assistant';
-    content: string;
-    created_at: string;
-    provider_name: string;
-    provider_mode: 'live' | 'preview';
-    warning: string | null;
-    reasoning_content: string | null;
-  };
-  active_provider: CompanionProvider | null;
-  context: CompanionContext | null;
-};
-type ComposerAttachment = {
-  id: string;
-  file: File;
-  name: string;
-  mimeType: string;
-  sizeKb: number;
-  kind: 'image' | 'text' | 'file';
-  previewUrl: string | null;
-  textContent: string | null;
-  dataUrl: string | null;
-};
-type ChatAttachment = {
-  id: string;
-  name: string;
-  mimeType: string;
-  sizeKb: number;
-  kind: ComposerAttachment['kind'];
-};
-type ChatMessage = {
-  id: string;
-  role: 'assistant' | 'user';
-  content: string;
-  createdAt: string;
-  attachments?: ChatAttachment[];
-  providerName?: string;
-  providerMode?: 'live' | 'preview';
-  warning?: string | null;
-  streaming?: boolean;
-  reasoningContent?: string | null;
-  reasoningStreaming?: boolean;
-};
 
-const FAB_STORAGE_KEY = 'learnsite-ai-companion-fab-position';
-const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
-const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
-const IMAGE_INLINE_LIMIT = 1536 * 1024;
-const TEXT_INLINE_LIMIT = 128 * 1024;
-const MAX_ATTACHMENTS = 8;
-const DRAG_THRESHOLD = 6;
-const FAB_PADDING = 16;
-const TEXT_FILE_EXTENSIONS = new Set([
-  'txt',
-  'md',
-  'csv',
-  'tsv',
-  'json',
-  'html',
-  'htm',
-  'css',
-  'js',
-  'ts',
-  'py',
-  'java',
-  'cpp',
-  'c',
-  'sql',
-  'yaml',
-  'yml',
-]);
-const COMPANION_API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const NARROW_W = 720;
+const SIZE_WIDE = 68;
+const SIZE_NARROW = 58;
+const EDGE = 12;
+/** 贴边阈值：小于它算靠边，松手后自动缩进。必须大于 EDGE，否则中间有一段"拖到位却不缩" */
+const DOCK_PX = 18;
+/** 位移小于它算点击，避免手抖两像素把球拖走又顺手打开面板 */
+const DRAG_SLOP = 4;
+const PANEL_W = 600;
+const PANEL_H = 760;
+/** 面板与球之间的间隙：球要能单独点到（点它收起面板） */
+const GAP = 12;
+const POS_KEY = 'learnsite-ai-help:launcher-pos';
+/** 窄屏传空对象而不是 null：Vue 会清掉上一次的内联 left/top/width，让媒体查询接管 */
+const EMPTY_STYLE: Record<string, string> = {};
 
 const route = useRoute();
 const authStore = useAuthStore();
-const fabRef = ref<HTMLButtonElement | null>(null);
-const drawerVisible = ref(false);
-const bootstrap = ref<BootstrapPayload | null>(null);
-const bootstrapLoading = ref(false);
-const bootstrapError = ref('');
-const currentContext = ref<CompanionContext | null>(null);
-const activeScope = ref<Scope>('general');
-const generalMessages = ref<ChatMessage[]>([]);
-const lessonMessages = ref<ChatMessage[]>([]);
-const lessonRouteKey = ref('');
-const draftMessage = ref('');
-const composerAttachments = ref<ComposerAttachment[]>([]);
-const attachmentInputRef = ref<HTMLInputElement | null>(null);
-const messageListRef = ref<HTMLDivElement | null>(null);
-const isSending = ref(false);
-const activeRequestController = ref<AbortController | null>(null);
-const viewportWidth = ref(typeof window === 'undefined' ? 1280 : window.innerWidth);
-const viewportHeight = ref(typeof window === 'undefined' ? 720 : window.innerHeight);
-const selectedKnowledgeBaseIds = reactive({
-  general: [] as string[],
-  lesson: [] as string[],
-});
-const selectedProviderId = ref<number | null>(null);
-const streamModeEnabled = ref(true);
-const thinkingModeEnabled = ref(false);
-const settingsExpanded = ref(false);
-const fabPosition = ref<FabPosition | null>(null);
-const dragState = reactive({
-  active: false,
-  moved: false,
-  pointerId: null as number | null,
-  startX: 0,
-  startY: 0,
-  originX: 0,
-  originY: 0,
-});
-let scrollFrameId: number | null = null;
+
+const ballRef = ref<HTMLButtonElement | null>(null);
+const open = ref(false);
+const closing = ref(false);
+const saved = ref<Pt | null>(readSaved());
+const viewport = ref<Viewport>({ w: window.innerWidth, h: window.innerHeight });
+const dragging = ref(false);
+/** 用时间戳而不是布尔开关记录"刚拖完"：某些浏览器的指针捕获会吞掉拖后那次 click */
+const dragEndAt = ref(0);
+let closeTimer: number | null = null;
+let dragRef: { id: number; x0: number; y0: number; ox: number; oy: number; moved: boolean } | null = null;
 
 const shouldRender = computed(() => {
   const inWorkspace = route.path.startsWith('/student') || route.path.startsWith('/staff');
-  if (!inWorkspace || !authStore.token) {
-    return false;
-  }
-  return bootstrap.value ? bootstrap.value.enabled : true;
+  return inWorkspace && Boolean(authStore.token);
 });
 
-const lessonModeAvailable = computed(() => Boolean(currentContext.value));
-
-const activeMessages = computed(() =>
-  activeScope.value === 'lesson' ? lessonMessages.value : generalMessages.value
+const spot = computed(() =>
+  clampToViewport(saved.value ?? defaultSpot(viewport.value), viewport.value)
 );
-const streamCapabilityEnabled = computed(() => bootstrap.value?.capabilities.streaming ?? true);
+const size = computed(() => sizeOf(viewport.value));
 
-const selectedProvider = computed(() => {
-  if (!bootstrap.value || selectedProviderId.value === null) {
+const onRightHalf = computed(() => spot.value.x + size.value / 2 >= viewport.value.w / 2);
+
+/** 靠边判定：拖动中一律不缩进（手正拿着球，缩进会让它从指针底下滑走）；只做左右 */
+const dock = computed<'left' | 'right' | null>(() => {
+  if (dragging.value) {
     return null;
   }
-  return bootstrap.value.providers.find((item) => item.id === selectedProviderId.value) || null;
+  if (spot.value.x <= DOCK_PX) {
+    return 'left';
+  }
+  if (viewport.value.w - (spot.value.x + size.value) <= DOCK_PX) {
+    return 'right';
+  }
+  return null;
 });
 
-const activeProviderLabel = computed(() => {
-  if (selectedProvider.value?.name) {
-    return selectedProvider.value.name;
-  }
-  if (bootstrap.value?.active_provider?.name) {
-    return bootstrap.value.active_provider.name;
-  }
-  const lastAssistant = [...activeMessages.value]
-    .reverse()
-    .find((message) => message.role === 'assistant' && message.providerName);
-  if (lastAssistant?.providerName) {
-    return lastAssistant.providerMode === 'preview'
-      ? `${lastAssistant.providerName} · 系统模式`
-      : lastAssistant.providerName;
-  }
-  return '系统默认学伴';
+const launcherClass = computed(() => ({
+  dragging: dragging.value,
+  'tip-left': onRightHalf.value,
+  'is-open': open.value,
+  'dock-left': dock.value === 'left',
+  'dock-right': dock.value === 'right',
+}));
+
+const ballStyle = computed(() => ({ left: `${spot.value.x}px`, top: `${spot.value.y}px` }));
+const placementStyle = computed(() => panelPlacement(spot.value, viewport.value));
+/** 窄屏里面板贴底占满，球留着只会被压住，干脆不显示 */
+const showLauncher = computed(() => !(open.value && viewport.value.w <= NARROW_W));
+
+const contextQuery = computed<ContextQuery>(() => {
+  const query: ContextQuery = {};
+  const courseId = asPositiveInt(route.params.courseId) ?? asPositiveInt(route.query.courseId);
+  const taskId = asPositiveInt(route.params.taskId) ?? asPositiveInt(route.query.taskId);
+  const planId = asPositiveInt(route.params.planId) ?? asPositiveInt(route.query.planId);
+  const sessionId = asPositiveInt(route.params.sessionId) ?? asPositiveInt(route.query.sessionId);
+  if (courseId) query.course_id = courseId;
+  if (taskId) query.task_id = taskId;
+  if (planId) query.plan_id = planId;
+  if (sessionId) query.session_id = sessionId;
+  return query;
 });
 
-const settingsSummary = computed(() => {
-  const modeLabel = streamModeEnabled.value && streamCapabilityEnabled.value ? '流式' : '标准';
-  const thinkingLabel = thinkingModeEnabled.value ? '推理开启' : '推理关闭';
-  const providerLabel = selectedProvider.value?.name || bootstrap.value?.active_provider?.name || '系统默认';
-  const knowledgeCount = activeKnowledgeBaseIds.value.length;
-  return `${providerLabel} · ${modeLabel} · ${thinkingLabel} · ${knowledgeCount} 个知识库`;
-});
-
-const drawerSize = computed(() => {
-  if (viewportWidth.value < 768) {
-    return '100%';
-  }
-  if (viewportWidth.value < 1200) {
-    return '640px';
-  }
-  return '720px';
-});
-
-const activeKnowledgeBaseIds = computed<string[]>({
-  get() {
-    return activeScope.value === 'lesson'
-      ? selectedKnowledgeBaseIds.lesson
-      : selectedKnowledgeBaseIds.general;
-  },
-  set(value) {
-    const normalized = normalizeKnowledgeBaseIds(value, activeScope.value);
-    if (activeScope.value === 'lesson') {
-      selectedKnowledgeBaseIds.lesson = normalized;
-      return;
-    }
-    selectedKnowledgeBaseIds.general = normalized;
-  },
-});
-
-const visibleKnowledgeBases = computed(() =>
-  (bootstrap.value?.knowledge_bases || []).filter((item) => item.scopes.includes(activeScope.value))
+const pageHint = computed(() =>
+  Object.keys(contextQuery.value).length ? '已带入当前页面的课程 / 学案上下文' : ''
 );
 
-const providerOptions = computed(() =>
-  (bootstrap.value?.providers || []).map((item) => ({
-    label: `${item.name} · ${item.model_name}`,
-    value: item.id,
-  }))
-);
+function sizeOf(vp: Viewport) {
+  return vp.w <= NARROW_W ? SIZE_NARROW : SIZE_WIDE;
+}
 
-const knowledgeBaseOptions = computed(() =>
-  visibleKnowledgeBases.value.map((item) => ({
-    label: item.description ? `${item.name} · ${item.description}` : item.name,
-    value: item.id,
-  }))
-);
-
-const activeStarterQuestions = computed(() => {
-  if (activeScope.value === 'lesson' && currentContext.value?.suggested_questions?.length) {
-    return currentContext.value.suggested_questions;
-  }
-  return bootstrap.value?.starter_questions[activeScope.value] || [];
-});
-
-const sendDisabled = computed(
-  () =>
-    isSending.value ||
-    bootstrapLoading.value ||
-    (!draftMessage.value.trim() && composerAttachments.value.length === 0)
-);
-
-const canAbort = computed(() => isSending.value && activeRequestController.value !== null);
-
-const fabStyle = computed(() => {
-  const position = fabPosition.value ?? defaultFabPosition();
+/** 球必须完整可见：拖出边界要能拉回来，而不是拖丢 */
+function clampToViewport(p: Pt, vp: Viewport): Pt {
+  const s = sizeOf(vp);
   return {
-    left: `${position.x}px`,
-    top: `${position.y}px`,
+    x: Math.round(Math.min(Math.max(EDGE, p.x), Math.max(EDGE, vp.w - s - EDGE))),
+    y: Math.round(Math.min(Math.max(EDGE, p.y), Math.max(EDGE, vp.h - s - EDGE))),
   };
-});
-
-function makeId(prefix = 'id') {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof DOMException
-    ? error.name === 'AbortError'
-    : error instanceof Error && error.name === 'AbortError';
+function defaultSpot(vp: Viewport): Pt {
+  const s = sizeOf(vp);
+  return clampToViewport({ x: vp.w - 22 - s, y: vp.h - 22 - s }, vp);
 }
 
-function abortCurrentRequest(showToast = true) {
-  const controller = activeRequestController.value;
-  if (!controller) {
-    return;
+function readSaved(): Pt | null {
+  try {
+    const raw = window.localStorage.getItem(POS_KEY);
+    if (raw === null) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    return typeof parsed.x === 'number' && typeof parsed.y === 'number'
+      ? { x: parsed.x, y: parsed.y }
+      : null;
+  } catch {
+    // 隐身模式下 localStorage 会抛，位置记不住不是大事
+    return null;
   }
-  activeRequestController.value = null;
-  controller.abort();
-  if (showToast) {
-    ElMessage.info('已停止当前回复生成');
+}
+
+function writeSaved(p: Pt) {
+  try {
+    window.localStorage.setItem(POS_KEY, JSON.stringify(p));
+  } catch {
+    // 同上，忽略
   }
+}
+
+/**
+ * 面板贴着球放：球在右半屏，面板整个长在球左边；球在左半屏长在右边。
+ * 必须留出 GAP，否则球被面板盖住，"点球收起"永远点不到。
+ */
+function panelPlacement(point: Pt, vp: Viewport): Record<string, string> {
+  const s = sizeOf(vp);
+  const w = Math.min(PANEL_W, vp.w - 32);
+  const h = Math.min(PANEL_H, vp.h - 32);
+  const onRight = point.x + s / 2 >= vp.w / 2;
+  const raw = onRight ? point.x - GAP - w : point.x + s + GAP;
+  const left = Math.min(Math.max(EDGE, raw), Math.max(EDGE, vp.w - w - EDGE));
+  const top = Math.min(Math.max(EDGE, point.y + s - h), Math.max(EDGE, vp.h - h - EDGE));
+  return {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${w}px`,
+    height: `${h}px`,
+    right: 'auto',
+    bottom: 'auto',
+  };
 }
 
 function asPositiveInt(value: unknown) {
   const candidate = Array.isArray(value) ? value[0] : value;
   const parsed = Number(candidate);
-  if (Number.isFinite(parsed) && parsed > 0) {
-    return parsed;
-  }
-  return undefined;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-function contextQueryFromRoute(): ContextQuery {
-  const query: ContextQuery = {};
-  const courseId = asPositiveInt(route.params.courseId) ?? asPositiveInt(route.query.courseId);
-  const taskId = asPositiveInt(route.params.taskId) ?? asPositiveInt(route.query.taskId);
-  const planId = asPositiveInt(route.params.planId) ?? asPositiveInt(route.query.planId);
-  const sessionId =
-    asPositiveInt(route.params.sessionId) ?? asPositiveInt(route.query.sessionId);
-
-  if (courseId) {
-    query.course_id = courseId;
+function openPanel() {
+  if (closeTimer !== null) {
+    window.clearTimeout(closeTimer);
+    closeTimer = null;
   }
-  if (taskId) {
-    query.task_id = taskId;
-  }
-  if (planId) {
-    query.plan_id = planId;
-  }
-  if (sessionId) {
-    query.session_id = sessionId;
-  }
-  return query;
+  syncViewport();
+  closing.value = false;
+  open.value = true;
 }
 
-function hasContextQuery(query: ContextQuery) {
-  return Object.values(query).some((value) => typeof value === 'number' && value > 0);
-}
-
-function buildContextQueryString(query: ContextQuery) {
-  const search = new URLSearchParams();
-  for (const [key, value] of Object.entries(query)) {
-    if (typeof value === 'number' && value > 0) {
-      search.set(key, String(value));
-    }
-  }
-  return search.toString();
-}
-
-function currentRequestContext(): ContextQuery {
-  const identifiers = currentContext.value?.identifiers;
-  if (!identifiers) {
-    return contextQueryFromRoute();
-  }
-
-  const query: ContextQuery = {};
-  if (identifiers.course_id) {
-    query.course_id = identifiers.course_id;
-  }
-  if (identifiers.task_id) {
-    query.task_id = identifiers.task_id;
-  }
-  if (identifiers.plan_id) {
-    query.plan_id = identifiers.plan_id;
-  }
-  if (identifiers.session_id) {
-    query.session_id = identifiers.session_id;
-  }
-  return hasContextQuery(query) ? query : contextQueryFromRoute();
-}
-
-function contextKindLabel(kind: CompanionContext['kind']) {
-  if (kind === 'task') {
-    return '当前任务';
-  }
-  if (kind === 'session') {
-    return '当前课堂';
-  }
-  if (kind === 'plan') {
-    return '当前学案';
-  }
-  return '当前课程';
-}
-
-function attachmentKindLabel(kind: ComposerAttachment['kind']) {
-  if (kind === 'image') {
-    return '图片';
-  }
-  if (kind === 'text') {
-    return '文本';
-  }
-  return '文件';
-}
-
-function formatMessageTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return value.replace('T', ' ').slice(11, 16);
-  }
-  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(
-    2,
-    '0'
-  )}`;
-}
-
-const speechMessageId = ref<string | null>(null);
-const speechLoadingMessageId = ref<string | null>(null);
-let speechAudio: HTMLAudioElement | null = null;
-let speechObjectUrl: string | null = null;
-
-function stopSpeechPlayback() {
-  if (speechAudio) {
-    speechAudio.pause();
-    speechAudio.src = '';
-    speechAudio = null;
-  }
-  if (speechObjectUrl) {
-    URL.revokeObjectURL(speechObjectUrl);
-    speechObjectUrl = null;
-  }
-  speechMessageId.value = null;
-  speechLoadingMessageId.value = null;
-}
-
-function markdownToSpeechText(markdown: string) {
-  return markdown
-    .replace(/```[\s\S]*?```/g, '（代码略）')
-    .replace(/`[^`]*`/g, '')
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/[#>*_~|-]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-async function toggleMessageSpeech(message: ChatMessage) {
-  if (speechLoadingMessageId.value === message.id) {
+/** 先挂 closing 播 0.18s 退场动画再真正卸载，避免面板"啪"地消失 */
+function close() {
+  if (closeTimer !== null) {
     return;
   }
-  if (speechMessageId.value === message.id) {
-    stopSpeechPlayback();
-    return;
-  }
-  stopSpeechPlayback();
+  closing.value = true;
+  closeTimer = window.setTimeout(() => {
+    closeTimer = null;
+    open.value = false;
+    closing.value = false;
+  }, 180);
+}
 
-  const speechText = markdownToSpeechText(message.content || '');
-  if (!speechText) {
-    ElMessage.warning('当前回复没有可朗读的文本');
+function onPointerDown(event: PointerEvent) {
+  if (event.pointerType === 'mouse' && event.button !== 0) {
     return;
   }
-  if (!authStore.token) {
-    ElMessage.warning('请先登录后再使用朗读');
-    return;
-  }
-
-  speechLoadingMessageId.value = message.id;
   try {
-    const response = await apiPostBlob('/assistants/companion/tts', { text: speechText }, authStore.token);
-    const blob = await response.blob();
-    if (!blob.size) {
-      throw new Error('朗读服务未返回音频');
-    }
-    speechObjectUrl = URL.createObjectURL(blob);
-    speechAudio = new Audio(speechObjectUrl);
-    speechAudio.onended = () => stopSpeechPlayback();
-    speechAudio.onerror = () => {
-      ElMessage.error('朗读播放失败，请重试');
-      stopSpeechPlayback();
-    };
-    speechMessageId.value = message.id;
-    await speechAudio.play();
-  } catch (error) {
-    stopSpeechPlayback();
-    const message_text = error instanceof Error ? error.message : '朗读失败，请稍后重试';
-    ElMessage.error(message_text);
-  } finally {
-    speechLoadingMessageId.value = null;
-  }
-}
-
-function speechButtonLabel(message: ChatMessage) {
-  if (speechLoadingMessageId.value === message.id) {
-    return '合成中…';
-  }
-  return speechMessageId.value === message.id ? '停止朗读' : '朗读';
-}
-
-function assistantFootnote(message: ChatMessage) {
-  const parts: string[] = [];
-  if (message.providerName) {
-    parts.push(
-      message.providerMode === 'preview'
-        ? `${message.providerName} · 系统模式`
-        : message.providerName
-    );
-  }
-  if (message.warning) {
-    parts.push(message.warning);
-  }
-  return parts.join(' | ');
-}
-
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-    reader.onerror = () => reject(reader.error || new Error('Failed to read file as data URL'));
-    reader.readAsDataURL(file);
-  });
-}
-
-function readFileAsText(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
-    reader.onerror = () => reject(reader.error || new Error('Failed to read file as text'));
-    reader.readAsText(file);
-  });
-}
-
-function fileExtension(name: string) {
-  const index = name.lastIndexOf('.');
-  if (index < 0) {
-    return '';
-  }
-  return name.slice(index + 1).toLowerCase();
-}
-
-function isTextLikeFile(file: File) {
-  if (file.type.startsWith('text/')) {
-    return true;
-  }
-  return TEXT_FILE_EXTENSIONS.has(fileExtension(file.name));
-}
-
-function revokeAttachmentPreview(attachment: ComposerAttachment) {
-  if (attachment.previewUrl) {
-    URL.revokeObjectURL(attachment.previewUrl);
-  }
-}
-
-function clearAttachmentInput() {
-  if (attachmentInputRef.value) {
-    attachmentInputRef.value.value = '';
-  }
-}
-
-function clearComposerAttachments() {
-  for (const attachment of composerAttachments.value) {
-    revokeAttachmentPreview(attachment);
-  }
-  composerAttachments.value = [];
-  clearAttachmentInput();
-}
-
-function removeComposerAttachment(attachmentId: string) {
-  const attachment = composerAttachments.value.find((item) => item.id === attachmentId);
-  if (attachment) {
-    revokeAttachmentPreview(attachment);
-  }
-  composerAttachments.value = composerAttachments.value.filter((item) => item.id !== attachmentId);
-  clearAttachmentInput();
-}
-
-async function createComposerAttachment(file: File) {
-  const mimeType = file.type || 'application/octet-stream';
-  const kind: ComposerAttachment['kind'] = mimeType.startsWith('image/')
-    ? 'image'
-    : isTextLikeFile(file)
-      ? 'text'
-      : 'file';
-
-  const attachment: ComposerAttachment = {
-    id: makeId('attachment'),
-    file,
-    name: file.name,
-    mimeType,
-    sizeKb: Math.max(1, Math.round(file.size / 1024)),
-    kind,
-    previewUrl: mimeType.startsWith('image/') ? URL.createObjectURL(file) : null,
-    textContent: null,
-    dataUrl: null,
-  };
-
-  if (attachment.kind === 'image' && file.size <= IMAGE_INLINE_LIMIT) {
-    try {
-      attachment.dataUrl = await readFileAsDataUrl(file);
-    } catch {
-      attachment.dataUrl = null;
-    }
-  }
-
-  if (attachment.kind === 'text' && file.size <= TEXT_INLINE_LIMIT) {
-    try {
-      attachment.textContent = (await readFileAsText(file)).slice(0, 12000);
-    } catch {
-      attachment.textContent = null;
-    }
-  }
-
-  return attachment;
-}
-
-async function handleAttachmentChange(event: Event) {
-  const input = event.target as HTMLInputElement | null;
-  const files = Array.from(input?.files || []);
-  if (!files.length) {
-    return;
-  }
-
-  const remainingSlots = Math.max(0, MAX_ATTACHMENTS - composerAttachments.value.length);
-  if (!remainingSlots) {
-    ElMessage.warning(`最多只能添加 ${MAX_ATTACHMENTS} 个附件`);
-    clearAttachmentInput();
-    return;
-  }
-
-  const acceptedFiles = files.slice(0, remainingSlots);
-  if (acceptedFiles.length < files.length) {
-    ElMessage.warning(`已超出附件上限，仅保留前 ${remainingSlots} 个新附件`);
-  }
-
-  const createdAttachments = await Promise.all(
-    acceptedFiles.map((file) => createComposerAttachment(file))
-  );
-  composerAttachments.value = [...composerAttachments.value, ...createdAttachments];
-  clearAttachmentInput();
-}
-
-function openAttachmentPicker() {
-  attachmentInputRef.value?.click();
-}
-
-function chatAttachmentFromComposer(attachment: ComposerAttachment): ChatAttachment {
-  return {
-    id: attachment.id,
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    sizeKb: attachment.sizeKb,
-    kind: attachment.kind,
-  };
-}
-
-function payloadAttachmentFromComposer(attachment: ComposerAttachment) {
-  return {
-    name: attachment.name,
-    mime_type: attachment.mimeType,
-    size_kb: attachment.sizeKb,
-    kind: attachment.kind,
-    text_content: attachment.textContent,
-    data_url: attachment.dataUrl,
-  };
-}
-
-function messagesRef(scope: Scope) {
-  return scope === 'lesson' ? lessonMessages : generalMessages;
-}
-
-function buildCompanionRequestBody(
-  scope: Scope,
-  messageText: string,
-  pendingAttachments: ComposerAttachment[],
-  history: ChatMessage[],
-) {
-  return {
-    scope,
-    message: messageText,
-    provider_id: selectedProviderId.value ?? undefined,
-    thinking_enabled: thinkingModeEnabled.value,
-    knowledge_base_ids: [...activeKnowledgeBaseIds.value],
-    ...currentRequestContext(),
-    attachments: pendingAttachments.map(payloadAttachmentFromComposer),
-    conversation: history.map((item) => ({
-      role: item.role,
-      content: item.content,
-    })),
-  };
-}
-
-function updateMessageById(scope: Scope, id: string, updater: (message: ChatMessage) => ChatMessage) {
-  const store = messagesRef(scope);
-  store.value = store.value.map((message) => (message.id === id ? updater(message) : message));
-  scheduleScrollMessagesToBottom();
-}
-
-async function sendCompanionMessageStream(
-  scope: Scope,
-  requestBody: ReturnType<typeof buildCompanionRequestBody>,
-  signal: AbortSignal,
-) {
-  if (!authStore.token) {
-    throw new Error('请先登录后再使用 AI 学伴');
-  }
-
-  const assistantMessageId = makeId('message');
-  const initialMessage: ChatMessage = {
-    id: assistantMessageId,
-    role: 'assistant',
-    content: '',
-    createdAt: new Date().toISOString(),
-    providerName: selectedProvider.value?.name,
-    providerMode: 'preview',
-    streaming: true,
-    reasoningContent: '',
-    reasoningStreaming: thinkingModeEnabled.value,
-  };
-  messagesRef(scope).value = [...messagesRef(scope).value, initialMessage];
-  await scrollMessagesToBottom();
-
-  try {
-    const donePayload = await streamCompanionReply<ReplyPayload>(
-      `${COMPANION_API_BASE_URL}/assistants/companion/respond/stream`,
-      {
-        body: {
-          ...requestBody,
-          stream: true,
-        },
-        token: authStore.token,
-        signal,
-        onToken: (text) => {
-          updateMessageById(scope, assistantMessageId, (message) => ({
-            ...message,
-            content: `${message.content}${text}`,
-          }));
-        },
-        onReasoning: (text) => {
-          updateMessageById(scope, assistantMessageId, (message) => ({
-            ...message,
-            reasoningContent: `${message.reasoningContent || ''}${text}`,
-            reasoningStreaming: true,
-          }));
-        },
-      }
-    );
-
-    if (bootstrap.value) {
-      bootstrap.value.active_provider = donePayload.active_provider;
-      if (
-        selectedProviderId.value !== null
-        && donePayload.active_provider?.id !== selectedProviderId.value
-      ) {
-        selectedProviderId.value = donePayload.active_provider?.id ?? null;
-      }
-    }
-    applyContext(donePayload.context);
-
-    updateMessageById(scope, assistantMessageId, (message) => ({
-      ...message,
-      content: donePayload.reply.content || message.content,
-      createdAt: donePayload.reply.created_at || message.createdAt,
-      providerName: donePayload.reply.provider_name,
-      providerMode: donePayload.reply.provider_mode,
-      warning: donePayload.reply.warning,
-      streaming: false,
-      reasoningContent: donePayload.reply.reasoning_content || message.reasoningContent || null,
-      reasoningStreaming: false,
-    }));
-  } catch (error) {
-    if (isAbortError(error)) {
-      const partialMessage = messagesRef(scope).value.find((item) => item.id === assistantMessageId);
-      if (partialMessage?.content.trim() || partialMessage?.reasoningContent?.trim()) {
-        updateMessageById(scope, assistantMessageId, (message) => ({
-          ...message,
-          warning: '已停止生成',
-          streaming: false,
-          reasoningStreaming: false,
-        }));
-      } else {
-        messagesRef(scope).value = messagesRef(scope).value.filter((item) => item.id !== assistantMessageId);
-      }
-    } else {
-      messagesRef(scope).value = messagesRef(scope).value.filter((item) => item.id !== assistantMessageId);
-    }
-    throw error;
-  }
-}
-
-function normalizeKnowledgeBaseIds(value: string[], scope: Scope) {
-  const availableIds = new Set(
-    (bootstrap.value?.knowledge_bases || [])
-      .filter((item) => item.scopes.includes(scope))
-      .map((item) => item.id)
-  );
-  const filtered = value.filter(
-    (item, index) => availableIds.has(item) && value.indexOf(item) === index
-  );
-  if (filtered.length) {
-    return filtered;
-  }
-  return (bootstrap.value?.default_knowledge_base_ids[scope] || []).filter((item) =>
-    availableIds.has(item)
-  );
-}
-
-function welcomeMessage(scope: Scope) {
-  const fallback =
-    scope === 'lesson'
-      ? '我是当前课程学案 AI 学伴，会围绕当前课程、任务和课堂上下文来帮助你。'
-      : '我是通用 AI 学伴，可以帮助你处理平台使用、学习方法和课堂相关问题。';
-  const baseMessage = bootstrap.value?.welcome_messages[scope]?.trim() || fallback;
-
-  if (scope === 'lesson') {
-    if (currentContext.value) {
-      return `${baseMessage}\n\n已识别当前上下文：${currentContext.value.title}\n${currentContext.value.prompt_hint}`;
-    }
-    return `${baseMessage}\n\n当前页面还没有可绑定的课程或学案上下文。`;
-  }
-
-  return baseMessage;
-}
-
-function ensureScopeMessages(scope: Scope, force = false) {
-  const store = messagesRef(scope);
-  if (store.value.length && !force) {
-    return;
-  }
-  store.value = [
-    {
-      id: makeId('message'),
-      role: 'assistant',
-      content: welcomeMessage(scope),
-      createdAt: new Date().toISOString(),
-    },
-  ];
-}
-
-function applyStarterQuestion(question: string) {
-  draftMessage.value = question;
-}
-
-async function scrollMessagesToBottom() {
-  await nextTick();
-  if (messageListRef.value) {
-    messageListRef.value.scrollTop = messageListRef.value.scrollHeight;
-  }
-}
-
-function scheduleScrollMessagesToBottom() {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  if (scrollFrameId !== null) {
-    return;
-  }
-  scrollFrameId = window.requestAnimationFrame(() => {
-    scrollFrameId = null;
-    void scrollMessagesToBottom();
-  });
-}
-
-function applyBootstrap(payload: BootstrapPayload) {
-  bootstrap.value = payload;
-  if (payload.capabilities.streaming === false) {
-    streamModeEnabled.value = false;
-  }
-  const providerIds = new Set(payload.providers.map((item) => item.id));
-  if (selectedProviderId.value !== null && !providerIds.has(selectedProviderId.value)) {
-    selectedProviderId.value = null;
-  }
-  selectedKnowledgeBaseIds.general = normalizeKnowledgeBaseIds(
-    selectedKnowledgeBaseIds.general.length
-      ? selectedKnowledgeBaseIds.general
-      : payload.default_knowledge_base_ids.general,
-    'general'
-  );
-  selectedKnowledgeBaseIds.lesson = normalizeKnowledgeBaseIds(
-    selectedKnowledgeBaseIds.lesson.length
-      ? selectedKnowledgeBaseIds.lesson
-      : payload.default_knowledge_base_ids.lesson,
-    'lesson'
-  );
-  ensureScopeMessages('general');
-  ensureScopeMessages('lesson', Boolean(currentContext.value && lessonRouteKey.value));
-}
-
-async function loadBootstrap() {
-  if (!authStore.token) {
-    return;
-  }
-
-  bootstrapLoading.value = true;
-  bootstrapError.value = '';
-
-  try {
-    const payload = await apiGet<BootstrapPayload>('/assistants/companion/bootstrap', authStore.token);
-    applyBootstrap(payload);
-    if (!payload.enabled) {
-      drawerVisible.value = false;
-    }
-  } catch (error) {
-    bootstrapError.value = error instanceof Error ? error.message : '加载 AI 学伴配置失败';
-  } finally {
-    bootstrapLoading.value = false;
-  }
-}
-
-function handleProviderConfigUpdated() {
-  if (!authStore.token) {
-    return;
-  }
-  void loadBootstrap();
-}
-
-function applyContext(context: CompanionContext | null) {
-  const previousKey = lessonRouteKey.value;
-  currentContext.value = context;
-  lessonRouteKey.value = context?.route_key || '';
-
-  if (!context) {
-    if (activeScope.value === 'lesson') {
-      activeScope.value = 'general';
-    }
-    ensureScopeMessages('lesson', previousKey !== '');
-    return;
-  }
-
-  if (bootstrap.value) {
-    selectedKnowledgeBaseIds.lesson = normalizeKnowledgeBaseIds(
-      context.recommended_knowledge_base_ids?.length
-        ? context.recommended_knowledge_base_ids
-        : bootstrap.value.default_knowledge_base_ids.lesson,
-      'lesson'
-    );
-  }
-
-  if (previousKey !== context.route_key) {
-    ensureScopeMessages('lesson', true);
-  }
-}
-
-async function loadContextForCurrentRoute() {
-  if (!authStore.token) {
-    applyContext(null);
-    return;
-  }
-
-  const query = contextQueryFromRoute();
-  if (!hasContextQuery(query)) {
-    applyContext(null);
-    return;
-  }
-
-  try {
-    const queryString = buildContextQueryString(query);
-    const payload = await apiGet<{ context: CompanionContext | null }>(
-      `/assistants/companion/context?${queryString}`,
-      authStore.token
-    );
-    applyContext(payload.context);
+    ballRef.value?.setPointerCapture(event.pointerId);
   } catch {
-    applyContext(null);
+    // 某些环境（合成事件、个别指针设备）拿不到捕获；拖动逻辑仍走 window 上的 move/up
   }
-}
-
-async function sendCurrentMessage() {
-  if (!authStore.token) {
-    ElMessage.warning('请先登录后再使用 AI 学伴');
-    return;
-  }
-
-  if (!bootstrap.value) {
-    await loadBootstrap();
-    if (!bootstrap.value) {
-      return;
-    }
-  }
-
-  if (activeScope.value === 'lesson' && !currentContext.value) {
-    ElMessage.warning('当前页面还没有课程或学案上下文，请先切换到相关页面');
-    return;
-  }
-
-  const messageText = draftMessage.value.trim();
-  const pendingAttachments = [...composerAttachments.value];
-  if (!messageText && !pendingAttachments.length) {
-    return;
-  }
-
-  const scope = activeScope.value;
-  const history = [...messagesRef(scope).value];
-  const userMessage: ChatMessage = {
-    id: makeId('message'),
-    role: 'user',
-    content: messageText || '请结合附件一起分析。',
-    createdAt: new Date().toISOString(),
-    attachments: pendingAttachments.map(chatAttachmentFromComposer),
-  };
-
-  messagesRef(scope).value = [...history, userMessage];
-  draftMessage.value = '';
-  clearComposerAttachments();
-  isSending.value = true;
-  const controller = new AbortController();
-  activeRequestController.value = controller;
-  await scrollMessagesToBottom();
-  const requestBody = buildCompanionRequestBody(scope, messageText, pendingAttachments, history);
-  const useStreaming = streamModeEnabled.value && streamCapabilityEnabled.value;
-
-  try {
-    if (useStreaming) {
-      await sendCompanionMessageStream(scope, requestBody, controller.signal);
-    } else {
-      const response = await apiPost<ReplyPayload>(
-        '/assistants/companion/respond',
-        requestBody,
-        authStore.token,
-        controller.signal
-      );
-
-      if (bootstrap.value) {
-        bootstrap.value.active_provider = response.active_provider;
-        if (
-          selectedProviderId.value !== null
-          && response.active_provider?.id !== selectedProviderId.value
-        ) {
-          selectedProviderId.value = response.active_provider?.id ?? null;
-        }
-      }
-      applyContext(response.context);
-
-      messagesRef(scope).value = [
-        ...messagesRef(scope).value,
-        {
-          id: makeId('message'),
-          role: 'assistant',
-          content: response.reply.content,
-          createdAt: response.reply.created_at,
-          providerName: response.reply.provider_name,
-          providerMode: response.reply.provider_mode,
-          warning: response.reply.warning,
-          streaming: false,
-          reasoningContent: response.reply.reasoning_content,
-          reasoningStreaming: false,
-        },
-      ];
-    }
-  } catch (error) {
-    if (isAbortError(error)) {
-      if (!useStreaming) {
-        messagesRef(scope).value = [
-          ...messagesRef(scope).value,
-          {
-            id: makeId('message'),
-            role: 'assistant',
-            content: '本次回复已停止。',
-            createdAt: new Date().toISOString(),
-            warning: '已停止生成',
-            streaming: false,
-            reasoningContent: null,
-            reasoningStreaming: false,
-          },
-        ];
-      }
-      return;
-    }
-    const message = error instanceof Error ? error.message : '发送失败，请稍后重试';
-    messagesRef(scope).value = [
-      ...messagesRef(scope).value,
-      {
-        id: makeId('message'),
-        role: 'assistant',
-        content: `发送失败：${message}`,
-        createdAt: new Date().toISOString(),
-        warning: message,
-        streaming: false,
-        reasoningContent: null,
-        reasoningStreaming: false,
-      },
-    ];
-    ElMessage.error(message);
-  } finally {
-    isSending.value = false;
-    if (activeRequestController.value === controller) {
-      activeRequestController.value = null;
-    }
-    await scrollMessagesToBottom();
-  }
-}
-
-function fabSize() {
-  return {
-    width: fabRef.value?.offsetWidth || 132,
-    height: fabRef.value?.offsetHeight || 68,
+  dragRef = {
+    id: event.pointerId,
+    x0: event.clientX,
+    y0: event.clientY,
+    ox: spot.value.x,
+    oy: spot.value.y,
+    moved: false,
   };
 }
 
-function clampFabPosition(position: FabPosition) {
-  const { width, height } = fabSize();
-  const maxX = Math.max(FAB_PADDING, viewportWidth.value - width - FAB_PADDING);
-  const maxY = Math.max(FAB_PADDING, viewportHeight.value - height - FAB_PADDING);
-  return {
-    x: Math.min(Math.max(FAB_PADDING, position.x), maxX),
-    y: Math.min(Math.max(FAB_PADDING, position.y), maxY),
-  };
-}
-
-function defaultFabPosition() {
-  const { width, height } = fabSize();
-  return clampFabPosition({
-    x: viewportWidth.value - width - 24,
-    y: viewportHeight.value - height - 28,
-  });
-}
-
-function readStoredFabPosition() {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-  const raw = window.localStorage.getItem(FAB_STORAGE_KEY);
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as Partial<FabPosition>;
-    if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
-      return clampFabPosition({ x: parsed.x, y: parsed.y });
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-function persistFabPosition() {
-  if (typeof window === 'undefined' || !fabPosition.value) {
+function onPointerMove(event: PointerEvent) {
+  const d = dragRef;
+  if (!d || d.id !== event.pointerId) {
     return;
   }
-  window.localStorage.setItem(FAB_STORAGE_KEY, JSON.stringify(fabPosition.value));
-}
-
-function ensureFabPosition() {
-  fabPosition.value = readStoredFabPosition() ?? defaultFabPosition();
-}
-
-function handleWindowResize() {
-  viewportWidth.value = window.innerWidth;
-  viewportHeight.value = window.innerHeight;
-  fabPosition.value = clampFabPosition(fabPosition.value ?? defaultFabPosition());
-  persistFabPosition();
-}
-
-function endDrag() {
-  if (dragState.pointerId !== null && fabRef.value?.hasPointerCapture(dragState.pointerId)) {
-    fabRef.value.releasePointerCapture(dragState.pointerId);
-  }
-  dragState.active = false;
-  dragState.moved = false;
-  dragState.pointerId = null;
-}
-
-function handleFabPointerDown(event: PointerEvent) {
-  if (event.button !== 0) {
+  const dx = event.clientX - d.x0;
+  const dy = event.clientY - d.y0;
+  if (!d.moved && Math.hypot(dx, dy) < DRAG_SLOP) {
     return;
   }
-
-  if (!fabPosition.value) {
-    ensureFabPosition();
+  if (!d.moved) {
+    d.moved = true;
+    dragging.value = true;
   }
-
-  const currentPosition = fabPosition.value ?? defaultFabPosition();
-  dragState.active = true;
-  dragState.moved = false;
-  dragState.pointerId = event.pointerId;
-  dragState.startX = event.clientX;
-  dragState.startY = event.clientY;
-  dragState.originX = currentPosition.x;
-  dragState.originY = currentPosition.y;
-
-  fabRef.value?.setPointerCapture(event.pointerId);
-  event.preventDefault();
+  saved.value = clampToViewport({ x: d.ox + dx, y: d.oy + dy }, viewport.value);
 }
 
-function handleWindowPointerMove(event: PointerEvent) {
-  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+function onPointerUp(event: PointerEvent) {
+  const d = dragRef;
+  if (!d || d.id !== event.pointerId) {
     return;
   }
-
-  const deltaX = event.clientX - dragState.startX;
-  const deltaY = event.clientY - dragState.startY;
-  if (!dragState.moved && Math.hypot(deltaX, deltaY) >= DRAG_THRESHOLD) {
-    dragState.moved = true;
+  dragRef = null;
+  if (!d.moved) {
+    return; // 没动过 = 点击，交给 onClick
   }
-
-  fabPosition.value = clampFabPosition({
-    x: dragState.originX + deltaX,
-    y: dragState.originY + deltaY,
-  });
+  dragEndAt.value = Date.now(); // 抑制随后那次 click，否则拖完就弹面板
+  dragging.value = false;
+  saved.value = clampToViewport(saved.value ?? defaultSpot(viewport.value), viewport.value);
+  writeSaved(saved.value);
 }
 
-function handleWindowPointerUp(event: PointerEvent) {
-  if (!dragState.active || dragState.pointerId !== event.pointerId) {
+function onClick() {
+  if (Date.now() - dragEndAt.value < 250) {
     return;
   }
-
-  const shouldOpenDrawer = !dragState.moved;
-  fabPosition.value = clampFabPosition(fabPosition.value ?? defaultFabPosition());
-  persistFabPosition();
-  endDrag();
-
-  if (shouldOpenDrawer) {
-    drawerVisible.value = true;
+  if (open.value) {
+    close();
+  } else {
+    openPanel();
   }
 }
 
-onMounted(async () => {
-  await nextTick();
-  ensureFabPosition();
-
-  window.addEventListener('resize', handleWindowResize);
-  window.addEventListener('pointermove', handleWindowPointerMove);
-  window.addEventListener('pointerup', handleWindowPointerUp);
-  window.addEventListener('pointercancel', handleWindowPointerUp);
-  window.addEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
-  window.addEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
-
-  if (authStore.token) {
-    await loadBootstrap();
-    await loadContextForCurrentRoute();
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && open.value) {
+    close();
   }
+}
+
+function onResize() {
+  syncViewport();
+}
+
+/** 统一读一次视口：宽高钳制、球位置重置都依赖它 */
+function syncViewport() {
+  const next: Viewport = { w: window.innerWidth, h: window.innerHeight };
+  if (next.w === viewport.value.w && next.h === viewport.value.h) {
+    return;
+  }
+  viewport.value = next;
+  if (saved.value !== null) {
+    saved.value = clampToViewport(saved.value, next);
+  }
+}
+
+let vpObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  syncViewport();
+  // resize 事件在某些内嵌浏览器（面板尺寸变化但窗口不变）下不触发，补一个 observer
+  if (typeof ResizeObserver !== 'undefined') {
+    vpObserver = new ResizeObserver(() => syncViewport());
+    vpObserver.observe(document.documentElement);
+  }
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+  window.addEventListener('keydown', onKeydown);
+  window.addEventListener('pointermove', onPointerMove);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('pointercancel', onPointerUp);
 });
-
-watch(
-  () => route.fullPath,
-  () => {
-    void loadContextForCurrentRoute();
-  }
-);
-
-watch(
-  () => authStore.token,
-  (token) => {
-    if (!token) {
-      abortCurrentRequest(false);
-      drawerVisible.value = false;
-      bootstrap.value = null;
-      selectedProviderId.value = null;
-      thinkingModeEnabled.value = false;
-      settingsExpanded.value = false;
-      currentContext.value = null;
-      return;
-    }
-    void loadBootstrap();
-    void loadContextForCurrentRoute();
-  }
-);
-
-watch(drawerVisible, (visible) => {
-  if (!visible) {
-    abortCurrentRequest(false);
-    return;
-  }
-  void loadBootstrap();
-  void loadContextForCurrentRoute();
-  void scrollMessagesToBottom();
-});
-
-watch(
-  () => activeScope.value,
-  () => {
-    if (activeScope.value === 'lesson' && !currentContext.value) {
-      activeScope.value = 'general';
-      return;
-    }
-    void scrollMessagesToBottom();
-  }
-);
 
 onBeforeUnmount(() => {
-  abortCurrentRequest(false);
-  stopSpeechPlayback();
-  if (scrollFrameId !== null) {
-    window.cancelAnimationFrame(scrollFrameId);
+  if (closeTimer !== null) {
+    window.clearTimeout(closeTimer);
   }
-  window.removeEventListener('resize', handleWindowResize);
-  window.removeEventListener('pointermove', handleWindowPointerMove);
-  window.removeEventListener('pointerup', handleWindowPointerUp);
-  window.removeEventListener('pointercancel', handleWindowPointerUp);
-  window.removeEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
-  window.removeEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleProviderConfigUpdated);
-  clearComposerAttachments();
+  vpObserver?.disconnect();
+  vpObserver = null;
+  window.removeEventListener('resize', onResize);
+  window.removeEventListener('orientationchange', onResize);
+  window.removeEventListener('keydown', onKeydown);
+  window.removeEventListener('pointermove', onPointerMove);
+  window.removeEventListener('pointerup', onPointerUp);
+  window.removeEventListener('pointercancel', onPointerUp);
 });
 </script>
-
-<style scoped>
-.ai-companion-root {
-  position: relative;
-  z-index: 2100;
-}
-
-.ai-fab {
-  position: fixed;
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 132px;
-  padding: 14px 16px;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  border-radius: 999px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 210, 111, 0.78), transparent 38%),
-    linear-gradient(135deg, rgba(32, 85, 168, 0.96), rgba(46, 129, 255, 0.94));
-  color: #fff;
-  box-shadow: 0 20px 45px rgba(40, 82, 154, 0.32);
-  cursor: grab;
-  user-select: none;
-  touch-action: none;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.ai-fab:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 55px rgba(40, 82, 154, 0.38);
-}
-
-.ai-fab.is-dragging {
-  cursor: grabbing;
-  transform: scale(1.02);
-}
-
-.ai-fab__halo {
-  position: absolute;
-  inset: -6px;
-  border-radius: inherit;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent);
-  opacity: 0.65;
-  pointer-events: none;
-}
-
-.ai-fab__icon,
-.ai-fab__copy {
-  position: relative;
-  z-index: 1;
-}
-
-.ai-fab__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
-  font-size: 13px;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-}
-
-.ai-fab__copy {
-  display: flex;
-  flex-direction: column;
-  text-align: left;
-}
-
-.ai-fab__copy strong {
-  font-size: 15px;
-}
-
-.ai-fab__copy small {
-  opacity: 0.88;
-  font-size: 12px;
-}
-
-.ai-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-height: 100%;
-  padding: 20px;
-  background:
-    radial-gradient(circle at top right, rgba(255, 210, 111, 0.15), transparent 30%),
-    var(--ls-panel);
-}
-
-.ai-panel__hero {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px;
-  border: 1px solid var(--ls-border);
-  border-radius: 22px;
-  background: var(--ls-card);
-  box-shadow: var(--ls-shadow);
-}
-
-.ai-panel__eyebrow {
-  margin: 0 0 6px;
-  color: var(--ls-primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.ai-panel__hero h3,
-.ai-panel__copy,
-.ai-context-card__head h4,
-.ai-context-card__subtitle,
-.ai-settings-card__head h4,
-.ai-provider-field__head h4,
-.ai-starter-card h4,
-.ai-composer__head h4 {
-  margin: 0;
-}
-
-.ai-panel__copy {
-  margin-top: 8px;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.ai-panel__hero-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.ai-loading-card,
-.ai-context-card,
-.ai-settings-card,
-.ai-starter-card,
-.ai-composer {
-  padding: 18px;
-}
-
-.ai-tabs {
-  margin-top: -6px;
-}
-
-.ai-context-card,
-.ai-settings-card,
-.ai-composer,
-.ai-starter-card {
-  display: grid;
-  gap: 12px;
-}
-
-.ai-settings-card__toggle {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-}
-
-.ai-settings-card__toggle-copy {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-  flex: 1;
-}
-
-.ai-settings-card__summary {
-  margin: 0;
-  color: var(--ls-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.ai-settings-card__toggle-action {
-  color: var(--ls-primary);
-  font-size: 13px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.ai-settings-card__body {
-  display: grid;
-  gap: 12px;
-}
-
-.ai-context-card__head,
-.ai-settings-card__head,
-.ai-composer__head,
-.ai-composer__footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.ai-context-card__kicker {
-  margin: 0 0 4px;
-  color: var(--ls-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.ai-provider-field {
-  display: grid;
-  gap: 8px;
-}
-
-.ai-provider-field__head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-}
-
-.ai-provider-field__head .section-note {
-  margin: 0;
-}
-
-.ai-switch-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ai-switch-row__label {
-  color: var(--ls-text);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ai-composer__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: flex-end;
-  align-items: center;
-}
-
-.ai-composer__shortcut {
-  flex: 1;
-}
-
-.ai-context-card__subtitle {
-  color: var(--ls-text);
-  font-weight: 600;
-}
-
-.ai-chat-shell {
-  display: grid;
-  gap: 16px;
-  min-height: 0;
-}
-
-.ai-chat-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  min-height: 220px;
-  max-height: 44vh;
-  padding-right: 2px;
-  overflow: auto;
-}
-
-.ai-chat-item {
-  display: flex;
-}
-
-.ai-chat-item.is-user {
-  justify-content: flex-end;
-}
-
-.ai-chat-stack {
-  display: grid;
-  gap: 8px;
-  max-width: min(92%, 520px);
-}
-
-.ai-chat-bubble {
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: var(--ls-card);
-  box-shadow: var(--ls-soft-shadow);
-}
-
-.ai-chat-item.is-user .ai-chat-bubble {
-  border-bottom-right-radius: 6px;
-  background: linear-gradient(135deg, rgba(47, 135, 255, 0.16), var(--ls-card));
-}
-
-.ai-chat-item.is-assistant .ai-chat-bubble {
-  border-bottom-left-radius: 6px;
-}
-
-.ai-chat-bubble__meta {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-  color: var(--ls-muted);
-  font-size: 12px;
-}
-
-.ai-chat-bubble__text,
-.ai-chat-bubble__markdown-shell {
-  margin: 0;
-  color: var(--ls-text);
-  line-height: 1.75;
-  word-break: break-word;
-}
-
-.ai-chat-bubble__text {
-  white-space: pre-wrap;
-}
-
-.ai-chat-bubble__markdown-shell {
-  display: inline;
-}
-
-.ai-chat-bubble__markdown {
-  display: inline-block;
-  width: 100%;
-}
-
-.ai-chat-bubble__cursor {
-  display: inline-block;
-  width: 8px;
-  height: 1em;
-  margin-left: 3px;
-  border-radius: 999px;
-  background: var(--ls-primary);
-  vertical-align: -0.12em;
-  animation: ai-chat-cursor-blink 1s steps(1) infinite;
-}
-
-.ai-chat-attachments {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.ai-chat-attachment {
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(47, 135, 255, 0.1);
-  color: var(--ls-primary);
-  font-size: 12px;
-}
-
-.ai-chat-bubble__footnote {
-  margin: 10px 0 0;
-  color: var(--ls-muted);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.ai-chat-bubble__speech {
-  margin-top: 6px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.ai-chat-reasoning {
-  border-radius: 14px;
-  border: 1px solid rgba(47, 135, 255, 0.16);
-  background: rgba(47, 135, 255, 0.08);
-  overflow: hidden;
-}
-
-.ai-chat-reasoning__summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 14px;
-  color: var(--ls-primary);
-  font-size: 12px;
-  line-height: 1.5;
-  cursor: pointer;
-  list-style: none;
-}
-
-.ai-chat-reasoning__summary::-webkit-details-marker {
-  display: none;
-}
-
-.ai-chat-reasoning__summary strong {
-  font-size: 12px;
-}
-
-.ai-chat-reasoning__summary span {
-  color: var(--ls-muted);
-}
-
-.ai-chat-reasoning__body {
-  padding: 0 14px 12px;
-}
-
-@keyframes ai-chat-cursor-blink {
-  0%,
-  50% {
-    opacity: 1;
-  }
-
-  50.01%,
-  100% {
-    opacity: 0;
-  }
-}
-
-.ai-starter-card__actions,
-.chip-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.ai-composer__attachment-list {
-  display: grid;
-  gap: 10px;
-}
-
-.ai-composer__attachment {
-  display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  border: 1px dashed var(--ls-border);
-  border-radius: 16px;
-  background: var(--ls-panel-soft);
-}
-
-.ai-composer__attachment-preview {
-  width: 72px;
-  height: 72px;
-  object-fit: cover;
-  border-radius: 12px;
-}
-
-.ai-composer__attachment-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-
-.ai-composer__attachment-meta span,
-.ai-composer__attachment-meta small {
-  color: var(--ls-muted);
-}
-
-.ai-composer__attachment-meta strong,
-.ai-composer__attachment-meta span,
-.ai-composer__attachment-meta small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ai-composer__footer {
-  align-items: center;
-}
-
-.file-input,
-.full-width {
-  width: 100%;
-}
-
-@media (max-width: 768px) {
-  .ai-panel {
-    padding: 14px;
-  }
-
-  .ai-panel__hero,
-  .ai-context-card__head,
-  .ai-settings-card__head,
-  .ai-provider-field__head,
-  .ai-composer__head,
-  .ai-composer__footer {
-    flex-direction: column;
-  }
-
-  .ai-composer__actions {
-    width: 100%;
-    justify-content: stretch;
-  }
-
-  .ai-composer__actions :deep(.n-button) {
-    flex: 1;
-  }
-
-  .ai-chat-list {
-    max-height: 40vh;
-  }
-
-  .ai-composer__attachment {
-    grid-template-columns: 60px minmax(0, 1fr);
-  }
-
-  .ai-composer__attachment :deep(.n-button) {
-    grid-column: 1 / -1;
-    justify-self: flex-start;
-  }
-}
-</style>

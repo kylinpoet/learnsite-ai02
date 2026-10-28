@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth';
 const sessionSyncTimeoutMs = 1_500;
 
 const AuthLayout = () => import('@/layouts/auth/AuthLayout.vue');
+const GuestLayout = () => import('@/layouts/guest/GuestLayout.vue');
 const StudentLayout = () => import('@/layouts/student/StudentLayout.vue');
 const StaffLayout = () => import('@/layouts/staff/StaffLayout.vue');
 
@@ -12,6 +13,7 @@ const StudentLoginPage = () => import('@/modules/auth/StudentLoginPage.vue');
 const StaffLoginPage = () => import('@/modules/auth/StaffLoginPage.vue');
 const RulesPage = () => import('@/modules/public-pages/RulesPage.vue');
 const GuestClassPage = () => import('@/modules/public-pages/GuestClassPage.vue');
+const GuestTaskPage = () => import('@/modules/public-pages/GuestTaskPage.vue');
 
 const StudentHomePage = () => import('@/modules/student-home/StudentHomePage.vue');
 const CourseDetailPage = () => import('@/modules/student-course/CourseDetailPage.vue');
@@ -73,10 +75,13 @@ const routes: RouteRecordRaw[] = [
     children: [{ path: '', component: RulesPage }],
   },
   {
-    // 班级码旁听：只读，不需要账号；不挂在学生布局下，避免出现无法使用的导航
+    // 班级码旁听：只读，不需要账号。沿用学生端页面结构，去掉所有会写入的操作。
     path: '/class/:code',
-    component: AuthLayout,
-    children: [{ path: '', component: GuestClassPage }],
+    component: GuestLayout,
+    children: [
+      { path: '', component: GuestClassPage },
+      { path: 'tasks/:taskId', component: GuestTaskPage },
+    ],
   },
   {
     path: '/student',

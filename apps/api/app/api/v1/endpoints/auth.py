@@ -24,6 +24,7 @@ from app.schemas.auth import (
     ClassOptionGrade,
     ClassOptionItem,
     ClassRosterPayload,
+    ClassRosterRequest,
     ClassRosterStudent,
     LoginPayload,
     LoginRequest,
@@ -70,6 +71,36 @@ def _class_code_miss(request: Request) -> NoReturn:
     source = resolve_client_ip(request) or "unknown"
     _roster_failures[source].append(time.monotonic())
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级码无效")
+
+
+# 密码尝试限流：名单公开后 student_user_id 不再保密，这里按「来源 IP + 学生」按住脚本级
+# 撞库。课堂场景下同班几十人共用一台 NAT 出口不常见，且阈值只挡高频试探，正常输错不受影响。
+_PASSWORD_FAILURE_WINDOW_SECONDS = 60
+_PASSWORD_FAILURE_LIMIT = 20
+_password_failures: dict[str, list[float]] = defaultdict(list)
+
+
+def _password_guard(key: str) -> None:
+    now = time.monotonic()
+    recent = [
+        stamp
+        for stamp in _password_failures[key]
+        if now - stamp < _PASSWORD_FAILURE_WINDOW_SECONDS
+    ]
+    _password_failures[key] = recent
+    if len(_password_failures) > 5000:
+        for stale in [item for item, stamps in _password_failures.items() if not stamps]:
+            _password_failures.pop(stale, None)
+    if len(recent) >= _PASSWORD_FAILURE_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="密码尝试过于频繁，请稍后再试",
+        )
+
+
+def _password_miss(key: str) -> NoReturn:
+    _password_failures[key].append(time.monotonic())
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="密码不正确")
 
 
 def _resolve_class_or_404(raw_code: str | None, request: Request, db: Session) -> SchoolClass:
@@ -199,12 +230,22 @@ def class_login_options(db: Session = Depends(get_db)) -> ApiResponse[list[Class
 
 @router.post("/class/roster", response_model=ApiResponse[ClassRosterPayload])
 def class_roster(
-    payload: ClassCodeRequest,
+    payload: ClassRosterRequest,
     request: Request,
     db: Session = Depends(get_db),
 ) -> ApiResponse[ClassRosterPayload]:
-    """用班级码换取本班名单。班级码是名单的口令，学生仍需输入自己的密码才能登录。"""
-    school_class = _resolve_class_or_404(payload.class_code, request, db)
+    """取本班名单：按班级列表选择（class_id），或输入老师投屏的班级码（class_code）。
+
+    名单公开，凭据仍是学生自己的密码；班级码只是「我更想直接用码进班」的快捷方式。
+    """
+    if payload.class_id is not None:
+        school_class = db.get(SchoolClass, payload.class_id)
+    elif payload.class_code:
+        school_class = find_class_by_code(payload.class_code, db)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请选择班级或输入班级码")
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
 
     profiles = db.scalars(
         select(StudentProfile)
@@ -250,8 +291,13 @@ def student_login_by_class(
     request: Request,
     db: Session = Depends(get_db),
 ) -> ApiResponse[LoginPayload]:
-    """班级码 + 点选名单 + 密码登录。班级码只负责把学生限定在本班，凭据仍是学生自己的密码。"""
-    school_class = _resolve_class_or_404(payload.class_code, request, db)
+    """选班级 + 点选名单 + 密码登录。班级只负责定位学生，凭据仍是学生自己的密码。"""
+    school_class = db.get(SchoolClass, payload.class_id)
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+
+    key = f"{resolve_client_ip(request) or 'unknown'}:{payload.student_user_id}"
+    _password_guard(key)
     profile = db.scalar(
         select(StudentProfile).where(
             StudentProfile.user_id == payload.student_user_id,
@@ -260,12 +306,9 @@ def student_login_by_class(
     )
     user = db.get(User, payload.student_user_id) if profile is not None else None
     if user is None or user.user_type != "student" or not user.is_active:
-        _class_code_miss(request)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="该学生不在本班名单中")
     if not verify_password(payload.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="密码不正确",
-        )
+        _password_miss(key)
     ensure_student_login_attendance(user, request, db)
     db.commit()
     return ApiResponse(data=build_login_payload(user))

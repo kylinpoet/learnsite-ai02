@@ -1,0 +1,1027 @@
+/* ===== 学生端工作区设计层 =====
+   方向：Achromatic ledger（seed 440720002）落到校徽绿品牌上。
+   三条规矩，全站只在这几处破例：
+   1. 壳层与卡片不带品牌色：导航、标题、表格、按钮全部用墨色；主操作按钮是近黑填充。
+   2. 品牌绿只标记「当前这一步」：正在进行的任务、进度条、唯一的图表数据。
+   3. 表面用 1px 描边 + 白色，去掉阴影、毛玻璃和渐变；数字一律 tabular。
+
+   页面只允许组合下面这些 sw-* 结构和通用类，不要再写圆角大卡、图标方块或说明性小标题。 */
+
+.student-layout {
+  /* 表面与线条 */
+  --sw-ground: var(--ls-bg);
+  --sw-surface: var(--ls-elevated);
+  --sw-surface-2: color-mix(in srgb, var(--ls-ink) 3%, var(--ls-elevated));
+  --sw-surface-3: color-mix(in srgb, var(--ls-ink) 6%, var(--ls-elevated));
+  --sw-line: color-mix(in srgb, var(--ls-ink) 13%, transparent);
+  --sw-line-soft: color-mix(in srgb, var(--ls-ink) 8%, transparent);
+
+  /* 文字 */
+  --sw-ink: var(--ls-ink);
+  --sw-text: var(--ls-text);
+  --sw-muted: var(--ls-muted);
+  --sw-faint: color-mix(in srgb, var(--ls-muted) 72%, transparent);
+
+  /* 唯一主色：只给当前步骤、进度与一个图表数据 */
+  --sw-accent: var(--ls-primary);
+  --sw-accent-soft: color-mix(in srgb, var(--ls-primary) 13%, transparent);
+
+  /* 状态色 */
+  --sw-pos: #247b50;
+  --sw-pos-bg: #e6f4ec;
+  --sw-neg: #b42318;
+  --sw-neg-bg: #fdecea;
+  --sw-warn: #8a5a12;
+  --sw-warn-bg: #fdf4e3;
+
+  /* 几何 */
+  --sw-r-card: 10px;
+  --sw-r-ctl: 6px;
+  --sw-gap: 12px;
+  --sw-section-gap: 20px;
+  --sw-pad: 20px;
+
+  /* 覆盖全局派生令牌：把玻璃、渐变与柔和阴影从学生端摘掉 */
+  --ls-panel: var(--sw-surface);
+  --ls-panel-strong: var(--sw-surface);
+  --ls-panel-soft: var(--sw-surface-2);
+  --ls-card: var(--sw-surface);
+  --ls-surface: var(--sw-surface);
+  --ls-shadow: none;
+  --ls-soft-shadow: none;
+  --ls-sidebar-shadow: none;
+  --ls-topbar-shadow: none;
+  --ls-surface-glow: none;
+  --ls-surface-blur: none;
+  --ls-radius-sm: 6px;
+  --ls-radius-md: 10px;
+  --ls-radius-lg: 12px;
+  --ls-card-pad: 20px;
+
+  min-height: 100vh;
+  background: var(--sw-ground);
+  color: var(--sw-text);
+}
+
+:root[data-scheme='dark'] .student-layout {
+  --sw-pos: #5fd3a3;
+  --sw-pos-bg: rgba(95, 211, 163, 0.14);
+  --sw-neg: #f68f83;
+  --sw-neg-bg: rgba(246, 143, 131, 0.14);
+  --sw-warn: #f2bc62;
+  --sw-warn-bg: rgba(242, 188, 98, 0.14);
+}
+
+/* ---------------- 壳层 ---------------- */
+
+.student-layout .sb-layout .sb-aside {
+  width: 224px;
+  padding: 14px 12px;
+  border-right: 1px solid var(--sw-line-soft);
+  background: var(--sw-ground);
+  box-shadow: none;
+}
+
+.student-layout .sb-aside .sb-brand {
+  padding: 2px 4px 14px;
+  border-bottom: 0;
+}
+
+.student-layout .sb-aside .sb-brand__logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--sw-accent);
+  box-shadow: none;
+}
+
+.student-layout .sb-aside .sb-brand__name {
+  font-family: var(--ls-font);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.student-layout .sb-aside .sb-brand__kicker {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--sw-muted);
+}
+
+.student-layout .sb-menu {
+  margin-top: 14px;
+}
+
+.student-layout .sb-body .sb-header {
+  height: 48px;
+  padding: 0 12px 0 8px;
+  border-bottom: 1px solid var(--sw-line-soft);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.student-layout .sb-body .sb-content {
+  max-width: 1280px;
+  padding: 20px 28px 48px;
+}
+
+/* 顶栏只留当前位置，不再重复一层面包屑 */
+.student-layout .sb-header .sb-breadcrumb {
+  display: none;
+}
+
+.student-layout .sb-header .sb-header__page-title {
+  display: none;
+}
+
+.student-layout .sb-body .sb-tabs {
+  padding: 0 12px;
+  border-bottom: 1px solid var(--sw-line-soft);
+  background: transparent;
+}
+
+.student-layout .sb-tabs .sb-tabs__list {
+  gap: 4px;
+}
+
+.student-layout .sb-tabs .sb-tab {
+  padding: 9px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--sw-muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.student-layout .sb-tabs .sb-tab:hover {
+  border-bottom-color: var(--sw-line);
+  background: transparent;
+  color: var(--sw-ink);
+}
+
+.student-layout .sb-tabs .sb-tab.is-active {
+  border-bottom-color: var(--sw-ink);
+  background: transparent;
+  color: var(--sw-ink);
+}
+
+.student-layout .sb-tabs .sb-tab__dot {
+  display: none;
+}
+
+/* 导航：中性灰选中块，品牌色不进侧栏 */
+.student-layout .sb-menu .n-menu-item-content {
+  border-radius: 6px;
+}
+
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected,
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover {
+  background-color: var(--sw-surface-3) !important;
+}
+
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected::before,
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover::before {
+  background-color: var(--sw-surface-3) !important;
+}
+
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header,
+.student-layout .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon {
+  color: var(--sw-ink) !important;
+  font-weight: 600;
+}
+
+/* ---------------- 通用类：去掉玻璃与浮夸圆角 ---------------- */
+
+.student-layout .page-stack {
+  gap: var(--sw-section-gap);
+}
+
+.student-layout .hero-panel {
+  padding: 0 0 16px;
+  border: 0;
+  border-bottom: 1px solid var(--sw-line-soft);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.student-layout .hero-panel h2 {
+  font-family: var(--ls-font);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.student-layout .hero-copy {
+  max-width: 64ch;
+  color: var(--sw-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.student-layout .eyebrow {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+.student-layout .soft-card {
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.student-layout .sa-panel__head {
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid var(--sw-line-soft);
+}
+
+.student-layout .sa-panel__title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.student-layout .sa-panel__desc,
+.student-layout .section-note {
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.student-layout .sa-panel__body {
+  padding: 16px 18px;
+}
+
+.student-layout .metric-grid {
+  gap: 0;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+  overflow: hidden;
+}
+
+.student-layout .metric-tile,
+.student-layout .mini-panel {
+  position: relative;
+  padding: 14px 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.student-layout .metric-tile + .metric-tile::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 1px;
+  background: var(--sw-line-soft);
+}
+
+.student-layout .metric-label {
+  color: var(--sw-muted);
+  font-size: 12px;
+}
+
+.student-layout .metric-value {
+  margin: 4px 0 2px;
+  color: var(--sw-ink);
+  font-size: 28px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-layout .metric-value--small {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.student-layout .metric-note {
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.student-layout .mini-panel {
+  padding: 16px 18px;
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+}
+
+.student-layout .tip-panel {
+  padding: 14px 16px;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface-2);
+}
+
+.student-layout .tip-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sw-ink);
+}
+
+.student-layout .inner-card {
+  border: 1px solid var(--sw-line-soft);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+  box-shadow: none;
+}
+
+.student-layout .action-group {
+  gap: 8px;
+}
+
+.student-layout .chip-row {
+  gap: 6px;
+}
+
+.student-layout .stack-list {
+  gap: 10px;
+}
+
+/* ---------------- 学生端组件 ---------------- */
+
+/* 页头：一个 h1 + 一行事实 + 右侧唯一的操作 */
+.sw-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 2px 0 16px;
+  border-bottom: 1px solid var(--sw-line-soft);
+}
+
+.sw-page-head__main {
+  min-width: 0;
+}
+
+.sw-page-head h1 {
+  margin: 0;
+  color: var(--sw-ink);
+  font-family: var(--ls-font);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.sw-page-head__sub {
+  margin: 6px 0 0;
+  color: var(--sw-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sw-page-head__sub strong {
+  color: var(--sw-ink);
+  font-weight: 500;
+}
+
+.sw-page-head__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 返回链接：墨色，不抢标题 */
+.sw-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sw-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sw-back:hover {
+  color: var(--sw-ink);
+}
+
+/* 统计条：一条被 1px 分隔的带子，不是四张卡 */
+.sw-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+  overflow: hidden;
+}
+
+.sw-strip__cell {
+  position: relative;
+  padding: 14px 18px;
+  min-width: 0;
+}
+
+.sw-strip__cell + .sw-strip__cell::before {
+  content: '';
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 0;
+  width: 1px;
+  background: var(--sw-line-soft);
+}
+
+.sw-strip__label {
+  margin: 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sw-strip__value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 4px 0 0;
+  color: var(--sw-ink);
+  font-size: 26px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-strip__value small {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+/* 缺失值用小号灰 dash，不要用大号数字占位 */
+.sw-strip__value.is-missing {
+  color: var(--sw-muted);
+  font-size: 18px;
+  font-weight: 400;
+}
+
+.sw-strip__note {
+  margin: 3px 0 0;
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+/* 当前这一步：整个学生端唯一带品牌色的面板 */
+.sw-now {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  padding: 22px 24px;
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+}
+
+.sw-now__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 8px;
+  color: var(--sw-accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sw-now__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sw-accent);
+}
+
+.sw-now__title {
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.02em;
+}
+
+.sw-now__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 8px 0 0;
+  color: var(--sw-muted);
+  font-size: 13px;
+}
+
+.sw-now__actions {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.sw-now__hint {
+  margin: 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+}
+
+/* 步骤条：学案 → 任务 → 提交 → 评阅 */
+.sw-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sw-path__step {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--sw-muted);
+  font-size: 13px;
+}
+
+.sw-path__step + .sw-path__step::before {
+  content: '';
+  width: 28px;
+  height: 1px;
+  margin: 0 10px;
+  background: var(--sw-line);
+}
+
+.sw-path__mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--sw-line);
+  border-radius: 999px;
+  color: var(--sw-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-path__step.is-done .sw-path__mark {
+  border-color: transparent;
+  background: var(--sw-ink);
+  color: var(--sw-surface);
+}
+
+.sw-path__step.is-now {
+  color: var(--sw-ink);
+  font-weight: 600;
+}
+
+.sw-path__step.is-now .sw-path__mark {
+  border-color: var(--sw-accent);
+  background: var(--sw-accent-soft);
+  color: var(--sw-accent);
+}
+
+/* 面板 */
+.sw-panel {
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.sw-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--sw-line-soft);
+}
+
+.sw-panel__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sw-panel__count {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-panel__link {
+  border: 0;
+  background: none;
+  color: var(--sw-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sw-panel__link:hover {
+  color: var(--sw-ink);
+}
+
+.sw-panel__body {
+  padding: 14px 18px;
+}
+
+.sw-panel__body--flush {
+  padding: 0;
+}
+
+/* 行：56px 起，规整的两行信息 + 右侧动作 */
+.sw-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 11px 18px;
+  color: inherit;
+}
+
+.sw-row + .sw-row {
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+.sw-row--link {
+  cursor: pointer;
+}
+
+.sw-row--link:hover {
+  background: var(--sw-surface-2);
+}
+
+.sw-row__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.sw-row__title {
+  display: block;
+  overflow: hidden;
+  color: var(--sw-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sw-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 2px 0 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.sw-row__value {
+  flex: none;
+  color: var(--sw-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sw-row__action {
+  flex: none;
+}
+
+/* 状态：一个状态只用一种标记 */
+.sw-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: var(--sw-surface-2);
+  color: var(--sw-text);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.sw-chip--now {
+  background: var(--sw-accent-soft);
+  color: var(--sw-accent);
+  font-weight: 600;
+}
+
+.sw-chip--done {
+  background: var(--sw-pos-bg);
+  color: var(--sw-pos);
+}
+
+.sw-chip--todo {
+  box-shadow: inset 0 0 0 1px var(--sw-line);
+  background: transparent;
+  color: var(--sw-muted);
+}
+
+.sw-chip--warn {
+  background: var(--sw-warn-bg);
+  color: var(--sw-warn);
+}
+
+.sw-chip--danger {
+  background: var(--sw-neg-bg);
+  color: var(--sw-neg);
+}
+
+/* 进度：细线，唯一的绿色填充 */
+.sw-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sw-progress__track {
+  flex: 1;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--sw-line);
+  overflow: hidden;
+}
+
+.sw-progress__fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--sw-accent);
+}
+
+.sw-progress__label {
+  flex: none;
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 空态：保留框架，一句话 */
+.sw-empty {
+  padding: 22px 18px;
+  color: var(--sw-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.sw-empty--box {
+  margin: 14px 18px;
+  padding: 16px;
+  border: 1px dashed var(--sw-line);
+  border-radius: 8px;
+}
+
+/* 两栏：主内容 + 侧的下一步（学生端只有这一种左右结构） */
+.sw-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sw-gap);
+  align-items: start;
+}
+
+.sw-split__aside {
+  display: grid;
+  gap: var(--sw-gap);
+  position: sticky;
+  top: 60px;
+}
+
+.sw-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sw-gap);
+  align-items: start;
+}
+
+/* 按钮：唯一主操作是近黑填充；次级是描边；第三级是文字 */
+.student-layout .n-button.n-button--primary-type {
+  background-color: var(--sw-ink) !important;
+  border: 1px solid var(--sw-ink) !important;
+  color: var(--sw-surface) !important;
+  font-weight: 500;
+  box-shadow: none !important;
+}
+
+.student-layout .n-button.n-button--primary-type:hover {
+  background-color: color-mix(in srgb, var(--sw-ink) 86%, #7f8a82) !important;
+  border-color: color-mix(in srgb, var(--sw-ink) 86%, #7f8a82) !important;
+  color: var(--sw-surface) !important;
+}
+
+.student-layout .n-button.n-button--primary-type:active {
+  background-color: color-mix(in srgb, var(--sw-ink) 94%, #000000) !important;
+}
+
+.student-layout .n-button.n-button--primary-type.n-button--disabled,
+.student-layout .n-button.n-button--primary-type[disabled] {
+  background-color: var(--sw-surface-3) !important;
+  border-color: var(--sw-line) !important;
+  color: var(--sw-muted) !important;
+}
+
+.student-layout .n-button {
+  border-radius: var(--sw-r-ctl);
+  box-shadow: none;
+}
+
+.student-layout .n-tag {
+  border-radius: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.student-layout .n-card {
+  border-radius: var(--sw-r-card);
+  box-shadow: none;
+}
+
+.student-layout .n-input,
+.student-layout .n-base-selection {
+  border-radius: var(--sw-r-ctl);
+}
+
+.student-layout .n-tabs-tab {
+  font-weight: 500;
+}
+
+/* 空态只留一句话，不带插画 */
+.student-layout .n-empty .n-empty__icon {
+  display: none;
+}
+
+.student-layout .n-empty {
+  padding: 14px 0;
+}
+
+.student-layout .n-empty .n-empty__description {
+  margin-top: 0;
+  color: var(--sw-muted);
+  font-size: 13px;
+}
+
+/* 链接：正文里保持墨色，悬停才出现主色下划线 */
+.student-layout .sw-link {
+  color: var(--sw-ink);
+  text-decoration: none;
+}
+
+.student-layout .sw-link:hover {
+  color: var(--sw-accent);
+}
+
+/* 键盘可达：自绘的可点行、返回链接与文件项都要有焦点环 */
+.student-layout .sw-row--link:focus-visible,
+.student-layout .sw-back:focus-visible,
+.student-layout .sw-review__wall-item:focus-visible,
+.student-layout .sw-review__file:focus-visible,
+.student-layout .sw-task:focus-visible {
+  outline: 2px solid var(--sw-accent);
+  outline-offset: -2px;
+}
+
+/* 表格：右对齐数字、无斑马纹、弱表头 */
+.student-layout .n-data-table .n-data-table-th {
+  background-color: transparent !important;
+  border-bottom: 1px solid var(--sw-line-soft);
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.student-layout .n-data-table .n-data-table-td {
+  font-size: 13px;
+}
+
+.student-layout .n-data-table .n-empty {
+  padding: 22px 0;
+}
+
+.student-layout .n-data-table .n-data-table-td.is-numeric,
+.student-layout .n-data-table .n-data-table-th.is-numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 手机：导航折起，统计条两列，主副栏堆叠 */
+@media (max-width: 960px) {
+  .student-layout .sb-content {
+    padding: 16px 16px 40px;
+  }
+
+  .sw-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .sw-page-head__actions {
+    width: 100%;
+  }
+
+  .sw-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sw-split__aside {
+    position: static;
+  }
+
+  .sw-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sw-strip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sw-strip__cell:nth-child(odd)::before {
+    display: none;
+  }
+
+  .sw-strip__cell:nth-child(n + 3) {
+    border-top: 1px solid var(--sw-line-soft);
+  }
+
+  .sw-now {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 18px;
+  }
+
+  .sw-now__actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .sw-strip {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sw-strip__cell + .sw-strip__cell::before {
+    display: none;
+  }
+
+  .sw-strip__cell + .sw-strip__cell {
+    border-top: 1px solid var(--sw-line-soft);
+  }
+
+  /* 手机上的学习路径收成两行两列，去掉连接线，避免断在行中间 */
+  .sw-path {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+  }
+
+  .sw-path__step + .sw-path__step::before {
+    display: none;
+  }
+
+  .sw-now__actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sw-now__hint {
+    display: none;
+  }
+}

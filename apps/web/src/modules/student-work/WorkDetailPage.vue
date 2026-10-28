@@ -1,177 +1,107 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="这里展示作品状态、教师评语、互评分数和附件列表。教师评价前，你可以直接回到任务页继续覆盖提交。"
-      eyebrow="作品详情"
-      :title="detailData?.task.title || `作品 ${route.params.submissionId}`"
-    >
-      <template #actions>
-        <div class="action-group">
-          <n-button secondary @click="goBack">返回作品列表</n-button>
-          <n-button v-if="detailData" secondary @click="goToCourse(detailData.course.id)">返回所属课程</n-button>
-          <n-button
-            v-if="detailData?.submission.can_resubmit"
-            type="primary"
-            @click="goToTask(detailData.course.id, detailData.task.id)"
-          >
-            {{ detailData?.submission.submission_scope === 'group' ? '再次提交小组作品' : '再次提交作品' }}
-          </n-button>
-          <n-button
-            v-if="detailData?.submission.status === 'reviewed'"
-            :loading="isRevokingReview"
-            secondary
-            type="warning"
-            @click="revokeReviewedSubmission"
-          >
-            撤销评阅
-          </n-button>
-        </div>
+  <div class="sw-detail">
+    <StudentPageHead :title="detailData?.task.title || `作品 ${route.params.submissionId}`" :sub="headSub">
+      <template #back>
+        <button type="button" class="sw-back" @click="goBack">← 返回作品列表</button>
       </template>
-    </SaPageHeader>
+      <template v-if="detailData" #actions>
+        <n-button
+          v-if="detailData.submission.can_resubmit"
+          type="primary"
+          @click="goToTask(detailData.course.id, detailData.task.id)"
+        >
+          再次提交
+        </n-button>
+        <n-button
+          v-else-if="detailData.submission.status === 'reviewed'"
+          :loading="isRevokingReview"
+          @click="revokeReviewedSubmission"
+        >
+          撤销评阅
+        </n-button>
+      </template>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
-    <div v-else-if="detailData" class="page-stack">
-      <div class="metric-grid">
-        <article class="mini-panel">
-          <p class="metric-label">状态</p>
-          <p class="metric-value metric-value--small">{{ statusLabel(detailData.submission.status) }}</p>
-          <p class="metric-note">
-            {{ detailData.submission.can_resubmit ? '教师尚未完成评价，还可以再次提交。' : '教师已经完成评价，本次提交已锁定。' }}
-          </p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">教师评分</p>
-          <p class="metric-value">{{ detailData.submission.score ?? '--' }}</p>
-          <p class="metric-note">没有评分时，会显示为待教师评价。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">互评得分</p>
-          <p class="metric-value">{{ detailData.submission.peer_review_score ?? '--' }}</p>
-          <p class="metric-note">后续可继续扩展互评明细。</p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">提交方式</p>
-          <p class="metric-value metric-value--small">{{ submissionScopeLabel(detailData.submission.submission_scope) }}</p>
-          <p class="metric-note">
-            {{
-              detailData.submission.submission_scope === 'group'
-                ? `${groupDisplayLabel(detailData.submission)} · 组内成员共享同一份最终提交。`
-                : '当前作品按个人独立提交。'
-            }}
-          </p>
-        </article>
-        <article class="mini-panel">
-          <p class="metric-label">更新时间</p>
-          <p class="metric-value metric-value--small">{{ formatDateTime(detailData.submission.updated_at) }}</p>
-          <p class="metric-note">
-            {{
-              detailData.submission.submitted_by_name
-                ? `最近保存 ${detailData.submission.submitted_by_name}`
-                : '这里显示最近一次提交保存时间。'
-            }}
-          </p>
-        </article>
-      </div>
+    <template v-else-if="detailData">
+      <StudentStatStrip :items="statItems" />
 
-      <div class="detail-grid">
-        <SaPanel title="任务信息">
-          <template #actions>
-            <n-tag :type="statusTagType(detailData.submission.status)" round>
-              {{ statusLabel(detailData.submission.status) }}
-            </n-tag>
-          </template>
-
-          <n-descriptions :column="1" bordered>
-            <n-descriptions-item label="课程">{{ detailData.course.title }}</n-descriptions-item>
-            <n-descriptions-item label="任务">{{ detailData.task.title }}</n-descriptions-item>
-            <n-descriptions-item label="任务类型">{{ taskTypeLabel(detailData.task.task_type) }}</n-descriptions-item>
-            <n-descriptions-item label="提交时间">
-              {{ formatDateTime(detailData.submission.submitted_at) }}
-            </n-descriptions-item>
-            <n-descriptions-item label="最近更新">
-              {{ formatDateTime(detailData.submission.updated_at) }}
-            </n-descriptions-item>
-            <n-descriptions-item label="提交方式">
-              {{ submissionScopeLabel(detailData.submission.submission_scope) }}
-            </n-descriptions-item>
-            <n-descriptions-item
-              v-if="detailData.submission.submission_scope === 'group'"
-              label="协作小组"
-            >
+      <div class="sw-split">
+        <div class="sw-detail__main">
+          <p class="sw-row__meta sw-detail__meta">
+            <RouterLink class="sw-link" :to="`/student/courses/${detailData.course.id}`">
+              {{ detailData.course.title }}
+            </RouterLink>
+            <span>{{ taskTypeLabel(detailData.task.task_type) }}</span>
+            <span v-if="detailData.submission.submission_scope === 'group'">
               {{ groupDisplayLabel(detailData.submission) }}
-            </n-descriptions-item>
-            <n-descriptions-item v-if="detailData.submission.submitted_by_name" label="最近提交人">
-              {{ detailData.submission.submitted_by_name }}
-            </n-descriptions-item>
-          </n-descriptions>
+            </span>
+            <span v-if="detailData.submission.submitted_by_name">
+              最近提交 {{ detailData.submission.submitted_by_name }}
+            </span>
+            <span>更新于 {{ formatDateTime(detailData.submission.updated_at) }}</span>
+          </p>
 
-          <div class="content-block">
-            <h3>作品说明</h3>
-            <RichTextContent :html="detailData.submission.submission_note" empty-text="暂无作品说明" />
-          </div>
+          <StudentPanel title="作品说明">
+            <div class="sw-detail__prose">
+              <RichTextContent
+                :html="detailData.submission.submission_note"
+                empty-text="这次提交没有写作品说明。"
+              />
+            </div>
+          </StudentPanel>
 
-          <div class="content-block">
-            <h3>教师评语</h3>
-            <p>{{ detailData.submission.teacher_comment || '教师暂时还没有留下评语。' }}</p>
-          </div>
-        </SaPanel>
+          <StudentPanel title="教师评语">
+            <p v-if="detailData.submission.teacher_comment" class="sw-detail__text">
+              {{ detailData.submission.teacher_comment }}
+            </p>
+            <StudentEmpty v-else text="教师还没有留下评语，评阅后会显示在这里。" />
+          </StudentPanel>
+        </div>
 
-        <div class="detail-aside">
-          <SaPanel title="附件列表">
-            <n-empty v-if="!detailData.files.length" description="暂无附件" />
-            <div v-else class="stack-list">
-              <article v-for="file in detailData.files" :key="file.id" class="file-item">
-                <div>
-                  <p class="file-name">{{ file.name }}</p>
-                  <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</p>
-                </div>
-                <div class="file-actions">
-                  <n-tag round type="info">{{ file.role }}</n-tag>
+        <div class="sw-split__aside">
+          <StudentPanel title="附件" :count="`${detailData.files.length} 个`" flush>
+            <template v-if="detailData.files.length">
+              <div v-for="file in detailData.files" :key="file.id" class="sw-row">
+                <span class="sw-row__main">
+                  <span class="sw-row__title">{{ file.name }}</span>
+                  <span class="sw-row__meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</span>
+                </span>
+                <span class="sw-row__action">
                   <n-button
                     :loading="downloadLoadingFileId === file.id"
                     text
-                    type="primary"
                     @click="downloadFile(file)"
                   >
                     下载
                   </n-button>
-                </div>
-              </article>
-            </div>
-          </SaPanel>
-
-          <SaPanel title="下一步">
-            <div class="stack-list">
-              <n-button
-                :disabled="!detailData.submission.can_resubmit"
-                secondary
-                @click="goToTask(detailData.course.id, detailData.task.id)"
-              >
-                {{ detailData.submission.submission_scope === 'group' ? '回到小组任务继续提交' : '回到任务页继续提交' }}
-              </n-button>
-              <n-button secondary @click="goToCourse(detailData.course.id)">回到课程任务</n-button>
-            </div>
-          </SaPanel>
+                </span>
+              </div>
+            </template>
+            <StudentEmpty v-else text="这次提交没有附件。" />
+          </StudentPanel>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDescriptions, NDescriptionsItem, NEmpty, NSkeleton, NTag } from 'naive-ui';
-import { onMounted, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
+import { computed, onMounted, ref } from 'vue';
+import { RouterLink, useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
+import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
 
@@ -223,12 +153,43 @@ const errorMessage = ref('');
 const downloadLoadingFileId = ref<number | null>(null);
 const isRevokingReview = ref(false);
 
-function statusLabel(status: DetailPayload['submission']['status']) {
-  return status === 'reviewed' ? '已评价' : '待教师评价';
-}
+const headSub = computed(() => {
+  const submission = detailData.value?.submission;
+  if (!submission) {
+    return '';
+  }
+  const submitted = submission.submitted_at
+    ? `${formatDateTime(submission.submitted_at)} 提交`
+    : '提交时间未记录';
+  return `${submitted} · ${submissionScopeLabel(submission.submission_scope)}`;
+});
 
-function statusTagType(status: DetailPayload['submission']['status']) {
-  return status === 'reviewed' ? 'success' : 'warning';
+const statItems = computed<StudentStatItem[]>(() => {
+  const submission = detailData.value?.submission;
+  if (!submission) {
+    return [];
+  }
+  return [
+    {
+      label: '状态',
+      value: statusLabel(submission.status),
+      note: submission.can_resubmit ? '评阅前可再次提交' : '本次提交已锁定',
+    },
+    {
+      label: '教师评分',
+      value: submission.score ?? '--',
+      unit: submission.score === null ? undefined : '分',
+    },
+    {
+      label: '互评得分',
+      value: submission.peer_review_score ?? '--',
+      unit: submission.peer_review_score === null ? undefined : '分',
+    },
+  ];
+});
+
+function statusLabel(status: DetailPayload['submission']['status']) {
+  return status === 'reviewed' ? '已评阅' : '待评阅';
 }
 
 function submissionScopeLabel(scope: DetailPayload['submission']['submission_scope']) {
@@ -246,6 +207,18 @@ function groupDisplayLabel(submission: DetailPayload['submission']) {
 }
 
 function taskTypeLabel(taskType: string) {
+  if (taskType === 'rich_text') {
+    return '图文任务';
+  }
+  if (taskType === 'web_page') {
+    return '网页任务';
+  }
+  if (taskType === 'discussion') {
+    return '讨论任务';
+  }
+  if (taskType === 'data_submit') {
+    return '数据提交任务';
+  }
   if (taskType === 'programming') {
     return '编程任务';
   }
@@ -331,10 +304,6 @@ async function goBack() {
   await router.push('/student/work');
 }
 
-async function goToCourse(courseId: number) {
-  await router.push(`/student/courses/${courseId}`);
-}
-
 async function goToTask(courseId: number, taskId: number) {
   const taskType = detailData.value?.task.task_type;
   const taskSegment = taskType === 'programming' ? 'programs' : taskType === 'reading' ? 'readings' : 'tasks';
@@ -367,80 +336,35 @@ onMounted(loadDetail);
 </script>
 
 <style scoped>
-.action-group {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.detail-grid {
+.sw-detail {
   display: grid;
-  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
-  gap: 16px;
-  align-items: start;
+  gap: var(--sw-section-gap);
 }
 
-.detail-aside {
-  display: grid;
-  gap: 16px;
-}
-
-@media (max-width: 1200px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.content-block {
-  margin-top: 20px;
-}
-
-.content-block h3 {
-  margin-bottom: 10px;
-}
-
-.content-block :deep(.rich-text-content),
-.content-block p {
-  color: var(--ls-muted);
-}
-
-.file-item {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 0;
-  border-bottom: 1px dashed var(--ls-border);
-}
-
-.file-item:last-child {
-  border-bottom: none;
-}
-
-.file-actions {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.file-name,
-.file-meta {
+.sw-detail__meta {
   margin: 0;
 }
 
-.file-name {
-  font-weight: 600;
+.sw-detail__main {
+  display: grid;
+  gap: var(--sw-gap);
+  min-width: 0;
 }
 
-.file-meta {
-  margin-top: 4px;
-  color: var(--ls-muted);
-  font-size: 12px;
+.sw-detail__prose {
+  font-size: 14px;
+  line-height: 1.7;
 }
 
-.metric-value--small {
-  font-size: 22px;
+.sw-detail__prose :deep(.rich-text-content) {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.sw-detail__text {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.7;
 }
 </style>

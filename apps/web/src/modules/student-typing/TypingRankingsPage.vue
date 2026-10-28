@@ -1,10 +1,6 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      description="支持班级、年级、全校三个范围，默认按今日最佳速度排序，速度相同则比较准确率和完成时间。"
-      eyebrow="打字排行榜"
-      title="打字速度与准确率榜单"
-    >
+  <div class="sw-rankings">
+    <StudentPageHead title="打字排行" :sub="headSub">
       <template #actions>
         <n-select
           v-model:value="scope"
@@ -12,117 +8,90 @@
           class="scope-select"
           @update:value="loadRankings"
         />
-        <n-button :loading="isLoading" type="primary" @click="loadRankings">刷新榜单</n-button>
-        <n-button secondary @click="router.push('/student/typing')">返回打字首页</n-button>
+        <n-button secondary @click="router.push('/student/typing')">返回训练</n-button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
     <template v-else-if="ranking">
-      <div class="metric-grid">
-        <article class="metric-tile">
-          <p class="metric-label">榜单范围</p>
-          <p class="metric-value ranking-metric-text">{{ ranking.label }}</p>
-          <p class="metric-note">生成时间 {{ formatDateTime(ranking.generated_at) }}</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">上榜人数</p>
-          <p class="metric-value">{{ ranking.items.length }}</p>
-          <p class="metric-note">取当日最佳成绩进入榜单</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">待参与</p>
-          <p class="metric-value">{{ ranking.pending_students.length }}</p>
-          <p class="metric-note">仅班级榜显示未参与名单</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">最高速度</p>
-          <p class="metric-value">{{ ranking.items[0]?.speed_cpm ?? '--' }}</p>
-          <p class="metric-note">单位 CPM</p>
-        </article>
-      </div>
+      <StudentPanel title="速度与准确率" :count="chartCount">
+        <StudentEmpty v-if="!ranking.items.length" text="当前范围内还没有打字成绩，完成练习后会出现在这里。" />
+        <div v-else class="sw-rank-chart">
+          <AppChart :height="240" :option="typingRankOption" />
+        </div>
+      </StudentPanel>
 
-      <SaPanel>
-        <template #header>
-          <div class="chart-head">
-            <div>
-              <strong>成绩分布（前 {{ topTypingItems.length }} 名）</strong>
-              <p class="section-note">柱为速度（CPM），折线为准确率，便于对比速度与稳定性的平衡。</p>
-            </div>
-          </div>
-        </template>
-        <n-empty v-if="!ranking.items.length" description="当前范围内还没有打字成绩。" />
-        <AppChart v-else :height="300" :option="typingRankOption" />
-      </SaPanel>
-
-      <div class="split-grid">
-        <SaPanel description="速度优先，准确率次之。" title="完整排行榜">
-          <SaDataTable
-            :data="ranking.items"
-            empty-text="当前范围内还没有打字成绩"
-            row-key="student_no"
-            stripe
-          >
-            <SaTableColumn label="排名" min-width="80">
-              <template #default="{ row }">
-                <n-tag :type="rankTagType(row.rank)" round>#{{ row.rank }}</n-tag>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="学生" min-width="140" prop="student_name" />
-            <SaTableColumn label="学号" min-width="120" prop="student_no" />
-            <SaTableColumn label="班级" min-width="100" prop="class_name" />
-            <SaTableColumn label="速度" min-width="100" prop="speed_cpm" />
-            <SaTableColumn label="准确率" min-width="100">
-              <template #default="{ row }">
-                {{ row.accuracy_percent }}%
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="练习内容" min-width="200" prop="typing_set_title" />
-            <SaTableColumn label="时间" min-width="180">
-              <template #default="{ row }">
-                {{ formatDateTime(row.played_at) }}
-              </template>
-            </SaTableColumn>
-          </SaDataTable>
-        </SaPanel>
-
-        <SaPanel description="仅在班级榜中显示。" title="未参与学生">
-          <n-empty
-            v-if="!ranking.pending_students.length"
-            description="当前范围内没有待参与名单"
-          />
-
-          <div v-else class="pending-list">
+      <div class="sw-split">
+        <StudentPanel title="完整排行榜" :count="`${ranking.items.length} 人`" flush>
+          <template v-if="ranking.items.length">
             <article
-              v-for="item in ranking.pending_students"
+              v-for="item in ranking.items"
               :key="item.student_no"
-              class="pending-item"
+              class="sw-row sw-rank-row"
             >
-              <strong>{{ item.student_name }}</strong>
-              <span>{{ item.student_no }}</span>
+              <span
+                :class="['sw-rank-row__rank', { 'is-top': item.rank <= 3 }]"
+              >
+                {{ item.rank }}
+              </span>
+              <span class="sw-row__main">
+                <span class="sw-row__title">{{ item.student_name }}</span>
+                <span class="sw-row__meta">
+                  <span>{{ item.student_no }}</span>
+                  <span v-if="scope !== 'class'">{{ item.class_name }}</span>
+                  <span class="sw-rank-row__set">{{ item.typing_set_title }}</span>
+                  <span>准确率 {{ item.accuracy_percent }}%</span>
+                  <span>{{ formatDateTime(item.played_at) }}</span>
+                </span>
+              </span>
+              <span class="sw-row__value">
+                {{ item.speed_cpm }}<small class="sw-row__unit"> CPM</small>
+              </span>
             </article>
-          </div>
-        </SaPanel>
+          </template>
+          <StudentEmpty v-else text="当前范围内还没有打字成绩，完成练习后会出现在这里。" />
+        </StudentPanel>
+
+        <div class="sw-split__aside">
+          <StudentPanel
+            title="未参与"
+            :count="`${ranking.pending_students.length} 人`"
+            flush
+          >
+            <template v-if="ranking.pending_students.length">
+              <article
+                v-for="item in ranking.pending_students"
+                :key="item.student_no"
+                class="sw-row"
+              >
+                <span class="sw-row__main">
+                  <span class="sw-row__title">{{ item.student_name }}</span>
+                  <span class="sw-row__meta">{{ item.student_no }}</span>
+                </span>
+              </article>
+            </template>
+            <StudentEmpty v-else text="本班学生今天都已参与练习。" />
+          </StudentPanel>
+        </div>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSelect, NSkeleton, NTag } from 'naive-ui';
+import { NAlert, NButton, NSelect, NSkeleton } from 'naive-ui';
 import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StudentEmpty from '@/components/student/StudentEmpty.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
 
@@ -159,6 +128,19 @@ const ranking = ref<RankingPayload | null>(null);
 
 const topTypingItems = computed(() => (ranking.value?.items || []).slice(0, 12));
 
+const headSub = computed(() => {
+  if (!ranking.value) {
+    return '';
+  }
+  return `${ranking.value.label} · 生成于 ${formatDateTime(ranking.value.generated_at)}`;
+});
+
+const chartCount = computed(() => {
+  const items = ranking.value?.items || [];
+  const best = items[0]?.speed_cpm ?? '--';
+  return `前 ${topTypingItems.value.length} 名 · ${items.length} 人 · 最高 ${best} CPM`;
+});
+
 const typingRankOption = computed(() => {
   const items = topTypingItems.value;
   return base({
@@ -176,8 +158,8 @@ const typingRankOption = computed(() => {
       {
         name: '速度',
         type: 'bar',
-        barMaxWidth: 30,
-        itemStyle: { borderRadius: [6, 6, 0, 0], color: palette.value[0] },
+        barMaxWidth: 24,
+        itemStyle: { borderRadius: [4, 4, 0, 0], color: palette.value[0] },
         data: items.map((item) => item.speed_cpm),
       },
       {
@@ -185,9 +167,9 @@ const typingRankOption = computed(() => {
         type: 'line',
         smooth: true,
         yAxisIndex: 1,
-        symbolSize: 7,
-        lineStyle: { color: palette.value[1] },
-        itemStyle: { color: palette.value[1] },
+        symbolSize: 6,
+        lineStyle: { color: tokens.value.ink },
+        itemStyle: { color: tokens.value.ink },
         data: items.map((item) => item.accuracy_percent),
       },
     ],
@@ -205,19 +187,6 @@ function formatDateTime(value: string | null) {
     return '暂无';
   }
   return value.replace('T', ' ').slice(0, 16);
-}
-
-function rankTagType(rank: number) {
-  if (rank === 1) {
-    return 'warning';
-  }
-  if (rank === 2) {
-    return 'success';
-  }
-  if (rank === 3) {
-    return 'primary';
-  }
-  return 'info';
 }
 
 async function loadRankings() {
@@ -243,56 +212,49 @@ onMounted(loadRankings);
 </script>
 
 <style scoped>
-.scope-select {
-  width: 150px;
+.sw-rankings {
+  display: grid;
+  gap: var(--sw-section-gap);
 }
 
-.chart-head strong {
-  color: var(--ls-ink);
+.scope-select {
+  width: 120px;
+}
+
+/* AppChart 自带 220px 最小高度，这里按契约固定为 240px */
+.sw-rank-chart :deep(.app-chart) {
+  min-height: 240px;
+}
+
+.sw-rank-row__rank {
+  flex: none;
+  width: 30px;
+  color: var(--sw-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-rank-row__rank.is-top {
+  color: var(--sw-ink);
+  font-weight: 600;
+}
+
+.sw-rank-row .sw-row__value {
+  min-width: 72px;
   font-size: 15px;
 }
 
-.section-note {
-  margin: 4px 0 0;
-  color: var(--ls-muted);
-  font-size: 13px;
+.sw-rank-row .sw-row__value small {
+  color: var(--sw-muted);
+  font-size: 11.5px;
+  font-weight: 400;
 }
 
-.ranking-metric-text {
-  font-size: clamp(24px, 2vw, 34px);
-}
-
-.split-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.pending-list {
-  display: grid;
-  gap: 10px;
-}
-
-.pending-item {
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--ls-border);
-  background: rgba(255, 179, 71, 0.12);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-}
-
-.pending-item span {
-  color: var(--ls-muted);
-  font-size: 13px;
-}
-
-@media (max-width: 1200px) {
-  .split-grid {
-    grid-template-columns: 1fr;
+@media (max-width: 640px) {
+  .sw-rank-row__set {
+    display: none;
   }
 }
 </style>

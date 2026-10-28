@@ -1,168 +1,113 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader
-      eyebrow="阅读任务"
+  <div class="sw-reading">
+    <StudentPageHead
       :title="taskDetail?.title || `阅读任务 ${route.params.taskId}`"
+      :sub="headSub"
     >
-      <p class="hero-copy">
-        {{ taskDetail?.course.title || '正在加载课次信息' }}
-        <span v-if="taskDetail">
-          · {{ taskDetail.course.book_title }} · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}
-        </span>
-      </p>
-      <template #actions>
-        <div class="action-group">
-          <n-button secondary @click="goToCourse">返回课程</n-button>
-          <n-button
-            v-if="taskDetail?.task_navigation.previous_task"
-            secondary
-            @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
-          >
-            上一个任务
-          </n-button>
-          <n-button
-            v-if="taskDetail?.task_navigation.next_task"
-            secondary
-            type="primary"
-            @click="openNavigationTask(taskDetail.task_navigation.next_task)"
-          >
-            下一个任务
-          </n-button>
-        </div>
+      <template #back>
+        <button class="sw-back" type="button" @click="goToCourse">← 返回课程</button>
       </template>
-    </SaPageHeader>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <div v-if="taskDetail" class="metric-grid">
-      <article class="mini-panel">
-        <p class="metric-label">阅读状态</p>
-        <p class="metric-value metric-value--small">{{ readStatusLabel }}</p>
-        <p class="metric-note">{{ readStatusNote }}</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">任务要求</p>
-        <p class="metric-value metric-value--small">{{ taskDetail.is_required ? '必读' : '选读' }}</p>
-        <p class="metric-note">建议先完成阅读，再进入后续实践任务。</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">教材位置</p>
-        <p class="metric-value metric-value--small">{{ taskDetail.course.lesson_title }}</p>
-        <p class="metric-note">{{ taskDetail.course.unit_title }}</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">已读时间</p>
-        <p class="metric-value metric-value--small">{{ readAtText }}</p>
-        <p class="metric-note">
-          {{ taskDetail.task_navigation.next_task ? `下一任务：${taskDetail.task_navigation.next_task.title}` : '这是本课的最后一个任务。' }}
-        </p>
-      </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="10" animated /></div>
     </div>
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
-
-    <div v-else-if="taskDetail" class="detail-grid">
-      <div class="detail-main">
-        <SaPanel title="阅读内容">
-          <template #actions>
-            <n-tag round type="success">课程阅读</n-tag>
-          </template>
-          <RichTextContent :html="taskDetail.description" empty-text="当前阅读任务还没有补充内容。" />
-        </SaPanel>
-
-        <SaPanel title="学案导读">
-          <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
-        </SaPanel>
-
-        <SaPanel v-if="taskDetail.resources.length" title="附件与拓展资源">
-          <template #actions>
-            <n-tag round type="info">{{ taskDetail.resources.length }} 项</n-tag>
-          </template>
-
-          <div class="resource-grid">
-            <article v-for="resource in taskDetail.resources" :key="resource.id" class="resource-card">
-              <div class="resource-card__head">
-                <div class="chip-row">
-                  <n-tag round :type="resource.external_url ? 'warning' : 'success'">
-                    {{ resourceTypeLabel(resource) }}
-                  </n-tag>
-                  <n-tag v-if="resource.category" round type="info">
-                    {{ resource.category.name }}
-                  </n-tag>
-                </div>
-                <n-button text type="primary" @click="openResource(resource)">
-                  {{ resource.external_url ? '打开外链' : '查看资料' }}
-                </n-button>
-              </div>
-
-              <h3>{{ resource.title }}</h3>
-              <p class="resource-card__summary">{{ resourceSummaryText(resource) }}</p>
-              <p class="resource-card__meta">
-                {{ resource.owner_name }}
-                <span v-if="resource.external_url"> · 外部链接</span>
-              </p>
-            </article>
+    <div v-else-if="taskDetail" class="sw-split">
+      <div class="sw-reading__main">
+        <StudentPanel title="阅读内容">
+          <div class="sw-reading__prose">
+            <RichTextContent :html="taskDetail.description" empty-text="这条阅读任务还没有正文。" />
           </div>
-        </SaPanel>
+        </StudentPanel>
+
+        <StudentPanel v-if="taskDetail.course.content" title="学案导读">
+          <div class="sw-reading__prose">
+            <RichTextContent :html="taskDetail.course.content" empty-text="这节课没有补充导读。" />
+          </div>
+        </StudentPanel>
+
+        <StudentPanel
+          v-if="taskDetail.resources.length"
+          title="附件与拓展"
+          :count="`${taskDetail.resources.length} 项`"
+          flush
+        >
+          <button
+            v-for="resource in taskDetail.resources"
+            :key="resource.id"
+            type="button"
+            class="sw-row sw-row--link sw-reading__resource"
+            @click="openResource(resource)"
+          >
+            <span class="sw-row__main">
+              <span class="sw-row__title">{{ resource.title }}</span>
+              <span class="sw-row__meta">
+                <span>{{ resourceTypeLabel(resource) }}</span>
+                <span v-if="resource.category">{{ resource.category.name }}</span>
+                <span>{{ resource.owner_name }}</span>
+              </span>
+            </span>
+            <span class="sw-row__action">{{ resource.external_url ? '打开外链 →' : '查看资料 →' }}</span>
+          </button>
+        </StudentPanel>
       </div>
 
-      <SaPanel title="阅读操作">
-        <n-descriptions :column="1" bordered>
-          <n-descriptions-item label="课程">{{ taskDetail.course.title }}</n-descriptions-item>
-          <n-descriptions-item label="课次">{{ taskDetail.course.lesson_title }}</n-descriptions-item>
-          <n-descriptions-item label="阅读状态">{{ readStatusLabel }}</n-descriptions-item>
-          <n-descriptions-item label="已读时间">{{ readAtText }}</n-descriptions-item>
-        </n-descriptions>
-
-        <div class="tip-panel">
-          <p class="tip-title">阅读提示</p>
-          <p>1. 本页用于阅读任务正文与学案导读内容。</p>
-          <p>2. 阅读确认会记录“已读时间”，不会生成作品提交记录。</p>
-          <p>3. 阅读完成后，可以直接进入下一任务继续学习。</p>
-        </div>
-
-        <div class="page-stack page-stack--compact">
+      <aside class="sw-split__aside">
+        <StudentPanel title="阅读进度">
+          <div class="sw-reading__status">
+            <span :class="['sw-chip', isRead ? 'sw-chip--done' : 'sw-chip--now']">
+              {{ isRead ? '已读' : '未读' }}
+            </span>
+            <span class="sw-reading__time">
+              {{ isRead ? `已读于 ${readAtText}` : '完成阅读后确认' }}
+            </span>
+          </div>
           <n-button
-            :disabled="Boolean(taskDetail.reading_progress?.is_read)"
-            :loading="isMarkingRead"
             block
+            :disabled="isRead"
+            :loading="isMarkingRead"
             type="primary"
             @click="markAsRead"
           >
-            {{ taskDetail.reading_progress?.is_read ? '已完成已读确认' : '标记为已读' }}
+            {{ isRead ? '已确认读完' : '标记为已读' }}
           </n-button>
+          <p class="sw-reading__note">
+            确认只记录阅读时间，不会生成作品提交；后续任务仍需分别完成。
+          </p>
+        </StudentPanel>
+
+        <StudentPanel v-if="taskDetail.task_navigation.next_task" title="下一项">
+          <p class="sw-reading__next-title">{{ taskDetail.task_navigation.next_task.title }}</p>
           <n-button
-            v-if="taskDetail.task_navigation.next_task"
             block
             secondary
-            @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+            @click="openNavigationTask(taskDetail.task_navigation.next_task!)"
           >
             进入下一任务
           </n-button>
-        </div>
-      </SaPanel>
+        </StudentPanel>
+
+        <StudentPanel v-else title="下一项">
+          <p class="sw-reading__next-title">这是本课的最后一个任务。</p>
+          <n-button block secondary @click="goToCourse">回到课程</n-button>
+        </StudentPanel>
+      </aside>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import {
-  NAlert,
-  NButton,
-  NDescriptions,
-  NDescriptionsItem,
-  NSkeleton,
-  NTag,
-} from 'naive-ui';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
 
@@ -226,14 +171,18 @@ const isLoading = ref(true);
 const isMarkingRead = ref(false);
 const errorMessage = ref('');
 
-const readStatusLabel = computed(() => (taskDetail.value?.reading_progress?.is_read ? '已读' : '未读'));
-const readStatusNote = computed(() => {
-  if (taskDetail.value?.reading_progress?.is_read) {
-    return '你已经完成这条阅读任务的已读确认。';
-  }
-  return '请先完整阅读本页内容，再点击已读确认。';
-});
+const isRead = computed(() => Boolean(taskDetail.value?.reading_progress?.is_read));
 const readAtText = computed(() => formatDateTime(taskDetail.value?.reading_progress?.read_at || null));
+
+const headSub = computed(() => {
+  const detail = taskDetail.value;
+  if (!detail) {
+    return '';
+  }
+  const parts = [detail.course.title, detail.course.unit_title, detail.course.lesson_title].filter(Boolean);
+  parts.push(detail.is_required ? '必读' : '选读');
+  return parts.join(' · ');
+});
 
 function buildTaskRoute(task: NavigationTask) {
   const courseId = taskDetail.value?.course.id || route.params.courseId;
@@ -264,16 +213,6 @@ function resourceTypeLabel(resource: ReadingResource) {
     return '文章';
   }
   return '资源';
-}
-
-function resourceSummaryText(resource: ReadingResource) {
-  if (resource.summary?.trim()) {
-    return resource.summary.trim();
-  }
-  if (resource.external_url) {
-    return '教师为本任务推荐了外部参考链接，可直接跳转查看。';
-  }
-  return '可在资源中心查看这份资料的完整内容。';
 }
 
 function openResource(resource: ReadingResource) {
@@ -348,89 +287,55 @@ watch(() => route.params.taskId, () => {
 </script>
 
 <style scoped>
-.action-group {
+.sw-reading {
+  display: grid;
+  gap: var(--sw-section-gap);
+}
+
+.sw-reading__main {
+  display: grid;
+  gap: var(--sw-gap);
+}
+
+.sw-reading__prose {
+  max-width: 76ch;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.sw-reading__resource {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+
+.sw-reading__status {
   display: flex;
+  align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  margin-bottom: 12px;
 }
 
-.detail-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 16fr) minmax(0, 8fr);
-  gap: 16px;
-  align-items: start;
+.sw-reading__time {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.detail-main {
-  display: grid;
-  gap: 16px;
+.sw-reading__note {
+  margin: 10px 0 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.55;
 }
 
-@media (max-width: 1200px) {
-  .detail-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.tip-panel {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--ls-primary-soft);
-}
-
-.tip-panel p {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.8;
-}
-
-.tip-title {
-  margin-bottom: 8px;
-  color: var(--ls-ink) !important;
-  font-weight: 700;
-}
-
-.page-stack--compact {
-  margin-top: 16px;
-  gap: 10px;
-}
-
-.metric-value--small {
-  font-size: 22px;
-}
-
-.resource-grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-}
-
-.resource-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border-radius: 18px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-panel);
-}
-
-.resource-card h3,
-.resource-card p {
-  margin: 0;
-}
-
-.resource-card__head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 10px;
-}
-
-.resource-card__summary,
-.resource-card__meta {
-  color: var(--ls-muted);
-  line-height: 1.7;
+.sw-reading__next-title {
+  margin: 0 0 12px;
+  color: var(--sw-ink);
+  font-size: 14px;
+  line-height: 1.5;
 }
 </style>

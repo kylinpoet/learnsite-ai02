@@ -1,43 +1,15 @@
 <template>
-  <div class="page-stack">
-    <SaPageHeader eyebrow="任务提交">
-      <template #title>{{ taskDetail?.title || `任务 ${route.params.taskId}` }}</template>
-      <p class="hero-copy">
-        {{ taskDetail?.course.title || '正在加载课次信息' }}
-        <span v-if="taskDetail"> · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}</span>
-      </p>
-      <template #actions>
-        <n-button secondary @click="goToCourse">返回课程</n-button>
-        <n-button
-          v-if="taskDetail?.task_navigation.previous_task"
-          secondary
-          @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
-        >
-          上一个任务
-        </n-button>
-        <n-button
-          v-if="taskDetail?.task_navigation.next_task"
-          secondary
-          type="primary"
-          @click="openNavigationTask(taskDetail.task_navigation.next_task)"
-        >
-          下一个任务
-        </n-button>
-        <n-button secondary @click="goToPeerReview">作品互评</n-button>
-        <n-button v-if="usesStandardSubmissionFlow && currentSubmission" secondary @click="goToWorkDetail">
-          查看已提交作品
-        </n-button>
-        <n-button
-          v-if="currentSubmission?.status === 'reviewed'"
-          :loading="isRevokingReview"
-          secondary
-          type="warning"
-          @click="revokeReviewedSubmission"
-        >
-          撤销评阅并继续提交
-        </n-button>
+  <div class="sw-task">
+    <StudentPageHead :title="taskDetail?.title || `任务 ${route.params.taskId}`" :sub="headSub">
+      <template #back>
+        <button class="sw-back" type="button" @click="goToCourse">← 返回课程</button>
       </template>
-    </SaPageHeader>
+      <template v-if="taskDetail" #actions>
+        <n-dropdown :options="moreActionOptions" placement="bottom-end" trigger="click" @select="handleMoreAction">
+          <n-button secondary>更多操作</n-button>
+        </n-dropdown>
+      </template>
+    </StudentPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
     <n-alert
@@ -53,469 +25,380 @@
       type="warning"
     />
 
-    <div v-if="taskDetail" class="metric-grid">
-      <article class="mini-panel">
-        <p class="metric-label">当前状态</p>
-        <p class="metric-value metric-value--small">{{ submissionStatusLabel }}</p>
-        <p class="metric-note">{{ submissionStatusNote }}</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">{{ ruleMetricLabel }}</p>
-        <p class="metric-value metric-value--small">{{ ruleMetricValue }}</p>
-        <p class="metric-note">{{ ruleMetricNote }}</p>
-      </article>
-      <article class="mini-panel">
-        <p class="metric-label">{{ assetMetricLabel }}</p>
-        <p class="metric-value">{{ assetMetricValue }}</p>
-        <p class="metric-note">{{ assetMetricNote }}</p>
-      </article>
-      <article v-if="taskDetail.group_collaboration" class="mini-panel">
-        <p class="metric-label">协作小组</p>
-        <p class="metric-value metric-value--small">{{ taskDetail.group_collaboration.group_name }}</p>
-        <p class="metric-note">
-          {{ taskDetail.group_collaboration.member_count }} 人 · 我当前是{{ groupRoleLabel(taskDetail.group_collaboration.my_role) }}
-        </p>
-      </article>
+    <div v-if="isLoading" class="sw-panel">
+      <div class="sw-panel__body"><n-skeleton :rows="10" animated /></div>
     </div>
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="10" animated />
-    </SaPanel>
+    <template v-else-if="taskDetail">
+      <div class="sw-task__status">
+        <span :class="['sw-chip', statusChipClass]">{{ submissionStatusLabel }}</span>
+        <span class="sw-task__status-note">{{ submissionStatusNote }}</span>
+      </div>
 
-    <div v-else-if="taskDetail" class="page-stack">
-          <div class="task-layout">
-            <div class="task-column">
-              <SaPanel>
-                <template #header>
-                  <div class="info-row">
-                    <span>{{ isDataSubmitTask ? '任务内容' : '任务说明' }}</span>
-                    <n-tag round>{{ taskTypeLabel(taskDetail.task_type) }}</n-tag>
-                  </div>
-                </template>
-
-                <div v-if="!isDataSubmitTask" class="description-block">
-                  <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
-                </div>
-
-                <n-divider v-if="!isDataSubmitTask" />
-
-                <div v-if="isDiscussionTask" class="discussion-shell">
-                  <div class="section-head">
-                    <h3>课堂讨论</h3>
-                    <span>围绕教师发布的主题直接回复，当前支持一层主题回复。</span>
-                  </div>
-                  <n-alert
-                    :closable="false"
-                    :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读任务说明后回复。'"
-                    type="info"
-                  />
-                  <div class="discussion-compose-note">
-                    请在下方“提交说明”中使用富文本编辑器填写观点，再点击“发布回复”同步到讨论区。
-                  </div>
-                  <div class="stack-list">
-                    <article v-for="post in discussionPosts" :key="post.id" class="discussion-item">
-                      <div class="discussion-meta">
-                        <strong>{{ post.author.display_name }}</strong>
-                        <span>{{ post.author.student_no || '学号未登记' }}</span>
-                        <span>{{ formatDateTime(post.updated_at || post.created_at) }}</span>
-                      </div>
-                      <RichTextContent class="discussion-text-rich" :html="post.content" empty-text="" sanitize-preset="strict" />
-                      <div v-if="post.replies?.length" class="discussion-replies">
-                        <article v-for="reply in post.replies" :key="reply.id" class="discussion-reply">
-                          <div class="discussion-meta">
-                            <strong>{{ reply.author.display_name }}</strong>
-                            <span>{{ reply.author.student_no || '学号未登记' }}</span>
-                            <span>{{ formatDateTime(reply.updated_at || reply.created_at) }}</span>
-                          </div>
-                          <RichTextContent class="discussion-text-rich" :html="reply.content" empty-text="" sanitize-preset="strict" />
-                        </article>
-                      </div>
-                    </article>
-                    <p v-if="!isDiscussionLoading && !discussionPostCount" class="discussion-empty-text">还没有同学参与讨论，欢迎你先发言。</p>
-                  </div>
-                </div>
-
-                <div v-else-if="isWebTask" class="embed-shell">
-                  <div class="section-head">
-                    <h3>任务页面</h3>
-                    <span>教师发布的网页内容会直接嵌入到当前任务页中。</span>
-                  </div>
-                  <iframe
-                    v-if="webTaskUrl"
-                    :src="webTaskUrl"
-                    :sandbox="taskEmbedSandboxFor(webTaskUrl)"
-                    class="task-embed-frame"
-                    title="网页任务"
-                  ></iframe>
-                  <n-empty v-else-if="isWebTaskResourcePreparing" description="任务资源初始化中，请稍候..." />
-                  <n-empty v-else description="教师暂未上传网页任务资源或资源加载失败" />
-                </div>
-
-                <div v-else-if="isDataSubmitTask" class="embed-shell">
-                  <div class="section-head">
-                    <h3>数据提交任务</h3>
-                    <span>先在提交页完成数据上报，再切换到可视化页查看结果。</span>
-                  </div>
-                  <div class="section-head section-head--compact">
-                    <span>可以将提交页或可视化页在新标签页中打开，方便单独查看和连续使用。</span>
-                    <div class="section-head__actions">
-                      <n-button
-                        secondary
-                        size="small"
-                        :disabled="!dataSubmitFormUrl"
-                        @click="openTaskResourceInNewTab(dataSubmitFormUrl, 'submit')"
-                      >
-                        新标签打开提交页
-                      </n-button>
-                      <n-button
-                        secondary
-                        size="small"
-                        :disabled="!dataSubmitVisualizationUrl"
-                        @click="openTaskResourceInNewTab(dataSubmitVisualizationUrl, 'visualization')"
-                      >
-                        新标签打开可视化页
-                      </n-button>
-                    </div>
-                  </div>
-                  <n-tabs v-model:value="dataSubmitActiveTab">
-                    <n-tab-pane name="submit" tab="学生提交页">
-                      <div class="data-submit-tab-pane">
-                        <div class="description-block description-block--inline">
-                          <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
-                        </div>
-                        <iframe
-                          v-if="dataSubmitFormUrl"
-                          :src="dataSubmitFormUrl"
-                          :sandbox="taskEmbedSandboxFor(dataSubmitFormUrl)"
-                          class="task-embed-frame"
-                          title="数据提交页"
-                        ></iframe>
-                        <n-empty v-else description="教师暂未上传数据提交页面" />
-                      </div>
-                    </n-tab-pane>
-                    <n-tab-pane name="visualization" tab="数据可视化页">
-                      <iframe
-                        v-if="dataSubmitVisualizationUrl"
-                        :src="dataSubmitVisualizationUrl"
-                        :sandbox="taskEmbedSandboxFor(dataSubmitVisualizationUrl)"
-                        class="task-embed-frame"
-                        title="数据可视化页"
-                      ></iframe>
-                      <n-empty v-else description="教师暂未上传可视化页面" />
-                    </n-tab-pane>
-                  </n-tabs>
-                </div>
-
-                <div v-if="usesStandardSubmissionFlow" class="submission-form">
-                  <div class="section-head">
-                    <h3>{{ submissionNoteTitle }}</h3>
-                    <span>{{ submissionNoteHint }}</span>
-                  </div>
-                  <div class="submission-editor">
-                    <RichTextEditor
-                      v-model="submissionNote"
-                      :min-height="260"
-                      placeholder="写下你的设计思路、步骤说明、图片说明或补充内容。支持标题、列表、加粗、链接和图片。"
-                    />
-                  </div>
-
-                  <div v-if="isDiscussionTask" class="action-group discussion-action-group">
-                    <n-button :loading="isPostingDiscussion" type="primary" @click="postDiscussionReply">
-                      发布回复
-                    </n-button>
-                    <n-button :loading="isDiscussionLoading" secondary @click="loadDiscussionFeed">
-                      刷新讨论
-                    </n-button>
-                  </div>
-
-                  <div v-if="!isDiscussionTask" class="section-head section-head--compact">
-                    <h3>作品附件</h3>
-                    <span>支持多文件。重新选择附件后，本次提交会替换当前已保存附件。</span>
-                  </div>
-
-                  <input
-                    v-if="!isDiscussionTask"
-                    ref="fileInputRef"
-                    class="file-input"
-                    multiple
-                    type="file"
-                    @change="handleFileChange"
-                  />
-
-                  <div v-if="!isDiscussionTask" class="action-group">
-                    <n-button :disabled="!taskDetail.can_submit" secondary @click="openFilePicker">
-                      选择附件
-                    </n-button>
-                    <n-button
-                      v-if="selectedFiles.length"
-                      :disabled="isSubmitting"
-                      secondary
-                      @click="clearSelectedFiles"
-                    >
-                      清空本次选择
-                    </n-button>
-                  </div>
-
-                  <n-alert
-                    v-if="!taskDetail.can_submit"
-                    :closable="false"
-                    title="这份作业已经完成教师评价，不能再次提交。"
-                    type="warning"
-                  />
-
-                  <div v-if="!isDiscussionTask" class="stack-list">
-                    <article v-for="file in selectedFiles" :key="selectedFileKey(file)" class="file-item">
-                      <div>
-                        <p class="file-name">{{ file.name }}</p>
-                        <p class="file-meta">{{ formatFileSize(file.size) }} · 本次提交附件</p>
-                      </div>
-                      <div class="file-actions">
-                        <n-button
-                          :loading="previewLoadingSelectedFileKey === selectedFileKey(file)"
-                          :disabled="!isLocalFilePreviewable(file)"
-                          text
-                          type="primary"
-                          @click="previewSelectedFile(file)"
-                        >
-                          预览
-                        </n-button>
-                        <n-button text type="error" @click="removeSelectedFile(file.name)">
-                          移除
-                        </n-button>
-                      </div>
-                    </article>
-
-                    <article
-                      v-for="file in displayedCurrentFiles"
-                      :key="`saved-${file.id}`"
-                      class="file-item"
-                    >
-                      <div>
-                        <p class="file-name">{{ file.name }}</p>
-                        <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB · 已保存</p>
-                      </div>
-                      <div class="file-actions">
-                        <n-tag round type="info">{{ file.role }}</n-tag>
-                        <n-button
-                          :loading="previewLoadingSavedFileId === file.id"
-                          :disabled="!isSavedFilePreviewable(file)"
-                          text
-                          type="primary"
-                          @click="previewSavedFile(file)"
-                        >
-                          预览
-                        </n-button>
-                        <n-button
-                          :loading="downloadLoadingFileId === file.id"
-                          text
-                          type="primary"
-                          @click="downloadSavedFile(file)"
-                        >
-                          下载
-                        </n-button>
-                      </div>
-                    </article>
-
-                    <n-empty
-                      v-if="!selectedFiles.length && !displayedCurrentFiles.length"
-                      description="还没有上传附件"
-                    />
-                  </div>
-                </div>
-              </SaPanel>
+      <div class="sw-split">
+        <div class="sw-task__main">
+          <StudentPanel
+            :title="isDataSubmitTask ? '任务内容' : '任务说明'"
+            :count="taskTypeLabel(taskDetail.task_type)"
+          >
+            <div v-if="!isDataSubmitTask" class="sw-prose">
+              <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
             </div>
 
-            <div class="task-column">
-              <SaPanel title="提交信息">
+            <div v-if="isDiscussionTask" class="sw-task__discussion">
+              <n-alert
+                :closable="false"
+                :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读任务说明后回复。'"
+                type="info"
+              />
+              <div class="sw-task__posts">
+                <article v-for="post in discussionPosts" :key="post.id" class="sw-task__post">
+                  <div class="sw-task__post-meta">
+                    <strong>{{ post.author.display_name }}</strong>
+                    <span>{{ post.author.student_no || '学号未登记' }}</span>
+                    <span>{{ formatDateTime(post.updated_at || post.created_at) }}</span>
+                  </div>
+                  <RichTextContent class="sw-task__post-body" :html="post.content" empty-text="" sanitize-preset="strict" />
+                  <div v-if="post.replies?.length" class="sw-task__replies">
+                    <article v-for="reply in post.replies" :key="reply.id" class="sw-task__reply">
+                      <div class="sw-task__post-meta">
+                        <strong>{{ reply.author.display_name }}</strong>
+                        <span>{{ reply.author.student_no || '学号未登记' }}</span>
+                        <span>{{ formatDateTime(reply.updated_at || reply.created_at) }}</span>
+                      </div>
+                      <RichTextContent class="sw-task__post-body" :html="reply.content" empty-text="" sanitize-preset="strict" />
+                    </article>
+                  </div>
+                </article>
+                <p v-if="!isDiscussionLoading && !discussionPostCount" class="sw-empty">
+                  还没有同学参与讨论，欢迎你先发言。
+                </p>
+              </div>
+            </div>
 
-                <n-descriptions :column="1" bordered>
-                  <n-descriptions-item label="课程">{{ taskDetail.course.title }}</n-descriptions-item>
-                  <n-descriptions-item label="发布时间">
-                    {{ formatDate(taskDetail.course.assigned_date) }}
-                  </n-descriptions-item>
-                  <n-descriptions-item label="最近提交">
-                    {{ formatDateTime(currentSubmission?.updated_at || null) }}
-                  </n-descriptions-item>
-                  <n-descriptions-item label="提交方式">
-                    {{ taskDetail.submission_scope === 'group' ? '小组共同提交' : '个人提交' }}
-                  </n-descriptions-item>
-                  <n-descriptions-item v-if="currentSubmission?.submission_scope === 'group'" label="最近提交人">
-                    {{ currentSubmission?.submitted_by_name || '组内成员' }}
-                  </n-descriptions-item>
-                </n-descriptions>
+            <div v-else-if="isWebTask" class="sw-task__embed">
+              <iframe
+                v-if="webTaskUrl"
+                :src="webTaskUrl"
+                :sandbox="taskEmbedSandboxFor(webTaskUrl)"
+                class="task-embed-frame"
+                title="网页任务"
+              ></iframe>
+              <n-empty v-else-if="isWebTaskResourcePreparing" description="任务资源初始化中，请稍候..." />
+              <n-empty v-else description="教师暂未上传网页任务资源或资源加载失败" />
+            </div>
 
-                <div class="review-comment-panel">
-                  <p class="review-comment-title">教师评语</p>
-                  <RichTextContent
-                    class="review-comment-content"
-                    :html="currentSubmission?.teacher_comment || ''"
-                    empty-text="教师暂未留下评语。"
-                    sanitize-preset="strict"
-                  />
-                </div>
-
-                <div class="tip-panel">
-                  <p class="tip-title">本页规则</p>
-                  <template v-if="isDiscussionTask">
-                    <p>1. 当前任务支持“讨论互动 + 正式提交”双轨模式。</p>
-                    <p>2. 请在下方“提交说明”中编辑内容后，直接点击“发布回复”同步到讨论区。</p>
-                    <p>3. 教师评分以正式提交内容为准，讨论内容用于课堂交流。</p>
-                  </template>
-                  <template v-else-if="isWebTask">
-                    <p>1. 当前任务通过网页页面完成，老师发布的网页会直接嵌入展示。</p>
-                    <p>2. 完成网页互动后，请在下方补充提交说明并可上传结果附件。</p>
-                    <p>3. 教师更新网页资源后，刷新页面即可看到最新内容。</p>
-                  </template>
-                  <template v-else-if="isDataSubmitTask">
-                    <p>1. 当前任务通过数据页面完成，不需要在这里单独提交附件。</p>
-                    <p>2. 先在提交页完成数据上报，再切换到可视化页查看结果。</p>
-                    <p>3. 可视化页对学生开放，可直接查看全班结果展示。</p>
-                  </template>
-                  <template v-else>
-                    <p>1. 不再保存草稿，点击提交就是正式保存。</p>
-                    <p>2. {{ taskDetail.submission_scope === 'group' ? '当前任务按小组共同提交，组内成员看到的是同一份作品。' : '当前任务按个人独立提交。' }}</p>
-                    <p>3. 若本次不重新选择附件，将保留当前已保存附件。</p>
-                    <p v-if="taskDetail.submission_scope === 'group'">4. 可先同步共享草稿共同编辑作品说明，再由任一成员正式提交附件与最终版本。</p>
-                  </template>
-                </div>
-
+            <div v-else-if="isDataSubmitTask" class="sw-task__embed">
+              <div class="sw-task__embed-actions">
                 <n-button
-                  v-if="usesStandardSubmissionFlow"
-                  :disabled="!taskDetail.can_submit"
-                  :loading="isSubmitting"
-                  class="submit-button"
-                  type="primary"
-                  @click="submitTask"
-                >
-                  {{ submitButtonText }}
-                </n-button>
-
-                <n-button
-                  v-if="taskDetail.task_navigation.next_task"
-                  class="submit-button"
                   secondary
-                  @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+                  size="small"
+                  :disabled="!dataSubmitFormUrl"
+                  @click="openTaskResourceInNewTab(dataSubmitFormUrl, 'submit')"
                 >
-                  进入下一任务
+                  新标签打开提交页
                 </n-button>
-
                 <n-button
-                  v-if="currentSubmission?.status === 'reviewed'"
-                  :loading="isRevokingReview"
-                  class="submit-button"
                   secondary
-                  type="warning"
-                  @click="revokeReviewedSubmission"
+                  size="small"
+                  :disabled="!dataSubmitVisualizationUrl"
+                  @click="openTaskResourceInNewTab(dataSubmitVisualizationUrl, 'visualization')"
                 >
-                  撤销评阅并继续提交
+                  新标签打开可视化页
                 </n-button>
-              </SaPanel>
+              </div>
+              <n-tabs v-model:value="dataSubmitActiveTab">
+                <n-tab-pane name="submit" tab="学生提交页">
+                  <div class="data-submit-tab-pane">
+                    <div class="sw-prose">
+                      <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
+                    </div>
+                    <iframe
+                      v-if="dataSubmitFormUrl"
+                      :src="dataSubmitFormUrl"
+                      :sandbox="taskEmbedSandboxFor(dataSubmitFormUrl)"
+                      class="task-embed-frame"
+                      title="数据提交页"
+                    ></iframe>
+                    <n-empty v-else description="教师暂未上传数据提交页面" />
+                  </div>
+                </n-tab-pane>
+                <n-tab-pane name="visualization" tab="数据可视化页">
+                  <iframe
+                    v-if="dataSubmitVisualizationUrl"
+                    :src="dataSubmitVisualizationUrl"
+                    :sandbox="taskEmbedSandboxFor(dataSubmitVisualizationUrl)"
+                    class="task-embed-frame"
+                    title="数据可视化页"
+                  ></iframe>
+                  <n-empty v-else description="教师暂未上传可视化页面" />
+                </n-tab-pane>
+              </n-tabs>
+            </div>
 
-              <SaPanel title="学案导读">
-                <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
-              </SaPanel>
+            <div v-if="usesStandardSubmissionFlow" class="sw-task__form">
+              <div class="sw-task__form-head">
+                <h3 class="sw-task__form-title">{{ submissionNoteTitle }}</h3>
+                <span class="sw-task__form-hint">{{ submissionNoteHint }}</span>
+              </div>
+              <div class="submission-editor">
+                <RichTextEditor
+                  v-model="submissionNote"
+                  :min-height="260"
+                  placeholder="写下你的设计思路、步骤说明、图片说明或补充内容。支持标题、列表、加粗、链接和图片。"
+                />
+              </div>
 
-              <SaPanel v-if="taskDetail.group_collaboration && usesStandardSubmissionFlow" title="小组共同编辑">
+              <div v-if="isDiscussionTask" class="sw-task__form-actions">
+                <n-button :loading="isPostingDiscussion" type="primary" @click="postDiscussionReply">
+                  发布回复
+                </n-button>
+                <n-button :loading="isDiscussionLoading" secondary @click="loadDiscussionFeed">
+                  刷新讨论
+                </n-button>
+              </div>
 
-                <div class="tip-panel">
-                  <p class="tip-title">共享草稿</p>
-                  <p>{{ groupDraftSummary }}</p>
-                  <p>{{ groupDraftMeta }}</p>
-                  <p>当前只同步作品说明；附件仍需由任一组员在正式提交时上传。</p>
+              <template v-else>
+                <div class="sw-task__form-head sw-task__form-head--files">
+                  <h3 class="sw-task__form-title">作品附件</h3>
+                  <span class="sw-task__form-hint">重新选择后，本次提交会替换当前已保存附件。</span>
                 </div>
-
-                <div class="file-actions">
-                  <n-tag round type="info">
-                    {{ currentGroupDraft ? `版本 ${currentGroupDraft.version_no}` : '未同步' }}
-                  </n-tag>
-                  <n-tag v-if="currentGroupDraft?.updated_by_name" round type="success">
-                    {{ currentGroupDraft.updated_by_name }}
-                  </n-tag>
-                </div>
-
-                <div class="page-stack page-stack--compact">
+                <input
+                  ref="fileInputRef"
+                  class="file-input"
+                  multiple
+                  type="file"
+                  @change="handleFileChange"
+                />
+                <div class="sw-task__form-actions">
+                  <n-button :disabled="!taskDetail.can_submit" secondary @click="openFilePicker">
+                    选择附件
+                  </n-button>
                   <n-button
-                    :disabled="!groupDraftActionsEnabled"
-                    :loading="isGroupDraftSaving"
+                    v-if="selectedFiles.length"
+                    :disabled="isSubmitting"
                     secondary
-                    type="primary"
-                    @click="saveGroupDraft"
+                    @click="clearSelectedFiles"
                   >
-                    同步到小组草稿
-                  </n-button>
-                  <n-button :disabled="!currentGroupDraft" secondary @click="applyGroupDraft">
-                    恢复小组草稿
-                  </n-button>
-                  <n-button :loading="isRefreshingTask" secondary @click="refreshTaskDetail">
-                    刷新协作内容
-                  </n-button>
-                  <n-button secondary @click="isGroupDraftHistoryVisible = true">
-                    历史版本
+                    清空本次选择
                   </n-button>
                 </div>
-              </SaPanel>
+
+                <div class="sw-task__files">
+                  <article
+                    v-for="file in selectedFiles"
+                    :key="selectedFileKey(file)"
+                    class="sw-file"
+                  >
+                    <span class="sw-file__main">
+                      <span class="sw-file__name">{{ file.name }}</span>
+                      <span class="sw-file__meta">{{ formatFileSize(file.size) }} · 本次提交</span>
+                    </span>
+                    <span class="sw-file__actions">
+                      <n-button
+                        :loading="previewLoadingSelectedFileKey === selectedFileKey(file)"
+                        :disabled="!isLocalFilePreviewable(file)"
+                        text
+                        @click="previewSelectedFile(file)"
+                      >
+                        预览
+                      </n-button>
+                      <n-button text @click="removeSelectedFile(file.name)">移除</n-button>
+                    </span>
+                  </article>
+
+                  <article
+                    v-for="file in displayedCurrentFiles"
+                    :key="`saved-${file.id}`"
+                    class="sw-file"
+                  >
+                    <span class="sw-file__main">
+                      <span class="sw-file__name">{{ file.name }}</span>
+                      <span class="sw-file__meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB · 已保存</span>
+                    </span>
+                    <span class="sw-file__actions">
+                      <n-button
+                        :loading="previewLoadingSavedFileId === file.id"
+                        :disabled="!isSavedFilePreviewable(file)"
+                        text
+                        @click="previewSavedFile(file)"
+                      >
+                        预览
+                      </n-button>
+                      <n-button
+                        :loading="downloadLoadingFileId === file.id"
+                        text
+                        @click="downloadSavedFile(file)"
+                      >
+                        下载
+                      </n-button>
+                    </span>
+                  </article>
+
+                  <p v-if="!selectedFiles.length && !displayedCurrentFiles.length" class="sw-empty">
+                    还没有上传附件。
+                  </p>
+                </div>
+              </template>
+            </div>
+          </StudentPanel>
+        </div>
+
+        <aside class="sw-split__aside">
+          <StudentPanel title="提交">
+            <dl class="sw-meta">
+              <div><dt>课程</dt><dd>{{ taskDetail.course.title }}</dd></div>
+              <div><dt>发布</dt><dd>{{ formatDate(taskDetail.course.assigned_date) }}</dd></div>
+              <div><dt>最近提交</dt><dd>{{ formatDateTime(currentSubmission?.updated_at || null) }}</dd></div>
+              <div><dt>提交方式</dt><dd>{{ taskDetail.submission_scope === 'group' ? '小组共同提交' : '个人提交' }}</dd></div>
+              <div v-if="currentSubmission?.submission_scope === 'group'">
+                <dt>提交人</dt><dd>{{ currentSubmission?.submitted_by_name || '组内成员' }}</dd>
+              </div>
+              <div v-if="currentSubmission?.score !== null && currentSubmission?.score !== undefined">
+                <dt>得分</dt><dd class="sw-meta__num">{{ currentSubmission.score }} 分</dd>
+              </div>
+            </dl>
+
+            <div v-if="currentSubmission?.teacher_comment" class="sw-task__comment">
+              <p class="sw-task__comment-title">教师评语</p>
+              <RichTextContent
+                class="sw-task__comment-body"
+                :html="currentSubmission.teacher_comment"
+                empty-text=""
+                sanitize-preset="strict"
+              />
+            </div>
+
+            <div class="sw-task__submit">
+              <n-button
+                v-if="usesStandardSubmissionFlow"
+                block
+                :disabled="!taskDetail.can_submit"
+                :loading="isSubmitting"
+                type="primary"
+                @click="submitTask"
+              >
+                {{ submitButtonText }}
+              </n-button>
+              <p class="sw-task__hint">提交即保存；教师评价前可以再次提交覆盖。</p>
+              <n-button
+                v-if="taskDetail.task_navigation.next_task"
+                block
+                secondary
+                @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+              >
+                进入下一任务
+              </n-button>
+              <n-button
+                v-if="currentSubmission?.status === 'reviewed'"
+                block
+                text
+                :loading="isRevokingReview"
+                type="warning"
+                @click="revokeReviewedSubmission"
+              >
+                撤销评阅并继续提交
+              </n-button>
+            </div>
+          </StudentPanel>
+
+          <StudentPanel
+            v-if="taskDetail.group_collaboration && usesStandardSubmissionFlow"
+            title="小组共享草稿"
+          >
+            <p class="sw-task__draft">
+              {{ currentGroupDraft ? `版本 ${currentGroupDraft.version_no} · ${currentGroupDraft.updated_by_name || '组内成员'}` : '组内还没有共享草稿' }}
+            </p>
+            <p class="sw-task__hint">{{ groupDraftMeta }}</p>
+            <div class="sw-task__draft-actions">
+              <n-button
+                size="small"
+                :disabled="!groupDraftActionsEnabled"
+                :loading="isGroupDraftSaving"
+                secondary
+                @click="saveGroupDraft"
+              >
+                同步到小组草稿
+              </n-button>
+              <n-button size="small" :disabled="!currentGroupDraft" secondary @click="applyGroupDraft">
+                恢复小组草稿
+              </n-button>
+              <n-button size="small" :loading="isRefreshingTask" secondary @click="refreshTaskDetail">
+                刷新协作内容
+              </n-button>
+              <n-button size="small" secondary @click="isGroupDraftHistoryVisible = true">
+                历史版本
+              </n-button>
+            </div>
+          </StudentPanel>
+
+          <StudentPanel v-if="taskDetail.course.content" title="学案导读">
+            <div class="sw-prose">
+              <RichTextContent :html="taskDetail.course.content" empty-text="这节课没有补充导读。" />
+            </div>
+          </StudentPanel>
+        </aside>
+      </div>
+
+      <RecommendedWorksShowcase
+        :items="taskDetail.recommended_showcase.items"
+        :token="authStore.token || ''"
+        description="教师评分为 G 级的作品会自动进入这里，便于同学参考优秀完成方式。"
+        empty-description="当前课题还没有推荐作品"
+        title="当前课题推荐作品展示"
+      />
+
+      <GroupDraftHistoryDialog
+        v-if="taskDetail.group_collaboration"
+        v-model="isGroupDraftHistoryVisible"
+        :code-enabled="false"
+        :task-id="taskDetail.id"
+        :token="authStore.token || ''"
+      />
+
+      <n-modal
+        v-model:show="filePreviewDialogVisible"
+        preset="card"
+        :title="`附件预览 · ${filePreviewName || '未命名文件'}`"
+        style="width: min(980px, 92vw)"
+        @after-leave="resetFilePreviewState"
+      >
+        <n-spin :show="isFilePreviewLoading">
+          <div class="file-preview-stage">
+            <iframe
+              v-if="!isFilePreviewLoading && filePreviewKind === 'pdf' && filePreviewUrl"
+              :src="filePreviewUrl"
+              class="file-preview-frame"
+              title="附件预览"
+            ></iframe>
+            <img
+              v-else-if="!isFilePreviewLoading && filePreviewKind === 'image' && filePreviewUrl"
+              :src="filePreviewUrl"
+              alt="附件预览"
+              class="file-preview-image"
+            />
+            <div v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text-shell">
+              <div v-if="filePreviewTextCanExpand" class="file-preview-text-toolbar">
+                <p>{{ filePreviewTextHint() }}</p>
+                <n-button text type="primary" :loading="isFilePreviewTextExpanding" @click="toggleFilePreviewTextExpand">
+                  {{ filePreviewTextExpanded ? '恢复截断' : '展开全文' }}
+                </n-button>
+              </div>
+              <pre class="file-preview-text">{{ filePreviewText }}</pre>
+            </div>
+            <div v-else class="file-preview-fallback">
+              <p>当前文件暂不支持在线预览。</p>
+              <p>可点击下载后在本地打开查看。</p>
             </div>
           </div>
-
-          <RecommendedWorksShowcase
-            :items="taskDetail.recommended_showcase.items"
-            :token="authStore.token || ''"
-            description="教师评分为 G 级的作品会自动进入这里，便于同学参考优秀完成方式。"
-            empty-description="当前课题还没有推荐作品"
-            title="当前课题推荐作品展示"
-          />
-
-          <GroupDraftHistoryDialog
-            v-if="taskDetail.group_collaboration"
-            v-model="isGroupDraftHistoryVisible"
-            :code-enabled="false"
-            :task-id="taskDetail.id"
-            :token="authStore.token || ''"
-          />
-
-          <n-modal
-            v-model:show="filePreviewDialogVisible"
-            preset="card"
-            :title="`附件预览 · ${filePreviewName || '未命名文件'}`"
-            style="width: min(980px, 92vw)"
-            @after-leave="resetFilePreviewState"
-          >
-            <n-spin :show="isFilePreviewLoading">
-              <div class="file-preview-stage">
-                <iframe
-                  v-if="!isFilePreviewLoading && filePreviewKind === 'pdf' && filePreviewUrl"
-                  :src="filePreviewUrl"
-                  class="file-preview-frame"
-                  title="附件预览"
-                ></iframe>
-                <img
-                  v-else-if="!isFilePreviewLoading && filePreviewKind === 'image' && filePreviewUrl"
-                  :src="filePreviewUrl"
-                  alt="附件预览"
-                  class="file-preview-image"
-                />
-                <div v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text-shell">
-                  <div v-if="filePreviewTextCanExpand" class="file-preview-text-toolbar">
-                    <p>{{ filePreviewTextHint() }}</p>
-                    <n-button text type="primary" :loading="isFilePreviewTextExpanding" @click="toggleFilePreviewTextExpand">
-                      {{ filePreviewTextExpanded ? '恢复截断' : '展开全文' }}
-                    </n-button>
-                  </div>
-                  <pre class="file-preview-text">{{ filePreviewText }}</pre>
-                </div>
-                <div v-else class="file-preview-fallback">
-                  <p>当前文件暂不支持在线预览。</p>
-                  <p>可点击下载后在本地打开查看。</p>
-                </div>
-                </div>
-            </n-spin>
-          </n-modal>
-    </div>
+        </n-spin>
+      </n-modal>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDescriptions, NDescriptionsItem, NDivider, NEmpty, NModal, NSkeleton, NSpin, NTabPane, NTabs, NTag } from 'naive-ui';
+import { NAlert, NButton, NDropdown, NEmpty, NModal, NSkeleton, NSpin, NTabPane, NTabs } from 'naive-ui';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from '@/ui/feedback';
 import { useRoute, useRouter } from 'vue-router';
@@ -524,8 +407,8 @@ import { apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StudentPageHead from '@/components/student/StudentPageHead.vue';
+import StudentPanel from '@/components/student/StudentPanel.vue';
 import GroupDraftHistoryDialog from '@/modules/student-task/components/GroupDraftHistoryDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { resolveIframeSandbox } from '@/utils/iframeTrust';
@@ -980,6 +863,73 @@ const groupDraftMeta = computed(() => {
     currentGroupDraft.value.updated_at ? `同步时间 ${formatDateTime(currentGroupDraft.value.updated_at)}` : '暂无时间',
   ].join(' · ');
 });
+
+const headSub = computed(() => {
+  const detail = taskDetail.value;
+  if (!detail) {
+    return '';
+  }
+  return [detail.course.title, detail.course.unit_title, detail.course.lesson_title]
+    .filter(Boolean)
+    .join(' · ');
+});
+
+const statusChipClass = computed(() => {
+  const status = currentSubmission.value?.status;
+  if (status === 'reviewed') {
+    return 'sw-chip--done';
+  }
+  if (status === 'submitted') {
+    return '';
+  }
+  return 'sw-chip--todo';
+});
+
+const moreActionOptions = computed(() => {
+  const options: Array<{ label: string; key: string }> = [];
+  if (taskDetail.value?.task_navigation.previous_task) {
+    options.push({ label: '上一个任务', key: 'prev' });
+  }
+  if (taskDetail.value?.task_navigation.next_task) {
+    options.push({ label: '下一个任务', key: 'next' });
+  }
+  options.push({ label: '作品互评', key: 'peer-review' });
+  if (usesStandardSubmissionFlow.value && currentSubmission.value) {
+    options.push({ label: '查看已提交作品', key: 'work-detail' });
+  }
+  if (currentSubmission.value?.status === 'reviewed') {
+    options.push({ label: '撤销评阅并继续提交', key: 'revoke' });
+  }
+  return options;
+});
+
+function handleMoreAction(key: string) {
+  if (key === 'prev') {
+    const task = taskDetail.value?.task_navigation.previous_task;
+    if (task) {
+      void openNavigationTask(task);
+    }
+    return;
+  }
+  if (key === 'next') {
+    const task = taskDetail.value?.task_navigation.next_task;
+    if (task) {
+      void openNavigationTask(task);
+    }
+    return;
+  }
+  if (key === 'peer-review') {
+    void goToPeerReview();
+    return;
+  }
+  if (key === 'work-detail') {
+    void goToWorkDetail();
+    return;
+  }
+  if (key === 'revoke') {
+    void revokeReviewedSubmission();
+  }
+}
 
 function normalizeRouteParam(value: string | string[] | number | null | undefined) {
   if (Array.isArray(value)) {
@@ -2008,198 +1958,321 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.task-layout {
+.sw-task {
   display: grid;
-  gap: 16px;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  gap: var(--sw-section-gap);
 }
 
-.task-column {
+.sw-task__status {
   display: flex;
-  flex-direction: column;
-  gap: 18px;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border: 1px solid var(--sw-line);
+  border-radius: var(--sw-r-card);
+  background: var(--sw-surface);
+}
+
+.sw-task__status-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--sw-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sw-task__main {
+  display: grid;
+  gap: var(--sw-gap);
   min-width: 0;
 }
 
-@media (min-width: 1200px) {
-  .task-layout {
-    grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
-  }
+.sw-prose {
+  max-width: 76ch;
+  color: var(--sw-text);
+  font-size: 14px;
+  line-height: 1.75;
 }
 
-.action-group {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.description-block p {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.8;
-}
-
-.description-block {
-  min-height: 140px;
-}
-
-.description-block--inline {
-  min-height: auto;
-}
-
-.submission-form {
-  display: grid;
-  gap: 20px;
-}
-
-.discussion-shell,
-.embed-shell {
-  display: grid;
-  gap: 18px;
-}
-
-.data-submit-tab-pane {
+/* 讨论 */
+.sw-task__discussion {
   display: grid;
   gap: 16px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--sw-line-soft);
 }
 
-.discussion-compose-note {
-  color: var(--ls-muted);
+.sw-task__posts {
+  display: grid;
+  gap: 10px;
+}
+
+.sw-task__post,
+.sw-task__reply {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  background: var(--sw-surface-2);
+}
+
+.sw-task__reply {
+  border: 0;
+  background: var(--sw-surface);
+}
+
+.sw-task__post-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  color: var(--sw-muted);
+  font-size: 12px;
+}
+
+.sw-task__post-meta strong {
+  color: var(--sw-ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sw-task__post-body {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: 14px;
   line-height: 1.7;
 }
 
-.discussion-action-group {
-  margin-top: -8px;
-}
-
-.discussion-item,
-.discussion-reply {
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-  border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-card);
-}
-
-.discussion-meta {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  color: var(--ls-muted);
-  font-size: 13px;
-}
-
-.discussion-text-rich {
-  margin: 0;
-  color: var(--ls-ink);
-  line-height: 1.8;
-}
-
-.discussion-text-rich :deep(p:last-child),
-.discussion-text-rich :deep(ul:last-child),
-.discussion-text-rich :deep(ol:last-child),
-.discussion-text-rich :deep(blockquote:last-child) {
+.sw-task__post-body :deep(p:last-child),
+.sw-task__post-body :deep(ul:last-child),
+.sw-task__post-body :deep(ol:last-child),
+.sw-task__post-body :deep(blockquote:last-child) {
   margin-bottom: 0;
 }
 
-.discussion-empty-text {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px dashed var(--ls-border);
-  color: var(--ls-muted);
-  background: var(--ls-chip-bg);
-  line-height: 1.6;
-  font-size: 13px;
+.sw-task__replies {
+  display: grid;
+  gap: 8px;
+  padding-left: 14px;
+  border-left: 1px solid var(--sw-line);
 }
 
-.discussion-replies {
+/* 嵌入页 */
+.sw-task__embed {
   display: grid;
-  gap: 10px;
-  padding-left: 16px;
-  border-left: 2px solid var(--ls-border);
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.sw-task__embed-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .task-embed-frame {
   width: 100%;
   min-height: 520px;
-  border: 1px solid var(--ls-border);
-  border-radius: 20px;
-  background: #fff;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+/* 提交表单 */
+.sw-task__form {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+.sw-task__form-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.sw-task__form-head--files {
+  margin-top: 6px;
+}
+
+.sw-task__form-title {
+  margin: 0;
+  color: var(--sw-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sw-task__form-hint {
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sw-task__form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .submission-editor {
-  margin-bottom: 8px;
-}
-
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
-  flex-wrap: wrap;
-}
-
-.section-head__actions {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.section-head h3 {
-  margin: 0;
-}
-
-.section-head span {
-  color: var(--ls-muted);
-  font-size: 13px;
-}
-
-.section-head--compact {
-  margin-top: 4px;
+  margin-bottom: 4px;
 }
 
 .file-input {
   display: none;
 }
 
-.file-item {
+.sw-task__files {
+  display: grid;
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sw-file {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
   align-items: center;
-  padding: 14px 0;
-  border-bottom: 1px dashed var(--ls-border);
+  gap: 14px;
+  min-height: 52px;
+  padding: 10px 14px;
 }
 
-.file-item:last-child {
-  border-bottom: none;
+.sw-file + .sw-file {
+  border-top: 1px solid var(--sw-line-soft);
 }
 
-.file-actions {
+.sw-file__main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+}
+
+.sw-file__name {
+  overflow: hidden;
+  color: var(--sw-ink);
+  font-size: 13.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.sw-file__meta {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-file__actions {
   display: flex;
-  gap: 10px;
+  flex: none;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.file-name,
-.file-meta {
+.sw-task__files .sw-empty {
+  padding: 14px;
+}
+
+/* 右栏 */
+.sw-meta {
+  display: grid;
+  gap: 0;
   margin: 0;
 }
 
-.file-name {
-  font-weight: 600;
+.sw-meta > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
 }
 
-.file-meta {
-  margin-top: 4px;
-  color: var(--ls-muted);
+.sw-meta > div + div {
+  border-top: 1px solid var(--sw-line-soft);
+}
+
+.sw-meta dt {
+  flex: none;
+  color: var(--sw-muted);
   font-size: 12px;
 }
 
+.sw-meta dd {
+  margin: 0;
+  overflow: hidden;
+  color: var(--sw-ink);
+  font-size: 13px;
+  text-align: right;
+  text-overflow: ellipsis;
+}
+
+.sw-meta__num {
+  font-variant-numeric: tabular-nums;
+}
+
+.sw-task__comment {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--sw-surface-2);
+}
+
+.sw-task__comment-title {
+  margin: 0 0 6px;
+  color: var(--sw-ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.sw-task__comment-body {
+  margin: 0;
+  color: var(--sw-text);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.sw-task__comment-body :deep(p:last-child),
+.sw-task__comment-body :deep(ul:last-child),
+.sw-task__comment-body :deep(ol:last-child),
+.sw-task__comment-body :deep(blockquote:last-child) {
+  margin-bottom: 0;
+}
+
+.sw-task__submit {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.sw-task__hint {
+  margin: 0;
+  color: var(--sw-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sw-task__draft {
+  margin: 0 0 6px;
+  color: var(--sw-ink);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sw-task__draft-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* 附件预览弹窗 */
 .file-preview-stage {
   min-height: 320px;
 }
@@ -2208,8 +2281,8 @@ onBeforeUnmount(() => {
   width: 100%;
   min-height: 68vh;
   border: none;
-  border-radius: 12px;
-  background: #fff;
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .file-preview-image {
@@ -2217,7 +2290,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
   max-height: 68vh;
   margin: 0 auto;
-  border-radius: 12px;
+  border-radius: 8px;
 }
 
 .file-preview-text-shell {
@@ -2232,14 +2305,14 @@ onBeforeUnmount(() => {
   gap: 12px;
   flex-wrap: wrap;
   padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-chip-bg);
+  border: 1px solid var(--sw-line-soft);
+  border-radius: 8px;
+  background: var(--sw-surface-2);
 }
 
 .file-preview-text-toolbar p {
   margin: 0;
-  color: var(--ls-muted);
+  color: var(--sw-muted);
   font-size: 12px;
 }
 
@@ -2248,7 +2321,7 @@ onBeforeUnmount(() => {
   max-height: 68vh;
   overflow: auto;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--ls-code-bg);
   color: var(--ls-code-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
@@ -2265,66 +2338,25 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   text-align: center;
-  color: var(--ls-muted);
+  color: var(--sw-muted);
 }
 
 .file-preview-fallback p {
   margin: 0;
 }
 
-.tip-panel {
-  margin-top: 20px;
-  padding: 16px;
-  border-radius: 18px;
-  background: var(--ls-primary-soft);
-}
+@media (max-width: 960px) {
+  .sw-task__status {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
 
-.review-comment-panel {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-chip-bg);
-}
+  .sw-task__status-note {
+    white-space: normal;
+  }
 
-.review-comment-title {
-  margin: 0 0 8px;
-  color: var(--ls-ink);
-  font-weight: 700;
-}
-
-.review-comment-content {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.review-comment-content :deep(p:last-child),
-.review-comment-content :deep(ul:last-child),
-.review-comment-content :deep(ol:last-child),
-.review-comment-content :deep(blockquote:last-child) {
-  margin-bottom: 0;
-}
-
-.tip-panel p {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.8;
-}
-
-.tip-title {
-  margin-bottom: 8px;
-  color: var(--ls-ink) !important;
-  font-weight: 700;
-}
-
-.submit-button {
-  width: 100%;
-  margin-top: 20px;
-}
-
-.metric-value--small {
-  font-size: 22px;
+  .task-embed-frame {
+    min-height: 420px;
+  }
 }
 </style>
-

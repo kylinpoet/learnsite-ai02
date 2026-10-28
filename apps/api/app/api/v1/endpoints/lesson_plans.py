@@ -616,7 +616,9 @@ def load_plan(plan_id: int, db: Session) -> LessonPlan | None:
             selectinload(LessonPlan.lesson)
             .selectinload(CurriculumLesson.unit)
             .selectinload(CurriculumUnit.book),
-            selectinload(LessonPlan.tasks),
+            selectinload(LessonPlan.tasks)
+            .selectinload(Task.resource_links)
+            .selectinload(TaskResourceLink.resource_item),
             selectinload(LessonPlan.progresses),
             selectinload(LessonPlan.classroom_sessions),
         )
@@ -774,6 +776,29 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
     }
 
 
+def serialize_staff_plan_task_resources(task: Task) -> list[dict[str, object]]:
+    """学生端任务页会展示的关联资源，教师学生视角预览需要同源数据。"""
+    items: list[dict[str, object]] = []
+    for resource_link in task.resource_links:
+        resource = resource_link.resource_item
+        if resource is None or not resource.is_published:
+            continue
+        items.append(
+            {
+                "id": resource_link.id,
+                "task_id": resource_link.task_id,
+                "resource_id": resource.id,
+                "relation_type": resource_link.relation_type,
+                "sort_order": resource_link.sort_order,
+                "title": resource.title,
+                "resource_type": resource.resource_type,
+                "summary": resource.summary,
+                "external_url": resource.external_url,
+            }
+        )
+    return items
+
+
 def serialize_staff_plan_detail(plan: LessonPlan, request: Request | None = None) -> dict:
     summary = serialize_staff_plan(plan)
     summary["content"] = plan.content
@@ -787,6 +812,7 @@ def serialize_staff_plan_detail(plan: LessonPlan, request: Request | None = None
             "config": serialize_task_config(task, request),
             "sort_order": task.sort_order,
             "is_required": task.is_required,
+            "resources": serialize_staff_plan_task_resources(task),
         }
         for task in sorted(plan.tasks, key=lambda item: (item.sort_order, item.id))
     ]

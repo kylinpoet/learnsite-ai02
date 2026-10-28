@@ -1,0 +1,732 @@
+/* ==========================================================================
+   「小榉AI帮」悬浮助手样式
+   命名一律 ju- 前缀，避免与宿主已有的 .card/.stat/.btn 撞车。
+   颜色只引用宿主设计令牌（--ls-*），随主题与深浅色一起变；
+   少数需要「品牌深底 + 浅字」的地方用本文件顶部的 --ju-* 桥接变量。
+   ========================================================================== */
+
+:root {
+  /* ── 品牌桥接（跟随宿主主题） ─────────────────────────── */
+  --ju-brand: var(--ls-primary);
+  --ju-brand-soft: var(--ls-primary-soft);
+  --ju-brand-wash: var(--ls-primary-soft);
+  /* 标题栏深色渐变：浅色主题下用偏深的品牌绿，保证白字对比度 */
+  --ju-head-bg: linear-gradient(120deg, #2f9173 0%, #175f47 100%);
+  --ju-head-ink: #f1fbf6;
+  --ju-head-dim: rgba(233, 246, 240, 0.76);
+  --ju-head-chip: rgba(255, 255, 255, 0.16);
+  --ju-head-shadow: 0 6px 18px rgba(20, 60, 45, 0.18);
+
+  --ju-surface: var(--ls-card);
+  --ju-surface-alt: var(--ls-panel-soft);
+  --ju-border: var(--ls-border);
+  --ju-ink: var(--ls-text);
+  --ju-ink-strong: var(--ls-ink);
+  --ju-muted: var(--ls-muted);
+  --ju-code-bg: var(--ls-code-bg);
+  --ju-code-text: var(--ls-code-text);
+  --ju-shadow-lg: var(--ls-shadow);
+  --ju-radius-lg: 18px;
+  --ju-radius-md: 12px;
+  --ju-radius-sm: 8px;
+  --ju-sprite: url('/assistant/xiaoju-sprites.png');
+}
+
+:root[data-scheme='dark'] {
+  /* 深色下标题栏用更暗的墨绿，浅字对比更稳 */
+  --ju-head-bg: linear-gradient(120deg, #1e4137 0%, #122922 100%);
+  --ju-head-ink: #e6f6ef;
+  --ju-head-dim: rgba(214, 236, 227, 0.68);
+  --ju-head-shadow: 0 6px 18px rgba(0, 0, 0, 0.42);
+}
+
+@keyframes ju-spin { to { transform: rotate(360deg); } }
+@keyframes ju-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes ju-blink {
+  0%, 80%, 100% { opacity: 0.25; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-3px); }
+}
+@keyframes ju-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ju-rise-left {
+  from { opacity: 0; transform: translateX(-14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ju-rise-right {
+  from { opacity: 0; transform: translateX(14px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ju-out {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(10px) scale(0.96); }
+}
+@keyframes ju-ring {
+  from { opacity: 0.55; transform: scale(0.85); }
+  to { opacity: 0; transform: scale(1.45); }
+}
+@keyframes ju-frames {
+  from { background-position-x: 0%; }
+  to { background-position-x: 100%; }
+}
+@keyframes ju-panel-in {
+  from { opacity: 0; transform: scale(0.92) translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes ju-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ju-caret { 50% { opacity: 0; } }
+@keyframes ju-talk {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.04); }
+}
+@keyframes ju-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+@keyframes ju-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(47, 145, 115, 0.34), var(--ju-shadow-lg); }
+  70% { box-shadow: 0 0 0 16px rgba(47, 145, 115, 0), var(--ju-shadow-lg); }
+  100% { box-shadow: 0 0 0 0 rgba(47, 145, 115, 0), var(--ju-shadow-lg); }
+}
+@keyframes ju-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  60% { opacity: 0.5; transform: scale(1.3); }
+}
+
+/* ── 悬浮入口（可拖动，位置由 JS 给 left/top） ────────────── */
+.ju-launcher {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2100;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  border: 2px solid var(--ls-card);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, #ffffff 0%, #eef6f1 72%);
+  box-shadow: var(--ju-shadow-lg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: ju-pulse 3.6s ease-out infinite;
+  --ju-dock-x: 0px;
+  --ju-lift: 0px;
+  --ju-scale: 1;
+  transform: translate3d(var(--ju-dock-x), var(--ju-lift), 0) scale(var(--ju-scale));
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.16s ease,
+    opacity 0.2s ease;
+}
+
+.ju-sprite {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  background-image: var(--ju-sprite);
+  background-repeat: no-repeat;
+  background-size: 2000% 100%;
+  background-position: 0% 0%;
+  animation: ju-frames 1.6s steps(20, jump-none) infinite;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.16));
+}
+
+.ju-launcher:hover .ju-sprite { animation-duration: 0.96s; }
+
+.ju-launcher:active {
+  --ju-scale: 0.94;
+  transition-duration: 60ms;
+}
+
+/* 靠边自动缩进：拖到贴边松手，缩出去只留把手；悬停/聚焦/展开时完整弹出 */
+.ju-launcher.dock-left { --ju-dock-x: -58%; }
+.ju-launcher.dock-right { --ju-dock-x: 58%; }
+
+.ju-launcher.dock-left:hover,
+.ju-launcher.dock-right:hover,
+.ju-launcher.dock-left:focus-visible,
+.ju-launcher.dock-right:focus-visible,
+.ju-launcher.dock-left.is-open,
+.ju-launcher.dock-right.is-open {
+  --ju-dock-x: 0px;
+}
+
+.ju-launcher::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--ju-brand);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ju-launcher:active::after { animation: ju-ring 0.5s ease-out; }
+
+.ju-launcher:focus-visible { outline: 3px solid var(--ls-focus-ring); outline-offset: 3px; }
+
+.ju-launcher.is-open {
+  animation: none;
+  box-shadow: var(--ju-shadow-lg);
+}
+
+.ju-launcher.dragging {
+  cursor: grabbing;
+  animation: none;
+  --ju-scale: 1.08;
+  --ju-dock-x: 0px;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+  transition: none;
+}
+
+.ju-launcher.dragging .ju-sprite { animation: none; }
+
+.ju-launcher-tip {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 5px 10px;
+  border-radius: var(--ju-radius-sm);
+  background: var(--ju-ink-strong);
+  color: var(--ls-bg);
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.ju-launcher.tip-left .ju-launcher-tip {
+  left: auto;
+  right: calc(100% + 8px);
+}
+
+.ju-launcher:hover .ju-launcher-tip { opacity: 1; }
+
+/* ── 面板 ───────────────────────────────────────────────── */
+.ju-panel {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 2090;
+  width: 600px;
+  max-width: calc(100vw - 24px);
+  height: min(760px, calc(100vh - 32px));
+  display: flex;
+  flex-direction: column;
+  background: var(--ju-surface);
+  border: 1px solid var(--ju-border);
+  border-radius: var(--ju-radius-lg);
+  box-shadow: var(--ju-shadow-lg);
+  overflow: hidden;
+  animation: ju-panel-in 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.15);
+  backdrop-filter: saturate(130%) blur(8px);
+}
+
+.ju-panel.closing {
+  animation: ju-out 0.18s ease-in forwards;
+  pointer-events: none;
+}
+
+.ju-panel-loading {
+  align-items: center;
+  justify-content: center;
+  color: var(--ju-muted);
+  font-size: 13px;
+}
+
+/* ── 标题栏 ─────────────────────────────────────────────── */
+.ju-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--ju-head-bg);
+  color: var(--ju-head-ink);
+  flex: 0 0 auto;
+  box-shadow: var(--ju-head-shadow);
+  position: relative;
+  z-index: 3;
+}
+
+.ju-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #fff;
+  object-fit: contain;
+  flex: 0 0 auto;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}
+
+.ju-avatar.talking,
+.ju-msg-avatar.talking { animation: ju-talk 0.42s ease-in-out infinite; }
+
+.ju-head-main { min-width: 0; flex: 1 1 auto; }
+
+.ju-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ju-head-ink);
+  letter-spacing: 0.01em;
+}
+
+.ju-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--ju-head-chip);
+  color: var(--ju-head-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.ju-sub {
+  font-size: 11.5px;
+  color: var(--ju-head-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+.ju-head-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
+
+.ju-icon-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ju-radius-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.88;
+  transition: background 0.14s ease, opacity 0.14s ease;
+}
+
+.ju-head .ju-icon-btn:hover { background: var(--ju-head-chip); opacity: 1; }
+.ju-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.ju-icon-btn.on { background: var(--ju-head-chip); opacity: 1; }
+
+/* ── 作用域分段（通用 / 当前学案） ────────────────────────── */
+.ju-scopes {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ju-border);
+  background: var(--ju-surface);
+  flex: 0 0 auto;
+}
+
+.ju-scope {
+  flex: 1 1 0;
+  padding: 7px 10px;
+  border: 1px solid var(--ju-border);
+  border-radius: var(--ju-radius-sm);
+  background: var(--ju-surface-alt);
+  color: var(--ju-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.14s ease;
+}
+
+.ju-scope:hover:not(:disabled) { border-color: var(--ju-brand); color: var(--ju-brand); }
+.ju-scope.on {
+  background: var(--ju-head-bg);
+  border-color: transparent;
+  color: var(--ju-head-ink);
+  box-shadow: var(--ju-head-shadow);
+}
+.ju-scope:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── 设置浮层 ───────────────────────────────────────────── */
+.ju-settings-pop {
+  position: absolute;
+  top: 58px;
+  right: 8px;
+  width: min(360px, calc(100% - 16px));
+  max-height: min(70%, 520px);
+  overflow-y: auto;
+  padding: 14px;
+  border-radius: var(--ju-radius-md);
+  background: var(--ju-surface);
+  border: 1px solid var(--ju-border);
+  box-shadow: var(--ju-shadow-lg);
+  z-index: 4;
+  animation: ju-in 0.16s ease-out;
+}
+
+.ju-settings-title { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--ju-ink-strong); }
+
+.ju-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.ju-field > span { font-size: 12px; color: var(--ju-muted); }
+.ju-field small { font-size: 11px; color: var(--ju-muted); line-height: 1.6; }
+
+.ju-switch-row { display: flex; align-items: center; gap: 8px; }
+.ju-switch-row__label { font-size: 12.5px; font-weight: 600; color: var(--ju-ink); }
+
+/* ── 消息区 ─────────────────────────────────────────────── */
+.ju-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 12px 8px;
+  background: var(--ju-surface-alt);
+  scroll-behavior: smooth;
+  position: relative;
+}
+
+.ju-welcome { text-align: center; padding: 4px 4px 10px; }
+
+.ju-welcome-sprite {
+  display: block;
+  width: 128px;
+  height: 128px;
+  margin: 0 auto 2px;
+  background-image: var(--ju-sprite);
+  background-repeat: no-repeat;
+  background-size: 2000% 100%;
+  background-position: 0% 0%;
+  filter: drop-shadow(0 8px 18px rgba(47, 145, 115, 0.22));
+  animation: ju-frames 1.28s steps(20, jump-none) infinite,
+    ju-float 3.6s ease-in-out infinite;
+}
+
+.ju-hello {
+  margin: 4px 0 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ju-ink);
+}
+
+.ju-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: var(--ju-radius-md);
+  background: var(--ls-primary-soft);
+  color: var(--ju-brand);
+  font-size: 12px;
+  text-align: left;
+}
+
+.ju-link {
+  border: 0;
+  background: none;
+  padding: 0 0 0 4px;
+  color: var(--ju-brand);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.ju-prompts { display: grid; gap: 7px; text-align: left; }
+
+.ju-prompt {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--ju-border);
+  border-radius: var(--ju-radius-md);
+  background: var(--ju-surface);
+  color: var(--ju-ink);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.14s ease;
+  animation: ju-rise 0.26s ease-out backwards;
+}
+
+.ju-prompt:nth-child(2) { animation-delay: 40ms; }
+.ju-prompt:nth-child(3) { animation-delay: 80ms; }
+.ju-prompt:nth-child(4) { animation-delay: 120ms; }
+.ju-prompt:nth-child(5) { animation-delay: 160ms; }
+.ju-prompt:nth-child(n + 6) { animation-delay: 200ms; }
+
+.ju-prompt:hover {
+  border-color: var(--ju-brand);
+  background: var(--ju-brand-wash);
+  color: var(--ju-brand);
+  transform: translateX(2px);
+}
+
+.ju-context {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--ju-radius-md);
+  border: 1px solid var(--ju-border);
+  background: var(--ju-surface);
+  text-align: left;
+}
+
+.ju-context__kicker {
+  margin: 0 0 4px;
+  color: var(--ju-brand);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.ju-context__title { margin: 0; font-size: 13.5px; color: var(--ju-ink-strong); }
+.ju-context__note { margin: 6px 0 0; font-size: 12px; color: var(--ju-muted); line-height: 1.6; }
+
+.ju-msg {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: flex-start;
+  animation: ju-rise-left 0.28s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+}
+
+.ju-msg.user {
+  justify-content: flex-end;
+  animation-name: ju-rise-right;
+}
+
+.ju-msg-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid var(--ju-border);
+  object-fit: contain;
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.ju-bubble {
+  max-width: 84%;
+  padding: 9px 12px;
+  border-radius: var(--ju-radius-md);
+  font-size: 13px;
+  line-height: 1.68;
+  background: var(--ju-surface);
+  border: 1px solid var(--ju-border);
+  box-shadow: var(--ls-soft-shadow);
+  overflow-wrap: anywhere;
+}
+
+.ju-msg.user .ju-bubble {
+  background: var(--ju-brand-soft);
+  border-color: transparent;
+  color: var(--ju-ink-strong);
+}
+
+.ju-bubble__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 11.5px;
+  color: var(--ju-muted);
+}
+
+.ju-plain { margin: 0; white-space: pre-wrap; }
+.ju-msg-files { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+
+.ju-file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--ju-brand-soft);
+  color: var(--ju-brand);
+  font-size: 11.5px;
+  border: 1px solid var(--ju-border);
+}
+
+.ju-file-chip em { font-style: normal; opacity: 0.7; font-size: 10.5px; }
+
+.ju-error {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--ju-radius-sm);
+  background: rgba(179, 56, 44, 0.12);
+  color: var(--ls-error-text);
+  font-size: 12px;
+}
+
+/* 流式光标：挂在最后一段文字上，紧跟正在增长的字 */
+.ju-bubble.streaming .markdown-content > :last-child::after,
+.ju-bubble.streaming .ju-plain::after {
+  content: '';
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: -0.16em;
+  background: var(--ju-brand);
+  animation: ju-caret 1s steps(2, start) infinite;
+}
+
+.ju-typing { display: inline-flex; gap: 4px; padding: 3px 0; }
+.ju-typing i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ju-brand);
+  animation: ju-blink 1.1s infinite;
+}
+.ju-typing i:nth-child(2) { animation-delay: 0.16s; }
+.ju-typing i:nth-child(3) { animation-delay: 0.32s; }
+
+/* 推理过程折叠 */
+.ju-reason {
+  margin-bottom: 8px;
+  border-radius: var(--ju-radius-md);
+  border: 1px solid var(--ju-border);
+  background: var(--ju-brand-wash);
+  overflow: hidden;
+}
+
+.ju-reason summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 11px;
+  font-size: 11.5px;
+  color: var(--ju-brand);
+  cursor: pointer;
+  list-style: none;
+}
+.ju-reason summary::-webkit-details-marker { display: none; }
+.ju-reason summary span { color: var(--ju-muted); }
+.ju-reason__body { padding: 0 11px 10px; }
+
+.ju-speech { margin-top: 6px; display: flex; justify-content: flex-end; }
+
+.ju-src-warn {
+  margin-top: 6px;
+  padding: 5px 8px;
+  border-radius: var(--ju-radius-sm);
+  background: rgba(214, 158, 46, 0.14);
+  color: var(--ls-warning-text);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* ── 输入区 ─────────────────────────────────────────────── */
+.ju-foot {
+  flex: 0 0 auto;
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--ju-border);
+  background: var(--ju-surface);
+}
+
+.ju-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+
+.ju-file-chip.removable { padding-right: 4px; animation: ju-rise 0.18s ease-out backwards; }
+.ju-file-chip.removable button {
+  border: 0;
+  background: none;
+  padding: 0;
+  display: inline-flex;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.ju-file-chip.removable button:hover { opacity: 1; }
+
+.ju-hint { font-size: 10.5px; color: var(--ju-muted); margin-bottom: 4px; }
+
+.ju-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border: 1px solid var(--ju-border);
+  border-radius: 18px;
+  background: var(--ju-surface-alt);
+  transition: border-color 0.14s ease;
+}
+
+.ju-composer:focus-within { border-color: var(--ju-brand); background: var(--ju-surface); }
+
+.ju-composer-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; padding-bottom: 3px; }
+.ju-composer .ju-icon-btn { color: var(--ju-muted); }
+.ju-composer .ju-icon-btn:hover { background: var(--ju-brand-soft); color: var(--ju-brand); }
+
+.ju-send {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--ls-button-gradient, var(--ju-brand));
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.14s ease, opacity 0.14s ease;
+}
+.ju-send:hover:not(:disabled) { transform: scale(1.06); }
+.ju-send:disabled { background: var(--ls-border); cursor: not-allowed; }
+.ju-send.stop { background: var(--ls-error-text, #b3382c); }
+
+.ju-disclaimer {
+  margin-top: 5px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--ju-muted);
+}
+
+/* ── Markdown 正文 ──────────────────────────────────────── */
+.ju-bubble .markdown-content { font-size: 13px; line-height: 1.7; color: inherit; }
+.ju-bubble .markdown-content > :first-child { margin-top: 0; }
+.ju-bubble .markdown-content > :last-child { margin-bottom: 0; }
+.ju-bubble .markdown-content table { min-width: 100%; }
+
+@media (max-width: 720px) {
+  .ju-panel {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+    height: 82dvh;
+    border-radius: var(--ju-radius-lg) var(--ju-radius-lg) 0 0;
+  }
+  .ju-launcher { width: 58px; height: 58px; }
+  .ju-bubble { max-width: 88%; }
+  .ju-settings-pop { width: calc(100% - 16px); }
+}
+
+/* ==========================================================================
+   「减少动画」降级 —— 必须放在文件最末尾（媒体查询不增加选择器权重）
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .ju-sprite,
+  .ju-welcome-sprite { animation-duration: 4s; }
+  .ju-launcher:hover .ju-sprite { animation-duration: 3s; }
+
+  .ju-launcher::after { animation: none !important; }
+
+  .ju-msg,
+  .ju-prompt,
+  .ju-file-chip { animation: ju-fade 0.2s ease-out backwards; }
+  .ju-msg.user { animation-name: ju-fade; }
+
+  .ju-panel { animation: ju-fade 0.2s ease-out; }
+  .ju-panel.closing { animation: ju-out 0.16s ease-in forwards; }
+
+  .ju-welcome-sprite {
+    animation: ju-frames 4s steps(20, jump-none) infinite,
+      ju-float 9s ease-in-out infinite;
+  }
+
+  .ju-body { scroll-behavior: auto; }
+}
