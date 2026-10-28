@@ -24,3 +24,4 @@ coverage/
 .gstack/
 .pytest-runtime/
 apps/api/learnsite_api.egg-info/SOURCES.txt
+apps/web/openapi.json

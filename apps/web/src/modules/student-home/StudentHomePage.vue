@@ -1,275 +1,270 @@
 <template>
   <div class="page-stack student-home-page">
-    <section class="hero-panel student-home-hero">
-      <div>
-        <p class="eyebrow">学生首页</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">
-          这里把学习概览、学案进度、图表趋势、座位表和评阅得分整合到一个入口里，方便你一登录就看到最该先处理的任务。
-        </p>
-      </div>
-      <el-button :disabled="!firstPendingCourseId" type="primary" @click="goToFirstPendingCourse">
-        <span class="student-home-hero__button">
-          <AppIcon :icon="BookOpenText" :size="18" />
-          打开推荐学案
-        </span>
-      </el-button>
-    </section>
+    <SaPageHeader
+      class="student-home-hero"
+      description="这里把学习概览、学案进度、图表趋势、座位表和评阅得分整合到一个入口里，方便你一登录就看到最该先处理的任务。"
+      eyebrow="学生首页"
+      :title="pageTitle"
+    >
+      <template #actions>
+        <n-button :disabled="!firstPendingCourseId" type="primary" @click="goToFirstPendingCourse">
+          <span class="student-home-hero__button">
+            <AppIcon :icon="BookOpenText" :size="18" />
+            打开推荐学案
+          </span>
+        </n-button>
+      </template>
+    </SaPageHeader>
 
-    <el-alert
+    <n-alert
       v-if="errorMessage"
       :closable="false"
       :title="errorMessage"
       type="error"
     />
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <template v-if="homeData">
-          <section class="student-home-metrics">
-            <article v-for="item in overviewCards" :key="item.label" class="metric-tile student-metric-card">
-              <div class="student-metric-card__top">
-                <span class="student-card-icon" :class="`student-card-icon--${item.tone}`">
-                  <AppIcon :icon="item.icon" :size="20" />
+    <template v-else-if="homeData">
+      <section class="student-home-metrics">
+        <article v-for="item in overviewCards" :key="item.label" class="metric-tile student-metric-card">
+          <div class="student-metric-card__top">
+            <span class="student-card-icon" :class="`student-card-icon--${item.tone}`">
+              <AppIcon :icon="item.icon" :size="20" />
+            </span>
+            <p class="metric-label">{{ item.label }}</p>
+          </div>
+          <p class="metric-value">{{ item.value }}</p>
+        </article>
+      </section>
+
+      <section class="student-home-grid">
+        <SaPanel class="student-list-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--primary">
+                  <AppIcon :icon="ListTodo" :size="20" />
                 </span>
-                <p class="metric-label">{{ item.label }}</p>
+                <div>
+                  <strong>待完成学案</strong>
+                  <p class="section-note">优先从这里继续当前还没完成的学习任务。</p>
+                </div>
               </div>
-              <p class="metric-value">{{ item.value }}</p>
+              <n-tag round>{{ pendingCount }} 份</n-tag>
+            </div>
+          </template>
+
+          <n-empty v-if="!homeData.pending_courses.length" description="当前没有待完成的学案。" />
+          <n-timeline v-else>
+            <n-timeline-item
+              v-for="item in homeData.pending_courses"
+              :key="item.id"
+              :time="formatDate(item.date)"
+            >
+              <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
+            </n-timeline-item>
+          </n-timeline>
+        </SaPanel>
+
+        <SaPanel class="student-list-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--success">
+                  <AppIcon :icon="Clock3" :size="20" />
+                </span>
+                <div>
+                  <strong>已完成学案</strong>
+                  <p class="section-note">回顾复盘时，可以从这里重新打开已完成内容。</p>
+                </div>
+              </div>
+              <n-tag round type="success">{{ completedCount }} 份</n-tag>
+            </div>
+          </template>
+
+          <n-empty v-if="!homeData.completed_courses.length" description="暂时还没有已完成的学案。" />
+          <n-timeline v-else>
+            <n-timeline-item
+              v-for="item in homeData.completed_courses"
+              :key="item.id"
+              :time="formatDate(item.date)"
+            >
+              <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
+            </n-timeline-item>
+          </n-timeline>
+        </SaPanel>
+      </section>
+
+      <section class="student-home-grid">
+        <SaPanel class="student-chart-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--success">
+                  <AppIcon :icon="TrendingUp" :size="20" />
+                </span>
+                <div>
+                  <strong>近期学习节奏</strong>
+                  <p class="section-note">按日期观察待完成与已完成学案的变化趋势。</p>
+                </div>
+              </div>
+            </div>
+          </template>
+
+          <n-empty
+            v-if="!courseTimelineData.length"
+            description="暂时没有带日期的学习记录，无法生成趋势图。"
+          />
+          <AppChart v-else :height="280" :option="courseTimelineChartOption" />
+        </SaPanel>
+
+        <SaPanel class="student-chart-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--accent">
+                  <AppIcon :icon="GraduationCap" :size="20" />
+                </span>
+                <div>
+                  <strong>学案完成概览</strong>
+                  <p class="section-note">用图表快速查看待完成与已完成学案的比例。</p>
+                </div>
+              </div>
+              <n-tag round type="success">{{ completionRate }}%</n-tag>
+            </div>
+          </template>
+
+          <n-empty v-if="!totalCourseCount" description="暂时还没有可展示的学案进度数据。" />
+          <AppChart v-else :height="280" :option="courseStatusChartOption" />
+        </SaPanel>
+      </section>
+
+      <section class="student-home-grid">
+        <SaPanel class="student-profile-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--primary">
+                  <AppIcon :icon="UserCircle2" :size="20" />
+                </span>
+                <div>
+                  <strong>学生档案</strong>
+                  <p class="section-note">当前登录学生的基础信息、座位定位和学案评阅摘要。</p>
+                </div>
+              </div>
+              <n-tag round>{{ homeData.profile.class_name }}</n-tag>
+            </div>
+          </template>
+
+          <div class="student-profile-grid">
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">姓名</span>
+              <strong>{{ homeData.profile.name }}</strong>
             </article>
-          </section>
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">学号</span>
+              <strong>{{ homeData.profile.student_no }}</strong>
+            </article>
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">班级</span>
+              <strong>{{ homeData.profile.class_name }}</strong>
+            </article>
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">年级</span>
+              <strong>{{ homeData.profile.grade_no }} 年级</strong>
+            </article>
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">当前机房</span>
+              <strong>{{ currentRoomLabel }}</strong>
+            </article>
+            <article class="student-profile-item">
+              <span class="student-profile-item__label">当前座位</span>
+              <strong>{{ currentSeatLabel }}</strong>
+            </article>
+          </div>
 
-          <section class="student-home-grid">
-            <el-card class="soft-card student-list-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--primary">
-                      <AppIcon :icon="ListTodo" :size="20" />
-                    </span>
-                    <div>
-                      <strong>待完成学案</strong>
-                      <p class="section-note">优先从这里继续当前还没完成的学习任务。</p>
-                    </div>
-                  </div>
-                  <el-tag round>{{ pendingCount }} 份</el-tag>
+          <div class="student-profile-panels">
+            <section class="student-profile-section">
+              <div class="student-profile-section__head">
+                <div>
+                  <strong>学案得分信息</strong>
+                  <p class="section-note">老师评阅后，这里会同步汇总最近的得分和评语。</p>
                 </div>
-              </template>
+                <n-tag round type="success">{{ scoredPlanCount }} 份</n-tag>
+              </div>
 
-              <el-empty v-if="!homeData.pending_courses.length" description="当前没有待完成的学案。" />
-              <el-timeline v-else>
-                <el-timeline-item
-                  v-for="item in homeData.pending_courses"
-                  :key="item.id"
-                  :timestamp="formatDate(item.date)"
-                >
-                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
-                </el-timeline-item>
-              </el-timeline>
-            </el-card>
-
-            <el-card class="soft-card student-list-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--success">
-                      <AppIcon :icon="Clock3" :size="20" />
-                    </span>
-                    <div>
-                      <strong>已完成学案</strong>
-                      <p class="section-note">回顾复盘时，可以从这里重新打开已完成内容。</p>
-                    </div>
-                  </div>
-                  <el-tag round type="success">{{ completedCount }} 份</el-tag>
-                </div>
-              </template>
-
-              <el-empty v-if="!homeData.completed_courses.length" description="暂时还没有已完成的学案。" />
-              <el-timeline v-else>
-                <el-timeline-item
-                  v-for="item in homeData.completed_courses"
-                  :key="item.id"
-                  :timestamp="formatDate(item.date)"
-                >
-                  <RouterLink :to="`/student/courses/${item.id}`">{{ item.title }}</RouterLink>
-                </el-timeline-item>
-              </el-timeline>
-            </el-card>
-          </section>
-
-          <section class="student-home-grid">
-            <el-card class="soft-card student-chart-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--success">
-                      <AppIcon :icon="TrendingUp" :size="20" />
-                    </span>
-                    <div>
-                      <strong>近期学习节奏</strong>
-                      <p class="section-note">按日期观察待完成与已完成学案的变化趋势。</p>
-                    </div>
-                  </div>
-                </div>
-              </template>
-
-              <el-empty
-                v-if="!courseTimelineData.length"
-                description="暂时没有带日期的学习记录，无法生成趋势图。"
-              />
-              <AppChart v-else :height="280" :option="courseTimelineChartOption" />
-            </el-card>
-
-            <el-card class="soft-card student-chart-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--accent">
-                      <AppIcon :icon="GraduationCap" :size="20" />
-                    </span>
-                    <div>
-                      <strong>学案完成概览</strong>
-                      <p class="section-note">用图表快速查看待完成与已完成学案的比例。</p>
-                    </div>
-                  </div>
-                  <el-tag round type="success">{{ completionRate }}%</el-tag>
-                </div>
-              </template>
-
-              <el-empty v-if="!totalCourseCount" description="暂时还没有可展示的学案进度数据。" />
-              <AppChart v-else :height="280" :option="courseStatusChartOption" />
-            </el-card>
-          </section>
-
-          <section class="student-home-grid">
-            <el-card class="soft-card student-profile-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--primary">
-                      <AppIcon :icon="UserCircle2" :size="20" />
-                    </span>
-                    <div>
-                      <strong>学生档案</strong>
-                      <p class="section-note">当前登录学生的基础信息、座位定位和学案评阅摘要。</p>
-                    </div>
-                  </div>
-                  <el-tag round>{{ homeData.profile.class_name }}</el-tag>
-                </div>
-              </template>
-
-              <div class="student-profile-grid">
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">姓名</span>
-                  <strong>{{ homeData.profile.name }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">学号</span>
-                  <strong>{{ homeData.profile.student_no }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">班级</span>
-                  <strong>{{ homeData.profile.class_name }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">年级</span>
-                  <strong>{{ homeData.profile.grade_no }} 年级</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">当前机房</span>
-                  <strong>{{ currentRoomLabel }}</strong>
-                </article>
-                <article class="student-profile-item">
-                  <span class="student-profile-item__label">当前座位</span>
-                  <strong>{{ currentSeatLabel }}</strong>
+              <div class="student-score-summary">
+                <article v-for="item in scoreCards" :key="item.label" class="student-score-stat">
+                  <span class="student-score-stat__label">{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                  <p>{{ item.note }}</p>
                 </article>
               </div>
 
-              <div class="student-profile-panels">
-                <section class="student-profile-section">
-                  <div class="student-profile-section__head">
-                    <div>
-                      <strong>学案得分信息</strong>
-                      <p class="section-note">老师评阅后，这里会同步汇总最近的得分和评语。</p>
-                    </div>
-                    <el-tag round type="success">{{ scoredPlanCount }} 份</el-tag>
+              <div v-if="recentScoredPlans.length" class="student-score-list">
+                <article v-for="item in recentScoredPlans" :key="item.plan_id" class="student-score-item">
+                  <div class="student-score-item__main">
+                    <RouterLink class="student-score-item__link" :to="`/student/courses/${item.plan_id}`">
+                      {{ item.title }}
+                    </RouterLink>
+                    <p class="student-score-item__meta">
+                      <span>{{ formatDateTime(item.scored_at) }}</span>
+                      <span>已评 {{ item.reviewed_task_count }} 项</span>
+                      <span v-if="item.teacher_comment">{{ item.teacher_comment }}</span>
+                    </p>
                   </div>
-
-                  <div class="student-score-summary">
-                    <article v-for="item in scoreCards" :key="item.label" class="student-score-stat">
-                      <span class="student-score-stat__label">{{ item.label }}</span>
-                      <strong>{{ item.value }}</strong>
-                      <p>{{ item.note }}</p>
-                    </article>
-                  </div>
-
-                  <div v-if="recentScoredPlans.length" class="student-score-list">
-                    <article v-for="item in recentScoredPlans" :key="item.plan_id" class="student-score-item">
-                      <div class="student-score-item__main">
-                        <RouterLink class="student-score-item__link" :to="`/student/courses/${item.plan_id}`">
-                          {{ item.title }}
-                        </RouterLink>
-                        <p class="student-score-item__meta">
-                          <span>{{ formatDateTime(item.scored_at) }}</span>
-                          <span>已评 {{ item.reviewed_task_count }} 项</span>
-                          <span v-if="item.teacher_comment">{{ item.teacher_comment }}</span>
-                        </p>
-                      </div>
-                      <el-tag round :type="item.is_recommended ? 'warning' : 'success'">
-                        {{ formatScore(item.score) }}
-                      </el-tag>
-                    </article>
-                  </div>
-
-                  <el-empty v-else description="老师评阅后，这里会显示学案得分。" />
-                </section>
-              </div>
-            </el-card>
-
-            <el-card class="soft-card student-list-card">
-              <template #header>
-                <div class="student-card-head">
-                  <div class="student-card-head__main">
-                    <span class="student-card-icon student-card-icon--warning">
-                      <AppIcon :icon="BadgeCheck" :size="20" />
-                    </span>
-                    <div>
-                      <strong>今日签到动态</strong>
-                      <p class="section-note">同步展示今天班级内的签到更新。</p>
-                    </div>
-                  </div>
-                  <el-tag round>{{ attendanceCount }} 条</el-tag>
-                </div>
-              </template>
-
-              <el-empty v-if="!homeData.attendance_today.length" description="今天还没有新的签到记录。" />
-              <div v-else class="student-attendance-list">
-                <article
-                  v-for="item in homeData.attendance_today"
-                  :key="`${item.name}-${item.checked_in_at}`"
-                  class="student-attendance-item"
-                >
-                  <div class="student-attendance-item__name">
-                    <AppIcon :icon="Sparkles" :size="16" />
-                    <span>{{ item.name }}</span>
-                  </div>
-                  <span class="student-attendance-item__time">{{ item.checked_in_at }}</span>
+                  <n-tag round :type="item.is_recommended ? 'warning' : 'success'">
+                    {{ formatScore(item.score) }}
+                  </n-tag>
                 </article>
               </div>
-            </el-card>
-          </section>
-        </template>
-      </template>
-    </el-skeleton>
+
+              <n-empty v-else description="老师评阅后，这里会显示学案得分。" />
+            </section>
+          </div>
+        </SaPanel>
+
+        <SaPanel class="student-list-card">
+          <template #header>
+            <div class="student-card-head">
+              <div class="student-card-head__main">
+                <span class="student-card-icon student-card-icon--warning">
+                  <AppIcon :icon="BadgeCheck" :size="20" />
+                </span>
+                <div>
+                  <strong>今日签到动态</strong>
+                  <p class="section-note">同步展示今天班级内的签到更新。</p>
+                </div>
+              </div>
+              <n-tag round>{{ attendanceCount }} 条</n-tag>
+            </div>
+          </template>
+
+          <n-empty v-if="!homeData.attendance_today.length" description="今天还没有新的签到记录。" />
+          <div v-else class="student-attendance-list">
+            <article
+              v-for="item in homeData.attendance_today"
+              :key="`${item.name}-${item.checked_in_at}`"
+              class="student-attendance-item"
+            >
+              <div class="student-attendance-item__name">
+                <AppIcon :icon="Sparkles" :size="16" />
+                <span>{{ item.name }}</span>
+              </div>
+              <span class="student-attendance-item__time">{{ item.checked_in_at }}</span>
+            </article>
+          </div>
+        </SaPanel>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NSkeleton, NTag, NTimeline, NTimelineItem } from 'naive-ui';
 import {
   BadgeCheck,
   BookOpenText,
@@ -285,6 +280,8 @@ import { RouterLink, useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
 import AppIcon from '@/components/AppIcon.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { readThemeToken } from '@/utils/themeTokens';
@@ -466,6 +463,7 @@ const courseTimelineData = computed(() => {
 
 const courseStatusChartOption = computed(() => {
   appStore.currentTheme;
+  appStore.resolvedScheme;
   const textColor = readThemeToken('--ls-text', '#243a4d');
   const mutedColor = readThemeToken('--ls-muted', '#61758b');
   const primaryColor = readThemeToken('--ls-primary', '#ff8a1f');
@@ -536,6 +534,7 @@ const courseStatusChartOption = computed(() => {
 
 const courseTimelineChartOption = computed(() => {
   appStore.currentTheme;
+  appStore.resolvedScheme;
   const textColor = readThemeToken('--ls-text', '#243a4d');
   const mutedColor = readThemeToken('--ls-muted', '#61758b');
   const borderColor = readThemeToken('--ls-border', 'rgba(36, 70, 87, 0.14)');
@@ -644,12 +643,12 @@ onMounted(loadHome);
   gap: 18px;
 }
 
-.student-home-hero {
+.student-home-page .student-home-hero {
   align-items: center;
   gap: 18px;
   border-color: var(--ls-border);
   background:
-    radial-gradient(circle at 88% 14%, rgba(255, 255, 255, 0.56), transparent 44%),
+    radial-gradient(circle at 88% 14%, var(--ls-chip-bg), transparent 44%),
     var(--ls-panel);
   box-shadow: var(--ls-shadow), var(--ls-surface-glow);
 }
@@ -751,18 +750,18 @@ onMounted(loadHome);
 }
 
 .student-card-icon--accent {
-  background: color-mix(in srgb, var(--ls-accent) 16%, white);
+  background: color-mix(in srgb, var(--ls-accent) 16%, transparent);
   color: var(--ls-accent);
 }
 
 .student-card-icon--success {
   background: rgba(40, 185, 126, 0.16);
-  color: #1a9a68;
+  color: var(--ls-success-text);
 }
 
 .student-card-icon--warning {
   background: rgba(255, 179, 71, 0.18);
-  color: #c97805;
+  color: var(--ls-warning-text);
 }
 
 .student-profile-card,
@@ -778,7 +777,7 @@ onMounted(loadHome);
 .student-score-item {
   border: 1px solid var(--ls-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--ls-elevated);
   box-shadow: var(--ls-surface-glow);
 }
 
@@ -805,7 +804,7 @@ onMounted(loadHome);
   display: grid;
   gap: 6px;
   padding: 14px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ls-elevated);
 }
 
 .student-score-stat strong {
@@ -824,7 +823,7 @@ onMounted(loadHome);
 .student-score-item {
   gap: 12px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--ls-elevated);
 }
 
 .student-score-item__main {
@@ -851,7 +850,7 @@ onMounted(loadHome);
 .student-attendance-item {
   justify-content: space-between;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--ls-elevated);
 }
 
 .student-attendance-item__name {
@@ -866,9 +865,9 @@ onMounted(loadHome);
   line-height: 1.65;
 }
 
-.student-list-card :deep(.el-card__body),
-.student-chart-card :deep(.el-card__body),
-.student-profile-card :deep(.el-card__body) {
+.student-list-card :deep(.sa-panel__body),
+.student-chart-card :deep(.sa-panel__body),
+.student-profile-card :deep(.sa-panel__body) {
   display: grid;
   gap: 14px;
 }

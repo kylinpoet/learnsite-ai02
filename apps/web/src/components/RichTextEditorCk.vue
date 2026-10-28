@@ -502,6 +502,14 @@ onBeforeUnmount(() => {
 .rich-text-editor {
   display: block;
   overflow: hidden;
+  /* CKEditor 自带一套浅色调色板（默认 #fff 底 / #333 字），这里只把影响深色可读性的
+     几项接到主题变量上，避免下拉面板、气泡与按钮态在深色下出现白块。 */
+  --ck-color-base-background: var(--ls-elevated);
+  --ck-color-base-text: var(--ls-text);
+  --ck-color-base-border: var(--ls-border);
+  --ck-color-button-default-hover-background: var(--ls-primary-soft);
+  --ck-color-button-default-active-background: var(--ls-primary-soft);
+  --ck-color-button-on-background: var(--ls-primary-soft);
 }
 
 .rich-text-editor :deep(.ck.ck-editor) {
@@ -519,6 +527,7 @@ onBeforeUnmount(() => {
   border-radius: 0 0 16px 16px;
   border-color: var(--ls-border);
   background: var(--ls-panel-soft);
+  color: var(--ls-text);
   min-height: calc(var(--editor-min-height) + 2px);
   height: auto;
 }
@@ -592,7 +601,7 @@ onBeforeUnmount(() => {
   max-width: 100%;
   min-height: 480px;
   border: 0;
-  background: #fff;
+  background: var(--ls-card);
 }
 
 .rich-text-editor--readonly :deep(.ck.ck-editor__top) {

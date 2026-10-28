@@ -1,582 +1,578 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">学生管理</p>
-        <h2>班级学生维护</h2>
-        <p class="hero-copy">
-          支持按班级查看学生、重置密码、停用或恢复账号、解除分组，并快速追踪个人作品记录。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading || isLoadingTransferRequests" type="primary" @click="refreshAll">
+    <SaPageHeader
+      compact
+      description="按班级查看学生、重置密码、停用或恢复账号；分组协作也在这个班里维护。"
+      eyebrow="学生管理"
+      title="班级学生维护"
+    >
+      <template #actions>
+        <n-button :loading="isLoading || isLoadingTransferRequests" type="primary" @click="refreshAll">
           刷新
-        </el-button>
-        <el-button :disabled="!students?.selected_class_id" plain @click="downloadStudents">
+        </n-button>
+        <n-button :disabled="!students?.selected_class_id" secondary @click="downloadStudents">
           导出学生表
-        </el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="11" />
-        </el-card>
+        </n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <div v-if="students" class="page-stack">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">学生数</p>
-              <p class="metric-value">{{ students.summary.student_count }}</p>
-              <p class="metric-note">当前筛选条件</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">活跃账号</p>
-              <p class="metric-value">{{ students.summary.active_count }}</p>
-              <p class="metric-note">可登录学生</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已停用</p>
-              <p class="metric-value">{{ students.summary.inactive_count }}</p>
-              <p class="metric-note">可在本页恢复</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已分组</p>
-              <p class="metric-value">{{ students.summary.grouped_count }}</p>
-              <p class="metric-note">当前班级分组成员</p>
-            </article>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="11" animated />
+    </SaPanel>
+
+    <div v-else-if="students" class="page-stack">
+      <n-tabs v-model:value="activeTab" animated type="line">
+        <n-tab-pane display-directive="if" name="students" tab="本班学生">
+      <div class="ls-row">
+        <article class="metric-tile">
+          <p class="metric-label">学生数</p>
+          <p class="metric-value">{{ students.summary.student_count }}</p>
+          <p class="metric-note">当前筛选条件</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">活跃账号</p>
+          <p class="metric-value">{{ students.summary.active_count }}</p>
+          <p class="metric-note">可登录学生</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已停用</p>
+          <p class="metric-value">{{ students.summary.inactive_count }}</p>
+          <p class="metric-note">可在本页恢复</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已分组</p>
+          <p class="metric-value">{{ students.summary.grouped_count }}</p>
+          <p class="metric-note">当前班级分组成员</p>
+        </article>
+      </div>
+
+      <div class="student-charts">
+        <SaPanel compact>
+          <template #header>
+            <div class="student-chart-head">
+              <strong>各班账号构成</strong>
+              <span class="student-chart-note">按班级查看启用与停用账号分布</span>
+            </div>
+          </template>
+          <n-empty v-if="!students.classes.length" description="暂无可对比的班级。" />
+          <AppChart v-else :height="260" :option="classAccountOption" />
+        </SaPanel>
+
+        <SaPanel compact>
+          <template #header>
+            <div class="student-chart-head">
+              <strong>本班提交与评阅</strong>
+              <span class="student-chart-note">按学生查看提交量与待评阅积压（前 12 名学生）</span>
+            </div>
+          </template>
+          <n-empty v-if="!students.items.length" description="当前筛选条件下没有学生。" />
+          <AppChart v-else :height="260" :option="studentSubmissionOption" />
+        </SaPanel>
+      </div>
+
+      <SaPanel>
+        <template #header>
+          <div class="panel-toolbar">
+            <div class="toolbar-row">
+              <div class="filter-row">
+                <n-select
+                  v-model:value="filters.classId"
+                  :options="classOptions"
+                  class="filter-select"
+                  placeholder="选择班级"
+                  @update:value="loadStudents"
+                />
+                <n-input
+                  v-model:value="filters.keyword"
+                  class="filter-select"
+                  clearable
+                  placeholder="按学号/账号/姓名搜索"
+                  @clear="clearStudentKeyword"
+                  @keyup.enter="loadStudents"
+                />
+                <n-checkbox v-model:checked="filters.includeInactive" @update:checked="loadStudents">
+                  包含停用账号
+                </n-checkbox>
+              </div>
+              <n-tag v-if="students.selected_class" round>
+                {{ students.selected_class.class_name }}
+              </n-tag>
+            </div>
+            <div class="batch-row">
+              <n-tag round type="info">已选 {{ selectedStudentIds.length }} 人</n-tag>
+              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('deactivate')">
+                批量停用
+              </n-button>
+              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('activate')">
+                批量恢复
+              </n-button>
+              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('ungroup')">
+                批量解除分组
+              </n-button>
+              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('reset_password')">
+                批量重置密码
+              </n-button>
+            </div>
           </div>
+        </template>
 
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="filter-row">
-                  <el-select v-model="filters.classId" class="filter-select" placeholder="选择班级" @change="loadStudents">
-                    <el-option
-                      v-for="item in students.classes"
-                      :key="item.id"
-                      :label="`${item.class_name} · 活跃 ${item.active_count}/${item.student_count}`"
-                      :value="item.id"
-                    />
-                  </el-select>
-                  <el-input
-                    v-model="filters.keyword"
-                    class="filter-select"
-                    clearable
-                    placeholder="按学号/账号/姓名搜索"
-                    @keyup.enter="loadStudents"
-                    @clear="loadStudents"
-                  />
-                  <el-checkbox v-model="filters.includeInactive" @change="loadStudents">
-                    包含停用账号
-                  </el-checkbox>
-                </div>
-                <el-tag v-if="students.selected_class" round>
-                  {{ students.selected_class.class_name }}
-                </el-tag>
-              </div>
-              <div class="batch-row">
-                <el-tag round type="info">已选 {{ selectedStudentIds.length }} 人</el-tag>
-                <el-button plain :disabled="!hasSelectedStudents" @click="runBatchAction('deactivate')">
-                  批量停用
-                </el-button>
-                <el-button plain :disabled="!hasSelectedStudents" @click="runBatchAction('activate')">
-                  批量恢复
-                </el-button>
-                <el-button plain :disabled="!hasSelectedStudents" @click="runBatchAction('ungroup')">
-                  批量解除分组
-                </el-button>
-                <el-button plain :disabled="!hasSelectedStudents" @click="runBatchAction('reset_password')">
-                  批量重置密码
-                </el-button>
+        <SaDataTable
+          v-model:checked-row-keys="selectedStudentKeys"
+          :data="students.items"
+          :scroll-x="1528"
+          empty-text="当前筛选条件下没有学生"
+          row-key="user_id"
+          stripe
+        >
+          <SaTableColumn type="selection" width="48" />
+          <SaTableColumn label="学号" min-width="110" prop="student_no" />
+          <SaTableColumn label="账号" min-width="110" prop="username" />
+          <SaTableColumn label="姓名" min-width="120" prop="display_name" />
+          <SaTableColumn label="状态" min-width="100">
+            <template #default="{ row }">
+              <n-tag :type="row.is_active ? 'success' : 'warning'" round>
+                {{ row.is_active ? '启用' : '停用' }}
+              </n-tag>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="分组" min-width="170">
+            <template #default="{ row }">
+              <span v-if="row.current_group_name">
+                {{ row.current_group_name }}
+                <n-tag round size="small" :type="row.current_role === 'leader' ? 'success' : 'info'">
+                  {{ row.current_role === 'leader' ? '组长' : '组员' }}
+                </n-tag>
+              </span>
+              <span v-else>未分组</span>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="座位" min-width="150">
+            <template #default="{ row }">
+              {{ row.seat_label || '--' }}
+              <span v-if="row.room_name"> · {{ row.room_name }}</span>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="签到" min-width="130">
+            <template #default="{ row }">
+              {{ row.checked_in_today ? `已签到 ${formatDateTime(row.checked_in_at)}` : '未签到' }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="提交/评阅" min-width="130">
+            <template #default="{ row }">
+              {{ row.submission_count }} / {{ row.reviewed_submission_count }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="最近提交" min-width="160">
+            <template #default="{ row }">{{ formatDateTime(row.latest_submission_at) }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="操作" fixed="right" min-width="300">
+            <template #default="{ row }">
+              <div class="cell-actions">
+                <n-button text type="primary" @click="openResetPassword(row)">重置密码</n-button>
+                <n-button text type="primary" @click="openStudentSubmissions(row)">作品记录</n-button>
+                <n-button :disabled="!row.current_group_id" text @click="removeFromGroup(row)">
+                  解除分组
+                </n-button>
+                <n-button :type="row.is_active ? 'error' : 'success'" text @click="toggleStudentStatus(row)">
+                  {{ row.is_active ? '停用账号' : '恢复账号' }}
+                </n-button>
               </div>
             </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
 
-            <el-empty v-if="!students.items.length" description="当前筛选条件下没有学生" />
+      <SaPanel>
+        <template #header>
+          <div class="panel-toolbar">
+            <div class="filter-row">
+              <n-select
+                :options="transferClassOptions"
+                :value="transferFilters.classId ?? null"
+                class="filter-select"
+                clearable
+                placeholder="按班级筛选申请"
+                @update:value="onTransferClassFilterChange"
+              />
+              <n-select
+                v-model:value="transferFilters.status"
+                :options="transferStatusOptions"
+                class="filter-select status-filter"
+                @update:value="loadTransferRequests"
+              />
+              <n-button
+                :disabled="!currentStudentClassId"
+                secondary
+                type="primary"
+                @click="quickFilterPendingForCurrentClass"
+              >
+                {{ currentStudentClassName ? `仅看${currentStudentClassName}待审核` : '仅看当前班待审核' }}
+              </n-button>
+              <n-button :disabled="isTransferFilterResetDisabled" secondary @click="resetTransferFiltersToAll">
+                恢复为全部状态
+              </n-button>
+              <n-button secondary @click="loadTransferRequests">刷新申请</n-button>
+              <n-select
+                :options="transferReviewNotePresetOptions"
+                :value="selectedReviewNotePreset || null"
+                class="preset-select"
+                clearable
+                placeholder="审核常用语预设"
+                @update:value="onReviewNotePresetChange"
+              />
+              <n-select
+                :options="transferUnreviewReasonPresetOptions"
+                :value="selectedUnreviewReasonPreset || null"
+                class="preset-select"
+                clearable
+                placeholder="撤销原因模板"
+                @update:value="onUnreviewReasonPresetChange"
+              />
+            </div>
+            <div class="chip-row">
+              <n-tag round type="warning">待审核 {{ pendingTransferCount }} 条</n-tag>
+              <n-tag round type="success">待审已选 {{ selectedPendingTransferRequestIds.length }} 条</n-tag>
+              <n-tag round type="info">已处理已选 {{ selectedReviewedTransferRequestIds.length }} 条</n-tag>
+              <n-tag round>当前 {{ transferRequests.length }} 条</n-tag>
+              <n-button secondary @click="selectPendingTransferRequests">全选待审核</n-button>
+              <n-button :disabled="!hasSelectedTransferRows" secondary @click="clearTransferSelection">
+                清空选择
+              </n-button>
+              <n-button
+                :disabled="!transferFilters.classId || isBatchReviewingTransfers || isBatchUnreviewingTransfers"
+                :loading="isClassQuickReviewing && activeClassQuickReviewDecision === 'approve'"
+                secondary
+                type="success"
+                @click="quickBatchReviewCurrentClass('approve')"
+              >
+                当前班待审一键通过
+              </n-button>
+              <n-button
+                :disabled="!transferFilters.classId || isBatchReviewingTransfers || isBatchUnreviewingTransfers"
+                :loading="isClassQuickReviewing && activeClassQuickReviewDecision === 'reject'"
+                secondary
+                type="error"
+                @click="quickBatchReviewCurrentClass('reject')"
+              >
+                当前班待审一键拒绝
+              </n-button>
+              <n-button
+                :disabled="!selectedPendingTransferRequestIds.length || isBatchUnreviewingTransfers"
+                :loading="isBatchReviewingTransfers && activeBatchReviewDecision === 'approve'"
+                secondary
+                type="success"
+                @click="batchReviewClassTransferRequests('approve')"
+              >
+                批量通过
+              </n-button>
+              <n-button
+                :disabled="!selectedPendingTransferRequestIds.length || isBatchUnreviewingTransfers"
+                :loading="isBatchReviewingTransfers && activeBatchReviewDecision === 'reject'"
+                secondary
+                type="error"
+                @click="batchReviewClassTransferRequests('reject')"
+              >
+                批量拒绝
+              </n-button>
+              <n-button
+                :disabled="!selectedReviewedTransferRequestIds.length || isBatchReviewingTransfers"
+                :loading="isBatchUnreviewingTransfers"
+                secondary
+                type="warning"
+                @click="batchUnreviewClassTransferRequests"
+              >
+                批量撤销审核
+              </n-button>
+            </div>
+          </div>
+        </template>
 
-            <el-table
-              v-else
-              ref="studentTableRef"
-              :data="students.items"
-              row-key="user_id"
-              stripe
-              @selection-change="handleSelectionChange"
-            >
-              <el-table-column type="selection" width="48" />
-              <el-table-column label="学号" min-width="110" prop="student_no" />
-              <el-table-column label="账号" min-width="110" prop="username" />
-              <el-table-column label="姓名" min-width="120" prop="display_name" />
-              <el-table-column label="状态" min-width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.is_active ? 'success' : 'warning'" round>
-                    {{ row.is_active ? '启用' : '停用' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="分组" min-width="170">
-                <template #default="{ row }">
-                  <span v-if="row.current_group_name">
-                    {{ row.current_group_name }}
-                    <el-tag round size="small" :type="row.current_role === 'leader' ? 'success' : 'info'">
-                      {{ row.current_role === 'leader' ? '组长' : '组员' }}
-                    </el-tag>
-                  </span>
-                  <span v-else>未分组</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="座位" min-width="150">
-                <template #default="{ row }">
-                  {{ row.seat_label || '--' }}
-                  <span v-if="row.room_name"> · {{ row.room_name }}</span>
-                </template>
-              </el-table-column>
-              <el-table-column label="签到" min-width="130">
-                <template #default="{ row }">
-                  {{ row.checked_in_today ? `已签到 ${formatDateTime(row.checked_in_at)}` : '未签到' }}
-                </template>
-              </el-table-column>
-              <el-table-column label="提交/评阅" min-width="130">
-                <template #default="{ row }">
-                  {{ row.submission_count }} / {{ row.reviewed_submission_count }}
-                </template>
-              </el-table-column>
-              <el-table-column label="最近提交" min-width="160">
-                <template #default="{ row }">{{ formatDateTime(row.latest_submission_at) }}</template>
-              </el-table-column>
-              <el-table-column label="操作" fixed="right" min-width="300">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="openResetPassword(row)">重置密码</el-button>
-                  <el-button link type="primary" @click="openStudentSubmissions(row)">作品记录</el-button>
-                  <el-button link @click="removeFromGroup(row)" :disabled="!row.current_group_id">
-                    解除分组
-                  </el-button>
-                  <el-button
-                    link
-                    :type="row.is_active ? 'danger' : 'success'"
-                    @click="toggleStudentStatus(row)"
-                  >
-                    {{ row.is_active ? '停用账号' : '恢复账号' }}
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="filter-row">
-                  <el-select
-                    v-model="transferFilters.classId"
-                    clearable
-                    class="filter-select"
-                    placeholder="按班级筛选申请"
-                    @change="loadTransferRequests"
-                  >
-                    <el-option
-                      v-for="item in students.classes"
-                      :key="item.id"
-                      :label="item.class_name"
-                      :value="item.id"
-                    />
-                  </el-select>
-                  <el-select
-                    v-model="transferFilters.status"
-                    class="filter-select status-filter"
-                    @change="loadTransferRequests"
-                  >
-                    <el-option label="待审核" value="pending" />
-                    <el-option label="已通过" value="approved" />
-                    <el-option label="已拒绝" value="rejected" />
-                    <el-option label="全部状态" value="" />
-                  </el-select>
-                  <el-button
-                    plain
-                    type="primary"
-                    :disabled="!currentStudentClassId"
-                    @click="quickFilterPendingForCurrentClass"
-                  >
-                    {{ currentStudentClassName ? `仅看${currentStudentClassName}待审核` : '仅看当前班待审核' }}
-                  </el-button>
-                  <el-button
-                    plain
-                    :disabled="isTransferFilterResetDisabled"
-                    @click="resetTransferFiltersToAll"
-                  >
-                    恢复为全部状态
-                  </el-button>
-                  <el-button plain @click="loadTransferRequests">刷新申请</el-button>
-                  <el-select
-                    v-model="selectedReviewNotePreset"
-                    clearable
-                    class="preset-select"
-                    placeholder="审核常用语预设"
-                  >
-                    <el-option
-                      v-for="item in transferReviewNotePresetOptions"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
-                  <el-select
-                    v-model="selectedUnreviewReasonPreset"
-                    clearable
-                    class="preset-select"
-                    placeholder="撤销原因模板"
-                  >
-                    <el-option
-                      v-for="item in transferUnreviewReasonPresetOptions"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
-                </div>
-                <el-space wrap>
-                  <el-tag round type="warning">待审核 {{ pendingTransferCount }} 条</el-tag>
-                  <el-tag round type="success">待审已选 {{ selectedPendingTransferRequestIds.length }} 条</el-tag>
-                  <el-tag round type="info">已处理已选 {{ selectedReviewedTransferRequestIds.length }} 条</el-tag>
-                  <el-tag round>当前 {{ transferRequests.length }} 条</el-tag>
-                  <el-button plain @click="selectPendingTransferRequests">全选待审核</el-button>
-                  <el-button plain :disabled="!hasSelectedTransferRows" @click="clearTransferSelection">
-                    清空选择
-                  </el-button>
-                  <el-button
-                    plain
-                    type="success"
-                    :disabled="
-                      !transferFilters.classId || isBatchReviewingTransfers || isBatchUnreviewingTransfers
-                    "
-                    :loading="isClassQuickReviewing && activeClassQuickReviewDecision === 'approve'"
-                    @click="quickBatchReviewCurrentClass('approve')"
-                  >
-                    当前班待审一键通过
-                  </el-button>
-                  <el-button
-                    plain
-                    type="danger"
-                    :disabled="
-                      !transferFilters.classId || isBatchReviewingTransfers || isBatchUnreviewingTransfers
-                    "
-                    :loading="isClassQuickReviewing && activeClassQuickReviewDecision === 'reject'"
-                    @click="quickBatchReviewCurrentClass('reject')"
-                  >
-                    当前班待审一键拒绝
-                  </el-button>
-                  <el-button
-                    plain
-                    type="success"
-                    :disabled="!selectedPendingTransferRequestIds.length || isBatchUnreviewingTransfers"
-                    :loading="isBatchReviewingTransfers && activeBatchReviewDecision === 'approve'"
-                    @click="batchReviewClassTransferRequests('approve')"
-                  >
-                    批量通过
-                  </el-button>
-                  <el-button
-                    plain
-                    type="danger"
-                    :disabled="!selectedPendingTransferRequestIds.length || isBatchUnreviewingTransfers"
-                    :loading="isBatchReviewingTransfers && activeBatchReviewDecision === 'reject'"
-                    @click="batchReviewClassTransferRequests('reject')"
-                  >
-                    批量拒绝
-                  </el-button>
-                  <el-button
-                    plain
-                    type="warning"
-                    :disabled="!selectedReviewedTransferRequestIds.length || isBatchReviewingTransfers"
-                    :loading="isBatchUnreviewingTransfers"
-                    @click="batchUnreviewClassTransferRequests"
-                  >
-                    批量撤销审核
-                  </el-button>
-                </el-space>
-              </div>
+        <n-skeleton v-if="isLoadingTransferRequests" :rows="6" animated />
+        <SaDataTable
+          v-else
+          v-model:checked-row-keys="transferCheckedKeys"
+          :data="transferRequests"
+          :scroll-x="1380"
+          empty-text="暂无转班申请记录"
+          row-key="id"
+          stripe
+        >
+          <SaTableColumn :selectable="isTransferRequestSelectable" type="selection" width="48" />
+          <SaTableColumn label="申请时间" min-width="160">
+            <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="学生" min-width="170">
+            <template #default="{ row }">
+              {{ row.student.name }}（{{ row.student.student_no }}）
             </template>
-
-            <el-skeleton :loading="isLoadingTransferRequests" animated>
-              <template #template>
-                <el-skeleton :rows="6" />
-              </template>
-              <template #default>
-                <el-empty v-if="!transferRequests.length" description="暂无转班申请记录" />
-                <el-table
-                  v-else
-                  ref="transferTableRef"
-                  :data="transferRequests"
-                  row-key="id"
-                  stripe
-                  @selection-change="handleTransferSelectionChange"
+          </SaTableColumn>
+          <SaTableColumn label="原班级" min-width="120">
+            <template #default="{ row }">{{ row.current_class.class_name }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="目标班级" min-width="120">
+            <template #default="{ row }">{{ row.target_class.class_name }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="申请说明" min-width="180">
+            <template #default="{ row }">{{ row.reason || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="状态" min-width="100">
+            <template #default="{ row }">
+              <n-tag :type="classTransferStatusType(row.status)" round>
+                {{ classTransferStatusLabel(row.status) }}
+              </n-tag>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="审核备注" min-width="180">
+            <template #default="{ row }">{{ row.review_note || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="审核人" min-width="120">
+            <template #default="{ row }">{{ row.reviewed_by_name || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="操作" fixed="right" min-width="180">
+            <template #default="{ row }">
+              <div v-if="row.status === 'pending'" class="cell-actions">
+                <n-button
+                  :loading="reviewingTransferId === row.id"
+                  text
+                  type="success"
+                  @click="reviewClassTransferRequest(row, 'approve')"
                 >
-                  <el-table-column type="selection" width="48" :selectable="isTransferRequestSelectable" />
-                  <el-table-column label="申请时间" min-width="160">
-                    <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-                  </el-table-column>
-                  <el-table-column label="学生" min-width="170">
-                    <template #default="{ row }">
-                      {{ row.student.name }}（{{ row.student.student_no }}）
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="原班级" min-width="120">
-                    <template #default="{ row }">{{ row.current_class.class_name }}</template>
-                  </el-table-column>
-                  <el-table-column label="目标班级" min-width="120">
-                    <template #default="{ row }">{{ row.target_class.class_name }}</template>
-                  </el-table-column>
-                  <el-table-column label="申请说明" min-width="180">
-                    <template #default="{ row }">{{ row.reason || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="状态" min-width="100">
-                    <template #default="{ row }">
-                      <el-tag :type="classTransferStatusType(row.status)" round>
-                        {{ classTransferStatusLabel(row.status) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="审核备注" min-width="180">
-                    <template #default="{ row }">{{ row.review_note || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="审核人" min-width="120">
-                    <template #default="{ row }">{{ row.reviewed_by_name || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="操作" min-width="180" fixed="right">
-                    <template #default="{ row }">
-                      <el-space v-if="row.status === 'pending'" wrap>
-                        <el-button
-                          link
-                          type="success"
-                          :loading="reviewingTransferId === row.id"
-                          @click="reviewClassTransferRequest(row, 'approve')"
-                        >
-                          通过
-                        </el-button>
-                        <el-button
-                          link
-                          type="danger"
-                          :loading="reviewingTransferId === row.id"
-                          @click="reviewClassTransferRequest(row, 'reject')"
-                        >
-                          拒绝
-                        </el-button>
-                      </el-space>
-                      <span v-else>已处理</span>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </template>
-            </el-skeleton>
-          </el-card>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="filter-row">
-                  <el-select
-                    v-model="auditFilters.classId"
-                    clearable
-                    class="filter-select"
-                    placeholder="按班级筛选审计"
-                    @change="loadProfileChangeAudits"
-                  >
-                    <el-option
-                      v-for="item in profileAuditClassOptions"
-                      :key="item.id"
-                      :label="item.class_name"
-                      :value="item.id"
-                    />
-                  </el-select>
-                  <el-select
-                    v-model="auditFilters.eventType"
-                    clearable
-                    class="filter-select"
-                    placeholder="按事件筛选"
-                    @change="loadProfileChangeAudits"
-                  >
-                    <el-option
-                      v-for="item in profileAuditEventTypeOptions"
-                      :key="item.value"
-                      :label="item.label"
-                      :value="item.value"
-                    />
-                  </el-select>
-                  <el-input
-                    v-model="auditFilters.keyword"
-                    class="filter-select"
-                    clearable
-                    placeholder="搜索学生/学号/操作说明"
-                    @keyup.enter="loadProfileChangeAudits"
-                    @clear="loadProfileChangeAudits"
-                  />
-                  <el-button plain @click="loadProfileChangeAudits">查询</el-button>
-                  <el-button plain @click="exportProfileChangeAudits">导出 CSV</el-button>
-                </div>
-                <el-space wrap>
-                  <el-tag round type="info">资料变更审计</el-tag>
-                  <el-tag
-                    v-if="activeAuditBatchToken"
-                    closable
-                    round
-                    type="success"
-                    @close="clearAuditBatchFilter"
-                  >
-                    同批记录：{{ activeAuditBatchToken }}
-                  </el-tag>
-                  <el-tag round>当前 {{ profileChangeAudits.length }} 条</el-tag>
-                  <el-tag round type="warning">总计 {{ profileChangeAuditTotalCount }} 条</el-tag>
-                </el-space>
+                  通过
+                </n-button>
+                <n-button
+                  :loading="reviewingTransferId === row.id"
+                  text
+                  type="error"
+                  @click="reviewClassTransferRequest(row, 'reject')"
+                >
+                  拒绝
+                </n-button>
               </div>
+              <span v-else>已处理</span>
             </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
 
-            <el-skeleton :loading="isLoadingProfileChangeAudits" animated>
-              <template #template>
-                <el-skeleton :rows="6" />
-              </template>
-              <template #default>
-                <el-empty v-if="!profileChangeAudits.length" description="暂无资料变更审计记录" />
-                <el-table v-else :data="profileChangeAudits" stripe>
-                  <el-table-column label="时间" min-width="160">
-                    <template #default="{ row }">{{ formatDateTime(row.occurred_at) }}</template>
-                  </el-table-column>
-                  <el-table-column label="事件" min-width="150">
-                    <template #default="{ row }">{{ row.event_label || row.event_type }}</template>
-                  </el-table-column>
-                  <el-table-column label="班级" min-width="120">
-                    <template #default="{ row }">{{ row.class_name || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="目标班级" min-width="170">
-                    <template #default="{ row }">
-                      <div class="audit-copy-cell">
-                        <span>{{ row.target_class_name || '--' }}</span>
-                        <el-button
-                          v-if="row.target_class_name"
-                          link
-                          type="primary"
-                          @click="copyAuditField(row.target_class_name, '目标班级')"
-                        >
-                          复制
-                        </el-button>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="操作人" min-width="150">
-                    <template #default="{ row }">
-                      {{ row.actor_name || '--' }}
-                      <el-tag v-if="row.actor_role" size="small" round type="info">{{ auditActorRoleLabel(row.actor_role) }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="操作者账号" min-width="170">
-                    <template #default="{ row }">
-                      <div class="audit-copy-cell">
-                        <span>{{ row.actor_username || '--' }}</span>
-                        <el-button
-                          v-if="row.actor_username"
-                          link
-                          type="primary"
-                          @click="copyAuditField(row.actor_username, '操作者账号')"
-                        >
-                          复制
-                        </el-button>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="学生" min-width="170">
-                    <template #default="{ row }">
-                      {{ row.target_student_name || '--' }}
-                      <span v-if="row.target_student_no">（{{ row.target_student_no }}）</span>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="字段" min-width="120">
-                    <template #default="{ row }">{{ row.field_label || row.field_key || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="变更前" min-width="160">
-                    <template #default="{ row }">{{ row.before_value || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="变更后" min-width="160">
-                    <template #default="{ row }">{{ row.after_value || '--' }}</template>
-                  </el-table-column>
-                  <el-table-column label="处理批次号" min-width="220">
-                    <template #default="{ row }">
-                      <div class="audit-copy-cell">
-                        <span>{{ row.batch_token || '--' }}</span>
-                        <el-button
-                          v-if="row.batch_token"
-                          link
-                          type="warning"
-                          @click="filterAuditByBatchToken(row.batch_token)"
-                        >
-                          同批记录
-                        </el-button>
-                        <el-button
-                          v-if="row.batch_token"
-                          link
-                          type="primary"
-                          @click="copyAuditField(row.batch_token, '处理批次号')"
-                        >
-                          复制
-                        </el-button>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="说明" min-width="260">
-                    <template #default="{ row }">{{ row.description || '--' }}</template>
-                  </el-table-column>
-                </el-table>
-              </template>
-            </el-skeleton>
-          </el-card>
-        </div>
-      </template>
-    </el-skeleton>
-
-    <el-drawer v-model="submissionDrawerVisible" append-to-body size="720px" title="学生作品记录">
-      <el-skeleton :loading="isLoadingStudentSubmissions" animated>
-        <template #template>
-          <el-card class="soft-card"><el-skeleton :rows="8" /></el-card>
-        </template>
-        <template #default>
-          <div v-if="studentSubmissions">
-            <p class="section-note">
-              {{ studentSubmissions.student.class_name }} ·
-              {{ studentSubmissions.student.display_name }}（{{ studentSubmissions.student.student_no }}）
-            </p>
-            <el-empty v-if="!studentSubmissions.items.length" description="暂无作品记录" />
-            <el-table v-else :data="studentSubmissions.items" stripe>
-              <el-table-column label="任务" min-width="200" prop="task_title" />
-              <el-table-column label="学案" min-width="220" prop="plan_title" />
-              <el-table-column label="状态" min-width="100">
-                <template #default="{ row }">
-                  <el-tag :type="row.status === 'reviewed' ? 'success' : 'warning'" round>
-                    {{ row.status === 'reviewed' ? '已评阅' : '已提交' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="分数" min-width="90">
-                <template #default="{ row }">{{ row.score ?? '--' }}</template>
-              </el-table-column>
-              <el-table-column label="文件数" min-width="90" prop="file_count" />
-              <el-table-column label="提交时间" min-width="160">
-                <template #default="{ row }">{{ formatDateTime(row.submitted_at || row.updated_at) }}</template>
-              </el-table-column>
-            </el-table>
+      <SaPanel>
+        <template #header>
+          <div class="panel-toolbar">
+            <div class="filter-row">
+              <n-select
+                :options="auditClassOptions"
+                :value="auditFilters.classId ?? null"
+                class="filter-select"
+                clearable
+                placeholder="按班级筛选审计"
+                @update:value="onAuditClassFilterChange"
+              />
+              <n-select
+                :options="profileAuditEventTypeOptions"
+                :value="auditFilters.eventType || null"
+                class="filter-select"
+                clearable
+                placeholder="按事件筛选"
+                @update:value="onAuditEventTypeChange"
+              />
+              <n-input
+                v-model:value="auditFilters.keyword"
+                class="filter-select"
+                clearable
+                placeholder="搜索学生/学号/操作说明"
+                @clear="clearAuditKeyword"
+                @keyup.enter="loadProfileChangeAudits"
+              />
+              <n-button secondary @click="loadProfileChangeAudits">查询</n-button>
+              <n-button secondary @click="exportProfileChangeAudits">导出 CSV</n-button>
+            </div>
+            <div class="chip-row">
+              <n-tag round type="info">资料变更审计</n-tag>
+              <n-tag v-if="activeAuditBatchToken" closable round type="success" @close="clearAuditBatchFilter">
+                同批记录：{{ activeAuditBatchToken }}
+              </n-tag>
+              <n-tag round>当前 {{ profileChangeAudits.length }} 条</n-tag>
+              <n-tag round type="warning">总计 {{ profileChangeAuditTotalCount }} 条</n-tag>
+            </div>
           </div>
         </template>
-      </el-skeleton>
-    </el-drawer>
+
+        <n-skeleton v-if="isLoadingProfileChangeAudits" :rows="6" animated />
+        <SaDataTable
+          v-else
+          :data="profileChangeAudits"
+          row-key="id"
+          stripe
+          empty-text="暂无资料变更审计记录"
+        >
+          <SaTableColumn label="时间" min-width="160">
+            <template #default="{ row }">{{ formatDateTime(row.occurred_at) }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="事件" min-width="150">
+            <template #default="{ row }">{{ row.event_label || row.event_type }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="班级" min-width="120">
+            <template #default="{ row }">{{ row.class_name || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="目标班级" min-width="170">
+            <template #default="{ row }">
+              <div class="audit-copy-cell">
+                <span>{{ row.target_class_name || '--' }}</span>
+                <n-button
+                  v-if="row.target_class_name"
+                  text
+                  type="primary"
+                  @click="copyAuditField(row.target_class_name, '目标班级')"
+                >
+                  复制
+                </n-button>
+              </div>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="操作人" min-width="150">
+            <template #default="{ row }">
+              {{ row.actor_name || '--' }}
+              <n-tag v-if="row.actor_role" round size="small" type="info">
+                {{ auditActorRoleLabel(row.actor_role) }}
+              </n-tag>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="操作者账号" min-width="170">
+            <template #default="{ row }">
+              <div class="audit-copy-cell">
+                <span>{{ row.actor_username || '--' }}</span>
+                <n-button
+                  v-if="row.actor_username"
+                  text
+                  type="primary"
+                  @click="copyAuditField(row.actor_username, '操作者账号')"
+                >
+                  复制
+                </n-button>
+              </div>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="学生" min-width="170">
+            <template #default="{ row }">
+              {{ row.target_student_name || '--' }}
+              <span v-if="row.target_student_no">（{{ row.target_student_no }}）</span>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="字段" min-width="120">
+            <template #default="{ row }">{{ row.field_label || row.field_key || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="变更前" min-width="160">
+            <template #default="{ row }">{{ row.before_value || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="变更后" min-width="160">
+            <template #default="{ row }">{{ row.after_value || '--' }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="处理批次号" min-width="220">
+            <template #default="{ row }">
+              <div class="audit-copy-cell">
+                <span>{{ row.batch_token || '--' }}</span>
+                <n-button
+                  v-if="row.batch_token"
+                  text
+                  type="warning"
+                  @click="filterAuditByBatchToken(row.batch_token)"
+                >
+                  同批记录
+                </n-button>
+                <n-button
+                  v-if="row.batch_token"
+                  text
+                  type="primary"
+                  @click="copyAuditField(row.batch_token, '处理批次号')"
+                >
+                  复制
+                </n-button>
+              </div>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="说明" min-width="260">
+            <template #default="{ row }">{{ row.description || '--' }}</template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
+        </n-tab-pane>
+
+        <n-tab-pane display-directive="if" name="groups" tab="分组与协作">
+          <GroupCollabPanel :class-id="students.selected_class_id ?? null" />
+        </n-tab-pane>
+
+        <n-tab-pane display-directive="if" name="group-progress" tab="小组任务进度">
+          <GroupTaskProgressPanel :class-id="students.selected_class_id ?? null" />
+        </n-tab-pane>
+      </n-tabs>
+    </div>
+
+    <n-drawer v-model:show="submissionDrawerVisible" :width="720" display-directive="if" placement="right">
+      <n-drawer-content :native-scrollbar="false" closable title="学生作品记录">
+        <n-skeleton v-if="isLoadingStudentSubmissions" :rows="8" animated />
+        <div v-else-if="studentSubmissions">
+          <p class="section-note">
+            {{ studentSubmissions.student.class_name }} ·
+            {{ studentSubmissions.student.display_name }}（{{ studentSubmissions.student.student_no }}）
+          </p>
+          <SaDataTable
+            :data="studentSubmissions.items"
+            empty-text="暂无作品记录"
+            row-key="submission_id"
+            stripe
+          >
+            <SaTableColumn label="任务" min-width="200" prop="task_title" />
+            <SaTableColumn label="学案" min-width="220" prop="plan_title" />
+            <SaTableColumn label="状态" min-width="100">
+              <template #default="{ row }">
+                <n-tag :type="row.status === 'reviewed' ? 'success' : 'warning'" round>
+                  {{ row.status === 'reviewed' ? '已评阅' : '已提交' }}
+                </n-tag>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="分数" min-width="90">
+              <template #default="{ row }">{{ row.score ?? '--' }}</template>
+            </SaTableColumn>
+            <SaTableColumn label="文件数" min-width="90" prop="file_count" />
+            <SaTableColumn label="提交时间" min-width="160">
+              <template #default="{ row }">{{ formatDateTime(row.submitted_at || row.updated_at) }}</template>
+            </SaTableColumn>
+          </SaDataTable>
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import {
+  NAlert,
+  NButton,
+  NCheckbox,
+  NDrawer,
+  NDrawerContent,
+  NInput,
+  NSelect,
+  NSkeleton,
+  NTabPane,
+  NTabs,
+  NTag,
+} from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
+import GroupCollabPanel from './components/GroupCollabPanel.vue';
+import GroupTaskProgressPanel from './components/GroupTaskProgressPanel.vue';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage, ElMessageBox } from '@/ui/feedback';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type StudentItem = {
   user_id: number;
@@ -797,12 +793,19 @@ const defaultTransferUnreviewReasonPresetOptions: TransferPresetOption[] = [
 ];
 
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const students = ref<StudentsPayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
-const studentTableRef = ref<any>(null);
-const transferTableRef = ref<any>(null);
-const selectedStudentIds = ref<number[]>([]);
+const activeTab = ref('students');
+const selectedStudentKeys = ref<Array<string | number>>([]);
+const selectedStudentIds = computed(() => selectedStudentKeys.value.map((key) => Number(key)));
+const classOptions = computed(() =>
+  (students.value?.classes || []).map((item) => ({
+    label: `${item.class_name} · 活跃 ${item.active_count}/${item.student_count}`,
+    value: item.id,
+  })),
+);
 const filters = ref({
   classId: undefined as number | undefined,
   keyword: '',
@@ -812,6 +815,72 @@ const submissionDrawerVisible = ref(false);
 const isLoadingStudentSubmissions = ref(false);
 const studentSubmissions = ref<StudentSubmissionPayload | null>(null);
 const hasSelectedStudents = computed(() => selectedStudentIds.value.length > 0);
+
+const classAccountOption = computed(() => {
+  const classes = students.value?.classes || [];
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 40 }),
+    xAxis: axisX(classes.map((item) => item.class_name), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: axisY(),
+    series: [
+      {
+        name: '启用',
+        type: 'bar',
+        stack: 'account',
+        barMaxWidth: 30,
+        itemStyle: { color: palette.value[2] },
+        data: classes.map((item) => item.active_count),
+      },
+      {
+        name: '停用',
+        type: 'bar',
+        stack: 'account',
+        barMaxWidth: 30,
+        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
+        data: classes.map((item) => item.inactive_count),
+      },
+    ],
+  });
+});
+
+const studentSubmissionOption = computed(() => {
+  const items = (students.value?.items || [])
+    .slice()
+    .sort((left, right) => right.submission_count - left.submission_count)
+    .slice(0, 12);
+
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 40 }),
+    xAxis: axisX(items.map((item) => item.display_name), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 54, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: axisY(),
+    series: [
+      {
+        name: '已评阅',
+        type: 'bar',
+        stack: 'submission',
+        barMaxWidth: 26,
+        itemStyle: { color: palette.value[2] },
+        data: items.map((item) => item.reviewed_submission_count),
+      },
+      {
+        name: '待评阅',
+        type: 'bar',
+        stack: 'submission',
+        barMaxWidth: 26,
+        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
+        data: items.map((item) => item.pending_review_count),
+      },
+    ],
+  });
+});
 const transferFilters = ref({
   classId: undefined as number | undefined,
   status: 'pending' as '' | 'pending' | 'approved' | 'rejected',
@@ -819,7 +888,20 @@ const transferFilters = ref({
 const transferRequests = ref<ClassTransferRequestItem[]>([]);
 const isLoadingTransferRequests = ref(false);
 const reviewingTransferId = ref<number | null>(null);
-const selectedTransferRows = ref<ClassTransferRequestItem[]>([]);
+const transferCheckedKeys = ref<Array<string | number>>([]);
+const selectedTransferRows = computed(() => {
+  const checkedKeys = new Set(transferCheckedKeys.value.map((key) => Number(key)));
+  return transferRequests.value.filter((item) => checkedKeys.has(item.id));
+});
+const transferClassOptions = computed(() =>
+  (students.value?.classes || []).map((item) => ({ label: item.class_name, value: item.id })),
+);
+const transferStatusOptions = [
+  { label: '待审核', value: 'pending' },
+  { label: '已通过', value: 'approved' },
+  { label: '已拒绝', value: 'rejected' },
+  { label: '全部状态', value: '' },
+];
 const transferReviewNotePresetOptions = ref<TransferPresetOption[]>([...defaultTransferReviewNotePresetOptions]);
 const transferUnreviewReasonPresetOptions = ref<TransferPresetOption[]>([...defaultTransferUnreviewReasonPresetOptions]);
 const selectedReviewNotePreset = ref('');
@@ -866,6 +948,9 @@ const profileChangeAuditTotalCount = ref(0);
 const isLoadingProfileChangeAudits = ref(false);
 const profileAuditEventTypeOptions = ref<Array<{ value: string; label: string }>>([]);
 const profileAuditClassOptions = ref<Array<{ id: number; class_name: string; grade_no: number; class_no: number }>>([]);
+const auditClassOptions = computed(() =>
+  profileAuditClassOptions.value.map((item) => ({ label: item.class_name, value: item.id })),
+);
 const activeAuditBatchToken = computed(() => auditFilters.value.batchToken.trim());
 
 function formatDateTime(value: string | null) {
@@ -1003,7 +1088,7 @@ function classTransferStatusType(statusValue: string) {
     return 'success';
   }
   if (statusValue === 'rejected') {
-    return 'danger';
+    return 'error';
   }
   return 'info';
 }
@@ -1019,6 +1104,11 @@ function auditActorRoleLabel(roleValue: string) {
     return '学生';
   }
   return roleValue;
+}
+
+function clearStudentKeyword() {
+  filters.value.keyword = '';
+  void loadStudents();
 }
 
 async function loadStudents() {
@@ -1061,8 +1151,7 @@ async function loadStudents() {
         class_no: item.class_no,
       }));
     }
-    selectedStudentIds.value = [];
-    studentTableRef.value?.clearSelection?.();
+    selectedStudentKeys.value = [];
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载学生列表失败';
   } finally {
@@ -1089,8 +1178,7 @@ async function loadTransferRequests() {
       authStore.token
     );
     transferRequests.value = payload.items;
-    selectedTransferRows.value = [];
-    transferTableRef.value?.clearSelection?.();
+    transferCheckedKeys.value = [];
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '加载转班申请失败');
   } finally {
@@ -1102,25 +1190,17 @@ function isTransferRequestSelectable(row: ClassTransferRequestItem) {
   return Boolean(row.id);
 }
 
-function handleTransferSelectionChange(rows: ClassTransferRequestItem[]) {
-  selectedTransferRows.value = [...rows];
-}
-
 function selectPendingTransferRequests() {
   if (!transferRequests.value.length) {
     return;
   }
-  transferTableRef.value?.clearSelection?.();
-  for (const requestItem of transferRequests.value) {
-    if (requestItem.status === 'pending') {
-      transferTableRef.value?.toggleRowSelection?.(requestItem, true);
-    }
-  }
+  transferCheckedKeys.value = transferRequests.value
+    .filter((requestItem) => requestItem.status === 'pending')
+    .map((requestItem) => requestItem.id);
 }
 
 function clearTransferSelection() {
-  transferTableRef.value?.clearSelection?.();
-  selectedTransferRows.value = [];
+  transferCheckedKeys.value = [];
 }
 
 function quickFilterPendingForCurrentClass() {
@@ -1138,6 +1218,29 @@ function resetTransferFiltersToAll() {
   transferFilters.value.classId = undefined;
   transferFilters.value.status = '';
   void loadTransferRequests();
+}
+
+function onTransferClassFilterChange(value: number | null) {
+  transferFilters.value.classId = value ?? undefined;
+  void loadTransferRequests();
+}
+
+function onReviewNotePresetChange(value: string | null) {
+  selectedReviewNotePreset.value = value ?? '';
+}
+
+function onUnreviewReasonPresetChange(value: string | null) {
+  selectedUnreviewReasonPreset.value = value ?? '';
+}
+
+function onAuditClassFilterChange(value: number | null) {
+  auditFilters.value.classId = value ?? undefined;
+  void loadProfileChangeAudits();
+}
+
+function onAuditEventTypeChange(value: string | null) {
+  auditFilters.value.eventType = value ?? '';
+  void loadProfileChangeAudits();
 }
 
 function filterAuditByBatchToken(rawBatchToken: string | null | undefined) {
@@ -1315,6 +1418,11 @@ async function batchUnreviewClassTransferRequests() {
   }
 }
 
+function clearAuditKeyword() {
+  auditFilters.value.keyword = '';
+  void loadProfileChangeAudits();
+}
+
 async function loadProfileChangeAudits() {
   if (!authStore.token) {
     return;
@@ -1438,10 +1546,6 @@ async function reviewClassTransferRequest(
 async function refreshAll() {
   await Promise.all([loadTransferPresetSettings(), loadStudents()]);
   await Promise.all([loadTransferRequests(), loadProfileChangeAudits()]);
-}
-
-function handleSelectionChange(rows: StudentItem[]) {
-  selectedStudentIds.value = rows.map((item) => item.user_id);
 }
 
 function batchActionText(action: StudentBatchAction) {
@@ -1611,6 +1715,41 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.student-charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ls-gap-md, 12px);
+}
+
+.student-charts :deep(.sa-panel__body) {
+  display: grid;
+  gap: 12px;
+}
+
+.student-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.student-chart-head strong {
+  color: var(--ls-ink);
+  font-size: 14px;
+}
+
+.student-chart-note {
+  color: var(--ls-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1080px) {
+  .student-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .toolbar-row {
   display: flex;
   align-items: center;
@@ -1647,5 +1786,25 @@ onMounted(() => {
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 12px;
+}
+
+.panel-toolbar {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cell-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 </style>

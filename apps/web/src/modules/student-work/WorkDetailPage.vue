@@ -1,187 +1,179 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">作品详情</p>
-        <h2>{{ detailData?.task.title || `作品 ${route.params.submissionId}` }}</h2>
-        <p class="hero-copy">
-          这里展示作品状态、教师评语、互评分数和附件列表。教师评价前，你可以直接回到任务页继续覆盖提交。
-        </p>
-      </div>
-      <div class="action-group">
-        <el-button plain @click="goBack">返回作品列表</el-button>
-        <el-button v-if="detailData" plain @click="goToCourse(detailData.course.id)">返回所属课程</el-button>
-        <el-button
-          v-if="detailData?.submission.can_resubmit"
-          type="primary"
-          @click="goToTask(detailData.course.id, detailData.task.id)"
-        >
-          {{ detailData?.submission.submission_scope === 'group' ? '再次提交小组作品' : '再次提交作品' }}
-        </el-button>
-        <el-button
-          v-if="detailData?.submission.status === 'reviewed'"
-          :loading="isRevokingReview"
-          plain
-          type="warning"
-          @click="revokeReviewedSubmission"
-        >
-          撤销评阅
-        </el-button>
-      </div>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
-      </template>
-
-      <template #default>
-        <div v-if="detailData" class="page-stack">
-          <div class="metric-grid">
-            <article class="mini-panel">
-              <p class="metric-label">状态</p>
-              <p class="metric-value metric-value--small">{{ statusLabel(detailData.submission.status) }}</p>
-              <p class="metric-note">
-                {{ detailData.submission.can_resubmit ? '教师尚未完成评价，还可以再次提交。' : '教师已经完成评价，本次提交已锁定。' }}
-              </p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">教师评分</p>
-              <p class="metric-value">{{ detailData.submission.score ?? '--' }}</p>
-              <p class="metric-note">没有评分时，会显示为待教师评价。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">互评得分</p>
-              <p class="metric-value">{{ detailData.submission.peer_review_score ?? '--' }}</p>
-              <p class="metric-note">后续可继续扩展互评明细。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">提交方式</p>
-              <p class="metric-value metric-value--small">{{ submissionScopeLabel(detailData.submission.submission_scope) }}</p>
-              <p class="metric-note">
-                {{
-                  detailData.submission.submission_scope === 'group'
-                    ? `${groupDisplayLabel(detailData.submission)} · 组内成员共享同一份最终提交。`
-                    : '当前作品按个人独立提交。'
-                }}
-              </p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">更新时间</p>
-              <p class="metric-value metric-value--small">{{ formatDateTime(detailData.submission.updated_at) }}</p>
-              <p class="metric-note">
-                {{
-                  detailData.submission.submitted_by_name
-                    ? `最近保存 ${detailData.submission.submitted_by_name}`
-                    : '这里显示最近一次提交保存时间。'
-                }}
-              </p>
-            </article>
-          </div>
-
-          <el-row :gutter="16">
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>任务信息</span>
-                    <el-tag :type="statusTagType(detailData.submission.status)" round>
-                      {{ statusLabel(detailData.submission.status) }}
-                    </el-tag>
-                  </div>
-                </template>
-
-                <el-descriptions :column="1" border>
-                  <el-descriptions-item label="课程">{{ detailData.course.title }}</el-descriptions-item>
-                  <el-descriptions-item label="任务">{{ detailData.task.title }}</el-descriptions-item>
-                  <el-descriptions-item label="任务类型">{{ taskTypeLabel(detailData.task.task_type) }}</el-descriptions-item>
-                  <el-descriptions-item label="提交时间">
-                    {{ formatDateTime(detailData.submission.submitted_at) }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="最近更新">
-                    {{ formatDateTime(detailData.submission.updated_at) }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="提交方式">
-                    {{ submissionScopeLabel(detailData.submission.submission_scope) }}
-                  </el-descriptions-item>
-                  <el-descriptions-item v-if="detailData.submission.submission_scope === 'group'" label="协作小组">
-                    {{ groupDisplayLabel(detailData.submission) }}
-                  </el-descriptions-item>
-                  <el-descriptions-item v-if="detailData.submission.submitted_by_name" label="最近提交人">
-                    {{ detailData.submission.submitted_by_name }}
-                  </el-descriptions-item>
-                </el-descriptions>
-
-                <div class="content-block">
-                  <h3>作品说明</h3>
-                  <RichTextContent :html="detailData.submission.submission_note" empty-text="暂无作品说明" />
-                </div>
-
-                <div class="content-block">
-                  <h3>教师评语</h3>
-                  <p>{{ detailData.submission.teacher_comment || '教师暂时还没有留下评语。' }}</p>
-                </div>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>附件列表</template>
-                <el-empty v-if="!detailData.files.length" description="暂无附件" />
-                <div v-else class="stack-list">
-                  <article v-for="file in detailData.files" :key="file.id" class="file-item">
-                    <div>
-                      <p class="file-name">{{ file.name }}</p>
-                      <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</p>
-                    </div>
-                    <div class="file-actions">
-                      <el-tag round type="info">{{ file.role }}</el-tag>
-                      <el-button
-                        :loading="downloadLoadingFileId === file.id"
-                        link
-                        type="primary"
-                        @click="downloadFile(file)"
-                      >
-                        下载
-                      </el-button>
-                    </div>
-                  </article>
-                </div>
-              </el-card>
-
-              <el-card class="soft-card">
-                <template #header>下一步</template>
-                <div class="stack-list">
-                  <el-button
-                    :disabled="!detailData.submission.can_resubmit"
-                    plain
-                    @click="goToTask(detailData.course.id, detailData.task.id)"
-                  >
-                    {{ detailData.submission.submission_scope === 'group' ? '回到小组任务继续提交' : '回到任务页继续提交' }}
-                  </el-button>
-                  <el-button plain @click="goToCourse(detailData.course.id)">回到课程任务</el-button>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
+    <SaPageHeader
+      description="这里展示作品状态、教师评语、互评分数和附件列表。教师评价前，你可以直接回到任务页继续覆盖提交。"
+      eyebrow="作品详情"
+      :title="detailData?.task.title || `作品 ${route.params.submissionId}`"
+    >
+      <template #actions>
+        <div class="action-group">
+          <n-button secondary @click="goBack">返回作品列表</n-button>
+          <n-button v-if="detailData" secondary @click="goToCourse(detailData.course.id)">返回所属课程</n-button>
+          <n-button
+            v-if="detailData?.submission.can_resubmit"
+            type="primary"
+            @click="goToTask(detailData.course.id, detailData.task.id)"
+          >
+            {{ detailData?.submission.submission_scope === 'group' ? '再次提交小组作品' : '再次提交作品' }}
+          </n-button>
+          <n-button
+            v-if="detailData?.submission.status === 'reviewed'"
+            :loading="isRevokingReview"
+            secondary
+            type="warning"
+            @click="revokeReviewedSubmission"
+          >
+            撤销评阅
+          </n-button>
         </div>
       </template>
-    </el-skeleton>
+    </SaPageHeader>
+
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
+
+    <div v-else-if="detailData" class="page-stack">
+      <div class="metric-grid">
+        <article class="mini-panel">
+          <p class="metric-label">状态</p>
+          <p class="metric-value metric-value--small">{{ statusLabel(detailData.submission.status) }}</p>
+          <p class="metric-note">
+            {{ detailData.submission.can_resubmit ? '教师尚未完成评价，还可以再次提交。' : '教师已经完成评价，本次提交已锁定。' }}
+          </p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">教师评分</p>
+          <p class="metric-value">{{ detailData.submission.score ?? '--' }}</p>
+          <p class="metric-note">没有评分时，会显示为待教师评价。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">互评得分</p>
+          <p class="metric-value">{{ detailData.submission.peer_review_score ?? '--' }}</p>
+          <p class="metric-note">后续可继续扩展互评明细。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">提交方式</p>
+          <p class="metric-value metric-value--small">{{ submissionScopeLabel(detailData.submission.submission_scope) }}</p>
+          <p class="metric-note">
+            {{
+              detailData.submission.submission_scope === 'group'
+                ? `${groupDisplayLabel(detailData.submission)} · 组内成员共享同一份最终提交。`
+                : '当前作品按个人独立提交。'
+            }}
+          </p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">更新时间</p>
+          <p class="metric-value metric-value--small">{{ formatDateTime(detailData.submission.updated_at) }}</p>
+          <p class="metric-note">
+            {{
+              detailData.submission.submitted_by_name
+                ? `最近保存 ${detailData.submission.submitted_by_name}`
+                : '这里显示最近一次提交保存时间。'
+            }}
+          </p>
+        </article>
+      </div>
+
+      <div class="detail-grid">
+        <SaPanel title="任务信息">
+          <template #actions>
+            <n-tag :type="statusTagType(detailData.submission.status)" round>
+              {{ statusLabel(detailData.submission.status) }}
+            </n-tag>
+          </template>
+
+          <n-descriptions :column="1" bordered>
+            <n-descriptions-item label="课程">{{ detailData.course.title }}</n-descriptions-item>
+            <n-descriptions-item label="任务">{{ detailData.task.title }}</n-descriptions-item>
+            <n-descriptions-item label="任务类型">{{ taskTypeLabel(detailData.task.task_type) }}</n-descriptions-item>
+            <n-descriptions-item label="提交时间">
+              {{ formatDateTime(detailData.submission.submitted_at) }}
+            </n-descriptions-item>
+            <n-descriptions-item label="最近更新">
+              {{ formatDateTime(detailData.submission.updated_at) }}
+            </n-descriptions-item>
+            <n-descriptions-item label="提交方式">
+              {{ submissionScopeLabel(detailData.submission.submission_scope) }}
+            </n-descriptions-item>
+            <n-descriptions-item
+              v-if="detailData.submission.submission_scope === 'group'"
+              label="协作小组"
+            >
+              {{ groupDisplayLabel(detailData.submission) }}
+            </n-descriptions-item>
+            <n-descriptions-item v-if="detailData.submission.submitted_by_name" label="最近提交人">
+              {{ detailData.submission.submitted_by_name }}
+            </n-descriptions-item>
+          </n-descriptions>
+
+          <div class="content-block">
+            <h3>作品说明</h3>
+            <RichTextContent :html="detailData.submission.submission_note" empty-text="暂无作品说明" />
+          </div>
+
+          <div class="content-block">
+            <h3>教师评语</h3>
+            <p>{{ detailData.submission.teacher_comment || '教师暂时还没有留下评语。' }}</p>
+          </div>
+        </SaPanel>
+
+        <div class="detail-aside">
+          <SaPanel title="附件列表">
+            <n-empty v-if="!detailData.files.length" description="暂无附件" />
+            <div v-else class="stack-list">
+              <article v-for="file in detailData.files" :key="file.id" class="file-item">
+                <div>
+                  <p class="file-name">{{ file.name }}</p>
+                  <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</p>
+                </div>
+                <div class="file-actions">
+                  <n-tag round type="info">{{ file.role }}</n-tag>
+                  <n-button
+                    :loading="downloadLoadingFileId === file.id"
+                    text
+                    type="primary"
+                    @click="downloadFile(file)"
+                  >
+                    下载
+                  </n-button>
+                </div>
+              </article>
+            </div>
+          </SaPanel>
+
+          <SaPanel title="下一步">
+            <div class="stack-list">
+              <n-button
+                :disabled="!detailData.submission.can_resubmit"
+                secondary
+                @click="goToTask(detailData.course.id, detailData.task.id)"
+              >
+                {{ detailData.submission.submission_scope === 'group' ? '回到小组任务继续提交' : '回到任务页继续提交' }}
+              </n-button>
+              <n-button secondary @click="goToCourse(detailData.course.id)">回到课程任务</n-button>
+            </div>
+          </SaPanel>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NDescriptions, NDescriptionsItem, NEmpty, NSkeleton, NTag } from 'naive-ui';
 import { onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
 
 type SubmissionFile = {
   id: number;
@@ -379,6 +371,25 @@ onMounted(loadDetail);
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.detail-aside {
+  display: grid;
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .content-block {

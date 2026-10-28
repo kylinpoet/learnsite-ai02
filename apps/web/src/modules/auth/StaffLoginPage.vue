@@ -4,7 +4,7 @@
       <div class="auth-copy-column">
         <div class="staff-login-page__heading">
           <p class="eyebrow">{{ appStore.title }}</p>
-          <el-tag effect="dark" round type="success">统一后台</el-tag>
+          <n-tag :bordered="false" round type="success">统一后台</n-tag>
         </div>
         <h1>教职工登录</h1>
         <p class="hero-copy">
@@ -30,13 +30,13 @@
         </article>
       </div>
 
-      <el-card class="soft-card auth-form-panel">
+      <SaPanel panel-class="auth-form-panel">
         <div class="auth-form-panel__top">
           <span class="auth-form-panel__tag staff-login-page__tag">教师 / 管理员</span>
           <p class="auth-form-panel__title">输入账号和密码进入教学后台</p>
         </div>
 
-        <el-alert
+        <n-alert
           :closable="false"
           class="staff-login-page__alert"
           show-icon
@@ -44,31 +44,33 @@
           type="info"
         />
 
-        <el-form label-position="top" @submit.prevent="handleLogin">
-        <el-form-item label="账号">
-          <el-input v-model="form.username" placeholder="请输入账号" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" placeholder="请输入密码" show-password type="password" />
-        </el-form-item>
-        <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-        <div class="action-row">
-          <el-button :loading="isSubmitting" native-type="submit" type="primary">登录</el-button>
-          <div class="auth-link-stack">
-            <RouterLink to="/login/student">切换到学生登录</RouterLink>
+        <n-form :show-feedback="false" label-placement="top" @submit.prevent="handleLogin">
+          <n-form-item label="账号">
+            <n-input v-model:value="form.username" placeholder="请输入账号" />
+          </n-form-item>
+          <n-form-item label="密码">
+            <n-input v-model:value="form.password" placeholder="请输入密码" show-password-on="click" type="password" />
+          </n-form-item>
+          <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+          <div class="action-row">
+            <n-button :loading="isSubmitting" attr-type="submit" type="primary">登录</n-button>
+            <div class="auth-link-stack">
+              <RouterLink to="/login/student">切换到学生登录</RouterLink>
+            </div>
           </div>
-        </div>
-      </el-form>
-      </el-card>
+        </n-form>
+      </SaPanel>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NForm, NFormItem, NInput, NTag } from 'naive-ui';
 import { reactive, ref } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 
 import { apiPost } from '@/api/http';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { useAppStore } from '@/stores/app';
 
@@ -101,7 +103,7 @@ async function handleLogin() {
   try {
     const payload = await apiPost<LoginResponse>('/auth/staff/login', form);
     authStore.setSession(payload.access_token, payload.user, payload.expires_at);
-    await router.push('/staff/dashboard');
+    await router.push('/staff/classroom');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
   } finally {
@@ -166,46 +168,73 @@ async function handleLogin() {
   color: var(--ls-auth-tag-text);
 }
 
-.staff-login-page :deep(.el-tag) {
+.staff-login-page :deep(.n-tag) {
   border: none;
-  background: var(--ls-auth-tag-bg);
+  background-color: var(--ls-auth-tag-bg);
   color: var(--ls-auth-tag-text);
 }
 
-.staff-login-page :deep(.el-form-item__label) {
+.staff-login-page :deep(.n-form-item-label) {
   color: var(--ls-text);
   font-weight: 700;
 }
 
-.staff-login-page :deep(.el-form-item) {
+.staff-login-page :deep(.n-form-item) {
   margin-bottom: 14px;
 }
 
-.staff-login-page :deep(.el-input__wrapper) {
-  min-height: 47px;
+.staff-login-page :deep(.n-input) {
   border-radius: 14px;
-  padding-inline: 14px;
-  background: var(--ls-input-bg);
-  box-shadow: var(--ls-input-shadow);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  background-color: var(--ls-input-bg);
+  transition: box-shadow 0.2s ease;
 }
 
-.staff-login-page :deep(.el-button--primary) {
-  min-height: 48px;
-  border: none;
+.staff-login-page :deep(.n-input .n-input__input-el) {
+  height: 47px;
+  line-height: 47px;
+}
+
+.staff-login-page :deep(.n-input .n-input__border) {
+  border-color: var(--ls-border);
+}
+
+.staff-login-page :deep(.n-input:focus-within) {
+  box-shadow: var(--ls-focus-ring);
+}
+
+.staff-login-page :deep(.n-input:focus-within .n-input__state-border) {
+  border-color: var(--ls-primary);
+  box-shadow: none;
+}
+
+.staff-login-page :deep(.n-button) {
   border-radius: 14px;
-  background: var(--ls-button-gradient);
-  box-shadow: var(--ls-button-shadow);
+  font-weight: 600;
   letter-spacing: 0.02em;
 }
 
-.staff-login-page :deep(.el-button--primary:hover) {
+.staff-login-page :deep(.n-button--primary-type) {
+  min-height: 48px;
+  height: auto;
+  background: var(--ls-button-gradient);
+  box-shadow: var(--ls-button-shadow);
+  transition: transform 0.2s ease;
+}
+
+.staff-login-page :deep(.n-button--primary-type .n-button__border),
+.staff-login-page :deep(.n-button--primary-type .n-button__state-border) {
+  border: none;
+}
+
+.staff-login-page :deep(.n-button--primary-type:hover) {
+  filter: brightness(1.02);
   transform: translateY(-1px);
 }
 
-.staff-login-page :deep(.el-alert) {
-  border-radius: 14px;
+.staff-login-page :deep(.n-alert) {
+  box-sizing: border-box;
   border: 1px solid var(--ls-border);
+  border-radius: 14px;
 }
 
 @media (max-width: 720px) {

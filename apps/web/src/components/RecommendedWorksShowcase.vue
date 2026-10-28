@@ -1,17 +1,16 @@
 <template>
-  <el-card class="soft-card showcase-card">
-    <template #header>
-      <div class="showcase-header">
-        <div>
-          <span>{{ title }}</span>
-          <p class="showcase-description">{{ description }}</p>
-        </div>
-        <el-tag round type="success">已推荐 {{ items.length }} 份</el-tag>
-      </div>
+  <SaPanel
+    :description="description"
+    :title="title"
+    body-class="showcase-body"
+    panel-class="showcase-card"
+  >
+    <template #actions>
+      <n-tag round type="success">已推荐 {{ items.length }} 份</n-tag>
     </template>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-    <el-empty v-if="!items.length" :description="emptyDescription" />
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-empty v-if="!items.length" :description="emptyDescription" />
 
     <div v-else class="showcase-shell">
       <aside class="showcase-list">
@@ -24,7 +23,7 @@
         >
           <div class="showcase-item-head">
             <strong>{{ item.student_name }}</strong>
-            <el-tag round type="success">{{ formatScoreText(item.score) }}</el-tag>
+            <n-tag round type="success">{{ formatScoreText(item.score) }}</n-tag>
           </div>
           <p class="showcase-meta">{{ item.student_no }} · {{ item.class_name }}</p>
           <p class="showcase-snippet">
@@ -38,8 +37,8 @@
           <div class="showcase-item-head">
             <strong>{{ selectedSubmission.student_name }}</strong>
             <div class="showcase-tag-row">
-              <el-tag round type="success">{{ formatScoreText(selectedSubmission.score) }}</el-tag>
-              <el-tag round type="info">推荐作品</el-tag>
+              <n-tag round type="success">{{ formatScoreText(selectedSubmission.score) }}</n-tag>
+              <n-tag round type="info">推荐作品</n-tag>
             </div>
           </div>
           <p class="showcase-meta">
@@ -63,10 +62,10 @@
 
         <div class="showcase-files-head">
           <h3>附件展示</h3>
-          <el-tag round type="success">共 {{ selectedSubmission.files.length }} 个附件</el-tag>
+          <n-tag round type="success">共 {{ selectedSubmission.files.length }} 个附件</n-tag>
         </div>
 
-        <el-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
+        <n-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
 
         <template v-else>
           <div class="showcase-file-list">
@@ -85,45 +84,49 @@
             </button>
           </div>
 
-          <div v-loading="isPreviewLoading" class="showcase-preview">
-            <iframe
-              v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
-              :src="previewUrl"
-              class="preview-frame"
-              title="推荐作品预览"
-            />
-            <img
-              v-else-if="!isPreviewLoading && previewKind === 'image' && previewUrl"
-              :src="previewUrl"
-              alt="推荐作品预览"
-              class="preview-image"
-            />
-            <pre v-else-if="!isPreviewLoading && previewKind === 'text'" class="preview-text">{{
-              previewText
-            }}</pre>
-            <div v-else-if="selectedFile" class="preview-fallback">
-              <p>当前附件暂不支持直接展示，请下载后查看。</p>
-              <el-button
-                :loading="downloadLoadingFileId === selectedFile.id"
-                type="success"
-                @click="downloadFile(selectedFile)"
-              >
-                下载当前附件
-              </el-button>
-            </div>
-            <el-empty v-else description="请选择一个附件进行查看" />
+          <div class="showcase-preview">
+            <n-spin :show="isPreviewLoading" content-style="min-height: 350px">
+              <iframe
+                v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
+                :src="previewUrl"
+                class="preview-frame"
+                title="推荐作品预览"
+              />
+              <img
+                v-else-if="!isPreviewLoading && previewKind === 'image' && previewUrl"
+                :src="previewUrl"
+                alt="推荐作品预览"
+                class="preview-image"
+              />
+              <pre v-else-if="!isPreviewLoading && previewKind === 'text'" class="preview-text">{{
+                previewText
+              }}</pre>
+              <div v-else-if="selectedFile" class="preview-fallback">
+                <p>当前附件暂不支持直接展示，请下载后查看。</p>
+                <n-button
+                  :loading="downloadLoadingFileId === selectedFile.id"
+                  type="success"
+                  @click="downloadFile(selectedFile)"
+                >
+                  下载当前附件
+                </n-button>
+              </div>
+              <n-empty v-else description="请选择一个附件进行查看" />
+            </n-spin>
           </div>
         </template>
       </section>
     </div>
-  </el-card>
+  </SaPanel>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NSpin, NTag } from 'naive-ui';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
 import { apiGetBlob } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import { richTextToExcerpt } from '@/utils/richText';
 
 type RecommendedShowcaseFile = {
@@ -379,19 +382,11 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.showcase-card :deep(.el-card__body) {
+.showcase-card :deep(.showcase-body) {
   display: grid;
   gap: 16px;
 }
 
-.showcase-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: flex-start;
-}
-
-.showcase-description,
 .showcase-meta,
 .showcase-snippet,
 .showcase-file-meta,
@@ -400,11 +395,6 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--ls-muted);
   line-height: 1.7;
-}
-
-.showcase-description {
-  margin-top: 4px;
-  font-size: 12px;
 }
 
 .showcase-shell {
@@ -422,9 +412,9 @@ onBeforeUnmount(() => {
 .showcase-list-item,
 .showcase-file-card {
   width: 100%;
-  border: 1px solid rgba(67, 109, 185, 0.14);
+  border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--ls-card);
   text-align: left;
   transition:
     border-color 0.2s ease,
@@ -449,7 +439,7 @@ onBeforeUnmount(() => {
   border-color: rgba(67, 109, 185, 0.42);
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
-    rgba(255, 255, 255, 0.98);
+    var(--ls-card);
 }
 
 .showcase-item-head,
@@ -512,7 +502,7 @@ onBeforeUnmount(() => {
 
 .showcase-file-name {
   font-weight: 700;
-  color: #1f2a44;
+  color: var(--ls-ink);
   word-break: break-word;
 }
 
@@ -525,10 +515,10 @@ onBeforeUnmount(() => {
   min-height: 380px;
   padding: 14px;
   border-radius: 20px;
-  border: 1px solid rgba(67, 109, 185, 0.14);
+  border: 1px solid var(--ls-border);
   background:
     radial-gradient(circle at top left, rgba(67, 109, 185, 0.08), transparent 45%),
-    rgba(255, 255, 255, 0.96);
+    var(--ls-card);
 }
 
 .preview-frame {
@@ -536,7 +526,7 @@ onBeforeUnmount(() => {
   min-height: 70vh;
   border: none;
   border-radius: 16px;
-  background: #fff;
+  background: var(--ls-card);
 }
 
 .preview-image {
@@ -554,7 +544,7 @@ onBeforeUnmount(() => {
   padding: 16px;
   border-radius: 16px;
   background: rgba(67, 109, 185, 0.08);
-  color: #1f2a44;
+  color: var(--ls-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -573,7 +563,6 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 960px) {
-  .showcase-header,
   .showcase-item-head,
   .showcase-files-head {
     flex-direction: column;

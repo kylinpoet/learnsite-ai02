@@ -6,7 +6,7 @@
 2. 本地开发时，哪些配置文件生效，端口和代理关系是什么。
 3. 遇到 `CORS`、`localhost / 127.0.0.1`、端口冲突、虚拟环境缺失等常见问题时，应该如何排查。
 
-当前仓库是新平台，不迁移原 ASPX 项目；技术栈为 `Vue 3 + TypeScript + Element Plus + FastAPI + SQLite`。
+当前仓库是新平台，不迁移原 ASPX 项目；技术栈为 `Vue 3 + TypeScript + naive-ui + FastAPI + SQLite`。
 
 ## 1. 目录结构
 
@@ -67,8 +67,11 @@ VITE_DEV_PROXY_TARGET=http://127.0.0.1:8010
 
 LEARNSITE_ENV=development
 LEARNSITE_DATABASE_URL=sqlite:///./learnsite.db
+LEARNSITE_STORAGE_ROOT=./storage
+LEARNSITE_WEB_DIST_DIR=./apps/web/dist
+LEARNSITE_SERVE_FRONTEND=true
 LEARNSITE_CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173,http://localhost:5175,http://127.0.0.1:5175
-LEARNSITE_CORS_ORIGIN_REGEX=^https?://(localhost|127\.0\.0\.1)(:\d+)?$
+LEARNSITE_CORS_ORIGIN_REGEX=^https?://(localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(:\d+)?$
 ```
 
 如果本地没有 `.env`，可以先复制 `.env.example`：
@@ -136,7 +139,7 @@ npm run dev:down
 在仓库根目录执行：
 
 ```powershell
-apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --app-dir apps/api
+apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --host 0.0.0.0 --port 8010 --app-dir apps/api
 ```
 
 ### 5.2 前端
@@ -144,7 +147,7 @@ apps\api\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --por
 在仓库根目录执行：
 
 ```powershell
-npm --workspace apps/web run dev -- --host localhost --port 5173
+npm --workspace apps/web run dev -- --host 0.0.0.0 --port 5173
 ```
 
 ## 6. 访问地址
@@ -152,10 +155,11 @@ npm --workspace apps/web run dev -- --host localhost --port 5173
 本地开发统一使用以下地址：
 
 1. 前端首页：`http://localhost:5173`
-2. 后端接口根：`http://127.0.0.1:8010`
-3. OpenAPI 文档：`http://127.0.0.1:8010/docs`
+2. 局域网前端：`http://<本机局域网IP>:5173`
+3. 后端接口根：`http://<本机局域网IP>:8010`
+4. OpenAPI 文档：`http://<本机局域网IP>:8010/docs`
 
-不要在浏览器中把前端页面地址改成 `127.0.0.1:5173` 和 `localhost:5173` 混着用。团队默认统一使用 `http://localhost:5173` 打开前端。
+本机调试仍建议统一使用 `http://localhost:5173` 打开前端；需要给同一局域网设备访问时，使用本机局域网 IP。
 
 ## 7. 为什么浏览器里看到的是 5173，不是 8010
 
@@ -199,6 +203,16 @@ FastAPI 返回响应 -> 浏览器
 2. 减少 `localhost` 和 `127.0.0.1` 混用造成的 CORS 问题
 3. 保持前端请求写法更接近未来生产部署方式
 
+### 7.3 局域网访问
+
+一键脚本默认监听 `0.0.0.0`，因此同一局域网设备可以访问：
+
+```text
+http://<本机局域网IP>:5173
+```
+
+如果 Windows 防火墙阻止访问，需要放行端口 `5173` 和 `8010`。
+
 ## 8. CORS 配置说明
 
 后端 CORS 配置位于：
@@ -216,7 +230,7 @@ FastAPI 返回响应 -> 浏览器
 另外还允许匹配正则：
 
 ```text
-^https?://(localhost|127\.0\.0\.1)(:\d+)?$
+^https?://(localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[0-1])(?:\.\d{1,3}){2})(:\d+)?$
 ```
 
 注意：
@@ -265,6 +279,32 @@ FastAPI 返回响应 -> 浏览器
 3. 数据模型：`apps/api/app/models/entities.py`
 
 应用启动时会自动初始化基础数据。
+
+### 10.1 数据库迁移（Alembic）
+
+schema 迁移由 Alembic 管理（脚手架位于 `apps/api/alembic/`，配置文件 `apps/api/alembic.ini`）。数据库地址沿用应用配置（`LEARNSITE_DATABASE_URL` / 根级 `.env`），无需在 alembic.ini 里另配。
+
+与现有初始化逻辑的关系：
+
+1. `init_db()` 仍负责建表（`create_all`）、历史列迁移与种子数据——这是全新库/存量库的兜底路径，保持不变。
+2. `init_db()` 结束时会自动为没有 `alembic_version` 表的库打上当前 head 标记（stamp），之后该库的 schema 版本进入 Alembic 管理。
+3. 今后修改 `entities.py` 后，不要再往 `init_db.py` 里加手写 ALTER，改用迁移命令生成并执行变更。
+
+常用命令（在 `apps/api` 目录下执行）：
+
+```powershell
+# 生成迁移（改完 models 后执行；自动对比模型与库的差异）
+..\.venv\Scripts\python.exe -m alembic -c alembic.ini revision --autogenerate -m "add xxx column"
+
+# 执行迁移 / 回退一步
+..\.venv\Scripts\python.exe -m alembic -c alembic.ini upgrade head
+..\.venv\Scripts\python.exe -m alembic -c alembic.ini downgrade -1
+
+# 查看当前版本
+..\.venv\Scripts\python.exe -m alembic -c alembic.ini current
+```
+
+注意：生成的迁移文件请人工审阅后提交（autogenerate 对列改名会识别为删列+加列，SQLite 下默认以批处理模式重建表）。
 
 默认测试账号：
 
@@ -404,7 +444,61 @@ npm run check:api
 apps\api\.venv\Scripts\python.exe -m pytest apps/api/tests -q
 ```
 
-## 14. 推荐工作流
+## 14. OpenAPI 类型生成
+
+前端通过 [openapi-typescript](https://github.com/openapi-ts/openapi-typescript) 从后端 FastAPI 的 OpenAPI 声明生成 TypeScript 类型，避免前后端接口结构脱节。
+
+### 14.1 生成命令
+
+在 `apps/web` 目录下执行（或仓库根 `npm --workspace apps/web run generate:api-types`）：
+
+```powershell
+npm run generate:api-types
+```
+
+该命令读取 `apps/web/openapi.json`，生成 `apps/web/src/api/schema.d.ts`。
+
+### 14.2 导出 openapi.json
+
+`apps/web/openapi.json` 是生成物，不入库（已加入 `.gitignore`）。后端接口变动后，在仓库根重新导出：
+
+```powershell
+apps\api\.venv\Scripts\python.exe -c "import sys; sys.path.insert(0, r'apps\api'); from fastapi.testclient import TestClient; from app.main import app; import json; open(r'apps\web\openapi.json','w',encoding='utf-8').write(json.dumps(app.openapi(), ensure_ascii=False))"
+```
+
+导入 `app.main` 较慢（30–60 秒）属正常现象。导出后重跑 14.1 的生成命令。
+
+### 14.3 用法示例
+
+```ts
+import type { components } from '@/api/schema';
+
+type LoginRequest = components['schemas']['LoginRequest'];
+```
+
+当前示范模块：`apps/web/src/modules/auth/StudentLoginPage.vue`（登录表单改用生成的 `LoginRequest`）。
+
+### 14.4 当前覆盖范围与局限
+
+1. 覆盖：所有命名请求体 schema（如 `LoginRequest`、各 `*Payload`），以及少量命名响应 schema。
+2. 局限：后端响应统一为 `ApiResponse` envelope（`{code, message, data}`），`data` 字段未内联具体结构，导致大部分响应体类型无法从 OpenAPI 生成，前端仍需手写。如 `StudentLoginPage.vue` 的 `LoginResponse` 即为手写，页面内有注释说明。
+3. 因此目前建议优先把生成的类型用于请求体（request body）和路径/查询参数，响应体类型等后端补齐 envelope 内结构后再逐步接入。
+
+## 15. 学情报告真实 Provider 人工验证步骤
+
+本地环境（`npm run dev:up`，Web 端口被占用时 `npm run dev:up` 带参数换口，如 `-WebPort 5175`）启动后，按以下步骤人工验证学情报告真实 Provider 端到端链路：
+
+1. **接入真实 Provider**：以 admin 登录（种子账号 admin / 222221，未 seed 时先执行 `npm run dev:seed-demo`），进入「系统管理 → AI Provider」，新增或编辑 Provider 为真实模型服务（base_url + api_key + model_name），确认列表中该 Provider 已启用且不是 demo 形态。
+2. **准备班级数据**：确认目标班级下有学生、提交/评分/互评/签到等学习记录（seed 脚本已注入演示数据）。
+3. **生成报告**：以教师账号（t1 / 222221）登录，进入「学情报告」页，选择班级（可选指定学案范围），点击生成；等待期间前端保持 loading 态（同步调用，AI 超时上限 60s）。
+4. **核对结果**：生成成功后报告应立即渲染为 Markdown；检查内容是否真实反映该班统计（人数、提交率、评分分布等），而非 mock 文本。
+5. **历史与详情**：刷新页面后历史列表仍可见该记录；切换历史可正常加载详情全文；状态应为 completed。
+6. **失败留痕（可选）**：将 Provider 的 base_url 改为不可达地址后再次生成，预期前端提示 502 错误，历史列表中出现 status=failed 的留痕记录。
+7. **无 Provider 拦截（可选）**：删除全部真实 Provider 后点击生成，预期返回 409「尚未配置可用的 AI Provider」。
+
+说明：CI 测试对该链路用的是 mock（见 `apps/api/tests/test_smoke.py` 学情报告两用例），以上步骤补上的是真实 Provider 的端到端人工核对。
+
+## 16. 推荐工作流
 
 建议团队统一按这个节奏开发：
 
@@ -414,7 +508,7 @@ apps\api\.venv\Scripts\python.exe -m pytest apps/api/tests -q
 4. 提交代码前更新相关文档
 5. 当天结束工作前执行 `npm run dev:down`
 
-## 15. 相关文档
+## 17. 相关文档
 
 建议结合以下文档一起阅读：
 

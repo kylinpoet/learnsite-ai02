@@ -1,152 +1,177 @@
-﻿<template>
+<template>
   <div class="page-stack lesson-plan-page">
-    <section class="hero-panel lesson-plan-hero">
-      <div class="lesson-plan-hero__copy">
-        <p class="eyebrow">教师学案管理</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">
-          这里支持教师按课程体系创建学案、配置任务并发布。发布完成后，可直接进入“上课中控”，
-          把这份学案推送给班级，形成完整教学闭环。
-        </p>
-      </div>
-      <div class="lesson-plan-hero__actions">
-        <article class="lesson-plan-hero__summary">
-          <p class="lesson-plan-hero__summary-label">{{ isEditorRoute ? '当前编辑学案' : '当前最新学案' }}</p>
-          <strong>{{ heroSummaryTitle }}</strong>
-          <span>
-            {{ heroSummarySubtitle }}
-          </span>
-        </article>
-        <el-space wrap class="lesson-plan-hero__buttons">
-          <el-button v-if="!isEditorRoute" type="primary" @click="openCreateDialog">新建学案</el-button>
-          <el-button v-else type="primary" plain @click="goToPlanList">返回学案清单</el-button>
-          <el-button plain @click="router.push('/staff/curriculum')">查看课程体系</el-button>
-          <el-button v-if="!isEditorRoute" plain @click="selectPlan(plans[0]?.id || null)">编辑最新学案</el-button>
-        </el-space>
-      </div>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
-      </template>
-
-      <template #default>
-        <template v-if="!isEditorRoute">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">学案总数</p>
-              <p class="metric-value">{{ plans.length }}</p>
-              <p class="metric-note">包含草稿、已发布和已开课学案</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">任务总数</p>
-              <p class="metric-value">{{ totalTaskCount }}</p>
-              <p class="metric-note">阅读、上传、编程任务合计</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">待完成进度</p>
-              <p class="metric-value">{{ totalPendingCount }}</p>
-              <p class="metric-note">只会在开课后产生</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已完成进度</p>
-              <p class="metric-value">{{ totalCompletedCount }}</p>
-              <p class="metric-note">便于教师快速判断班级推进情况</p>
-            </article>
+    <SaPageHeader
+      compact
+      eyebrow="教师学案管理"
+      :title="pageTitle"
+      description="按课程体系创建学案、配置任务并发布；发布后可直接把这份学案推送给班级开课。"
+    >
+      <template #actions>
+        <div class="lesson-plan-hero__actions">
+          <div class="lesson-plan-hero__buttons">
+            <n-button v-if="!isEditorRoute" type="primary" @click="openCreateDialog">新建学案</n-button>
+            <n-button v-else secondary type="primary" @click="goToPlanList">返回学案清单</n-button>
+            <n-button secondary @click="router.push('/staff/curriculum')">查看课程体系</n-button>
+            <n-button v-if="!isEditorRoute" secondary @click="selectPlan(plans[0]?.id || null)">
+              编辑最新学案
+            </n-button>
           </div>
+        </div>
+      </template>
+    </SaPageHeader>
 
-          <el-card class="soft-card">
-            <template #header>学案列表</template>
-            <el-empty v-if="!plans.length" description="暂无学案数据" />
-            <el-table v-else :data="plans" stripe @row-click="handleRowClick">
-              <el-table-column label="学案" min-width="360">
-                <template #default="{ row }">
-                  <div class="plan-title-cell">
-                    <div class="plan-title-cell__thumb-wrap">
-                      <img
-                        v-if="row.preview_image_url"
-                        :src="row.preview_image_url"
-                        alt="学案缩略图"
-                        class="plan-title-cell__thumb"
-                      />
-                      <div v-else class="plan-title-cell__thumb plan-title-cell__thumb--placeholder">
-                        {{ row.title.slice(0, 1) || '学' }}
-                      </div>
-                    </div>
-                    <div class="plan-title-cell__meta">
-                      <p class="plan-title-cell__title">{{ row.title }}</p>
-                      <p class="plan-title-cell__desc">{{ row.content_excerpt || '当前学案暂未添加导读摘要' }}</p>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
+
+    <div v-if="!isLoading && !isEditorRoute" class="page-stack">
+        <div class="ls-row">
+          <article class="metric-tile">
+            <p class="metric-label">学案总数</p>
+            <p class="metric-value">{{ plans.length }}</p>
+            <p class="metric-note">包含草稿、已发布和已开课学案</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">任务总数</p>
+            <p class="metric-value">{{ totalTaskCount }}</p>
+            <p class="metric-note">阅读、上传、编程任务合计</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">待完成进度</p>
+            <p class="metric-value">{{ totalPendingCount }}</p>
+            <p class="metric-note">只会在开课后产生</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">已完成进度</p>
+            <p class="metric-value">{{ totalCompletedCount }}</p>
+            <p class="metric-note">便于教师快速判断班级推进情况</p>
+          </article>
+        </div>
+
+        <div class="plan-charts">
+          <SaPanel>
+            <template #header>
+              <div class="plan-chart-head">
+                <div>
+                  <strong>整体进度</strong>
+                  <p class="section-note">已完成与待完成的学案及任务进度汇总。</p>
+                </div>
+              </div>
+            </template>
+            <n-empty v-if="!totalPendingCount && !totalCompletedCount" description="开课并产生学生进度后这里会显示图表。" />
+            <AppChart v-else :height="260" :option="overallProgressOption" />
+          </SaPanel>
+
+          <SaPanel>
+            <template #header>
+              <div class="plan-chart-head">
+                <div>
+                  <strong>各学案进度对比</strong>
+                  <p class="section-note">按学案查看已完成 / 待完成进度，快速定位推进较慢的学案。</p>
+                </div>
+              </div>
+            </template>
+            <n-empty v-if="!plans.length" description="暂无可对比的学案。" />
+            <AppChart v-else :height="260" :option="planProgressOption" />
+          </SaPanel>
+        </div>
+
+        <SaPanel title="学案列表">
+          <SaDataTable
+            :data="plans"
+            empty-text="暂无学案数据"
+            row-key="id"
+            :scroll-x="1400"
+            stripe
+            @row-click="handleRowClick"
+          >
+            <SaTableColumn label="学案" min-width="360">
+              <template #default="{ row }">
+                <div class="plan-title-cell">
+                  <div class="plan-title-cell__thumb-wrap">
+                    <img
+                      v-if="row.preview_image_url"
+                      :src="row.preview_image_url"
+                      alt="学案缩略图"
+                      class="plan-title-cell__thumb"
+                    />
+                    <div v-else class="plan-title-cell__thumb plan-title-cell__thumb--placeholder">
+                      {{ row.title.slice(0, 1) || '学' }}
                     </div>
                   </div>
-                </template>
-              </el-table-column>
-            <el-table-column label="状态" min-width="110">
-              <template #default="{ row }">
-                <el-tag round :type="planStatusType(row.status)">{{ planStatusLabel(row.status) }}</el-tag>
+                  <div class="plan-title-cell__meta">
+                    <p class="plan-title-cell__title">{{ row.title }}</p>
+                    <p class="plan-title-cell__desc">{{ row.content_excerpt || '当前学案暂未添加导读摘要' }}</p>
+                  </div>
+                </div>
               </template>
-            </el-table-column>
-            <el-table-column label="绑定课次" min-width="190">
-              <template #default="{ row }">
-                {{ planLessonDisplayLabel(row) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="所属单元" min-width="220">
-              <template #default="{ row }">
-                {{ row.lesson?.unit_title || '暂未绑定' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="发布时间" min-width="120" prop="assigned_date" />
-            <el-table-column label="任务数" min-width="88" prop="task_count" />
-            <el-table-column label="待完成" min-width="88">
-              <template #default="{ row }">
-                {{ row.progress.pending_count }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" min-width="220">
-              <template #default="{ row }">
-                <el-space wrap>
-                  <el-button link type="primary" @click.stop="openEditDialog(row.id)">进入编辑</el-button>
-                  <el-button
-                    link
-                    type="warning"
-                    :disabled="!canEditPlan(row)"
-                    @click.stop="openEditDialog(row.id)"
-                  >
-                    快速编辑
-                  </el-button>
-                  <el-button
-                    v-if="row.status === 'draft'"
-                    link
-                    type="success"
-                    :disabled="!row.lesson"
-                    @click.stop="publishPlan(row.id)"
-                  >
-                    发布
-                  </el-button>
-                  <el-button
-                    link
-                    type="danger"
-                    :disabled="!canEditPlan(row)"
-                    :loading="deletingPlanId === row.id"
-                    @click.stop="deletePlan(row.id)"
-                  >
-                    删除
-                  </el-button>
-                </el-space>
-              </template>
-            </el-table-column>
-            </el-table>
-          </el-card>
-        </template>
-      </template>
-    </el-skeleton>
-
-    <el-card v-if="isEditorRoute && editorVisible" id="plan-editor-card" class="soft-card plan-editor-card">
+            </SaTableColumn>
+          <SaTableColumn label="状态" min-width="110">
+            <template #default="{ row }">
+              <n-tag round :type="planStatusType(row.status)">{{ planStatusLabel(row.status) }}</n-tag>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="绑定课次" min-width="190">
+            <template #default="{ row }">
+              {{ planLessonDisplayLabel(row) }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="所属单元" min-width="220">
+            <template #default="{ row }">
+              {{ row.lesson?.unit_title || '暂未绑定' }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="发布时间" min-width="120" prop="assigned_date" />
+          <SaTableColumn label="任务数" min-width="88" prop="task_count" />
+          <SaTableColumn label="待完成" min-width="88">
+            <template #default="{ row }">
+              {{ row.progress.pending_count }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="操作" min-width="220">
+            <template #default="{ row }">
+              <div class="chip-row">
+                <n-button text type="primary" @click.stop="openEditDialog(row.id)">进入编辑</n-button>
+                <n-button
+                  text
+                  type="warning"
+                  :disabled="!canEditPlan(row)"
+                  @click.stop="openEditDialog(row.id)"
+                >
+                  快速编辑
+                </n-button>
+                <n-button
+                  v-if="row.status === 'draft'"
+                  text
+                  type="success"
+                  :disabled="!row.lesson"
+                  @click.stop="publishPlan(row.id)"
+                >
+                  发布
+                </n-button>
+                <n-button
+                  text
+                  type="error"
+                  :disabled="!canEditPlan(row)"
+                  :loading="deletingPlanId === row.id"
+                  @click.stop="deletePlan(row.id)"
+                >
+                  删除
+                </n-button>
+              </div>
+            </template>
+          </SaTableColumn>
+          </SaDataTable>
+        </SaPanel>
+    </div>
+    <SaPanel
+      v-if="!isLoading && isEditorRoute && editorVisible"
+      id="plan-editor-card"
+      body-class="plan-editor-body"
+      panel-class="plan-editor-card"
+    >
       <template #header>
         <div class="info-row">
           <div class="plan-editor-card__header">
@@ -159,60 +184,44 @@
               }}
             </p>
           </div>
-          <el-space wrap>
-            <el-tag round type="info">{{ editingPlanId ? '编辑中' : '新建中' }}</el-tag>
-            <el-tag v-if="editingPlanId && selectedPlanDetail?.lesson" round>
+          <div class="chip-row">
+            <n-tag round type="info">{{ editingPlanId ? '编辑中' : '新建中' }}</n-tag>
+            <n-tag v-if="editingPlanId && selectedPlanDetail?.lesson" round>
               {{ selectedPlanDetail.lesson?.title }}
-            </el-tag>
-            <el-tag v-else-if="editingPlanId && selectedPlanDetail" round type="warning">未绑定课次</el-tag>
-            <el-tag v-if="hasUnsavedChanges" round type="warning">未保存</el-tag>
-          </el-space>
+            </n-tag>
+            <n-tag v-else-if="editingPlanId && selectedPlanDetail" round type="warning">未绑定课次</n-tag>
+            <n-tag v-if="hasUnsavedChanges" round type="warning">未保存</n-tag>
+          </div>
         </div>
       </template>
-      <el-form label-position="top">
-        <el-row :gutter="16">
-          <el-col :md="12" :sm="24">
-            <el-form-item label="学案标题">
-              <el-input v-model="planForm.title" maxlength="120" placeholder="例如：八下第一单元 第4课 智能感知体验" />
-            </el-form-item>
-          </el-col>
-          <el-col :md="6" :sm="12">
-            <el-form-item label="发布日期">
-              <el-date-picker
-                v-model="planForm.assigned_date"
-                class="full-width"
-                type="date"
-                value-format="YYYY-MM-DD"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :md="6" :sm="12">
-            <el-form-item label="保存状态">
-              <el-select v-model="planForm.status" class="full-width">
-                <el-option label="草稿" value="draft" />
-                <el-option :disabled="!planForm.lesson_id" label="已发布" value="published" />
-                <el-option :disabled="!editingPlanId || !planForm.lesson_id" label="上课中" value="active" />
-                <el-option :disabled="!editingPlanId || !planForm.lesson_id" label="已完成" value="completed" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
+      <n-form label-placement="top">
+        <div class="plan-form-grid">
+          <n-form-item label="学案标题">
+            <n-input v-model:value="planForm.title" maxlength="120" placeholder="例如：八下第一单元 第4课 智能感知体验" />
+          </n-form-item>
+          <n-form-item label="发布日期">
+            <n-date-picker
+              v-model:formatted-value="planForm.assigned_date"
+              class="full-width"
+              format="yyyy-MM-dd"
+              type="date"
+              value-format="yyyy-MM-dd"
+            />
+          </n-form-item>
+          <n-form-item label="保存状态">
+            <n-select v-model:value="planForm.status" class="full-width" :options="planStatusOptions" />
+          </n-form-item>
+        </div>
 
-        <el-form-item label="绑定课次">
-          <el-select v-model="planForm.lesson_id" class="full-width" clearable filterable placeholder="可暂不选择课次">
-            <el-option-group
-              v-for="group in lessonOptions"
-              :key="group.label"
-              :label="group.label"
-            >
-              <el-option
-                v-for="lesson in group.lessons"
-                :key="lesson.id"
-                :label="lesson.label"
-                :value="lesson.id"
-              />
-            </el-option-group>
-          </el-select>
+        <n-form-item label="绑定课次">
+          <n-select
+            v-model:value="planForm.lesson_id"
+            class="full-width"
+            clearable
+            filterable
+            :options="lessonSelectOptions"
+            placeholder="可暂不选择课次"
+          />
           <p class="section-note">
             {{
               planForm.lesson_id
@@ -220,15 +229,15 @@
                 : '暂不绑定课次也可以保存草稿；绑定课次后才能发布、开课和进入学生端。'
             }}
           </p>
-        </el-form-item>
+        </n-form-item>
 
         <div class="dialog-task-head editor-task-toolbar">
           <div>
             <h3>学案导读与任务配置</h3>
             <p class="section-note">按“学案导读、任务 1、任务 2...”逐项配置，减少来回跳转。</p>
           </div>
-          <el-space wrap>
-            <el-button plain @click="addTaskRow">新增空白任务</el-button>
+          <div class="chip-row">
+            <n-button secondary @click="addTaskRow">新增空白任务</n-button>
             <TaskTemplatePickerDropdown
               :custom-task-templates-loading="customTaskTemplatesLoading"
               :custom-task-templates="customTaskTemplates"
@@ -238,20 +247,20 @@
               :task-type-label="taskTypeLabel"
               :handle-task-template-command="handleTaskTemplateCommand"
             />
-            <el-button plain @click="openTaskTemplateLibrary">模板库</el-button>
-          </el-space>
+            <n-button secondary @click="openTaskTemplateLibrary">模板库</n-button>
+          </div>
         </div>
 
-        <el-tabs v-model="editorTaskTabKey" class="editor-tabs editor-tabs--unified" type="card">
-          <el-tab-pane label="学案导读" name="content">
+        <n-tabs v-model:value="editorTaskTabKey" class="editor-tabs editor-tabs--unified" type="card">
+          <n-tab-pane name="content" tab="学案导读" display-directive="show">
             <div class="dialog-task-head">
               <div>
                 <h3>学案导读</h3>
                 <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
               </div>
-              <el-space wrap>
-                <el-button :loading="generatingPlanHtml" plain @click="generatePlanHtmlDraft">AI 生成导读初稿</el-button>
-              </el-space>
+              <div class="chip-row">
+                <n-button :loading="generatingPlanHtml" secondary @click="generatePlanHtmlDraft">AI 生成导读初稿</n-button>
+              </div>
             </div>
             <div class="content-mode-panel">
               <RichTextEditor
@@ -260,14 +269,14 @@
                 placeholder="填写学案导读、课堂流程、重点提示、参考链接等。"
               />
             </div>
-          </el-tab-pane>
+          </n-tab-pane>
 
-          <el-tab-pane
+          <n-tab-pane
             v-for="(task, index) in planForm.tasks"
             :key="task.key"
-            :label="taskEditorTabTitle(task, index)"
+            :tab="taskEditorTabTitle(task, index)"
             :name="`task:${task.key}`"
-            lazy
+            display-directive="show:lazy"
           >
             <LessonPlanTaskEditorCard
               :task="task"
@@ -289,12 +298,12 @@
               :handle-task-type-change="handleTaskTypeChange"
               :generate-task-description-draft="generateTaskDescriptionDraft"
             />
-          </el-tab-pane>
-        </el-tabs>
+          </n-tab-pane>
+        </n-tabs>
 
-      </el-form>
+      </n-form>
 
-      <el-alert
+      <n-alert
         v-if="errorMessage"
         class="editor-save-alert"
         :closable="false"
@@ -303,16 +312,16 @@
       />
 
       <div class="plan-editor-actions">
-        <el-space wrap>
-          <el-button @click="cancelPlanEditing">
+        <div class="chip-row">
+          <n-button @click="cancelPlanEditing">
             {{ editingPlanId ? '重置修改' : '取消新建' }}
-          </el-button>
-          <el-button :loading="isSavingPlan" type="primary" @click="savePlan">
+          </n-button>
+          <n-button :loading="isSavingPlan" type="primary" @click="savePlan">
             {{ editingPlanId ? '保存修改' : '创建学案' }}
-          </el-button>
-        </el-space>
+          </n-button>
+        </div>
       </div>
-    </el-card>
+    </SaPanel>
 
     <TaskHtmlPromptDialog
       v-model="taskHtmlPromptDialogVisible"
@@ -408,13 +417,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { NAlert, NButton, NDatePicker, NEmpty, NForm, NFormItem, NInput, NSelect, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { ElMessage, ElMessageBox } from '@/ui/feedback';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
 import RichTextEditor from '@/components/RichTextEditor.vue';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { streamCompanionReply } from '@/utils/companionStream';
 import { richTextToExcerpt, richTextToPlainText } from '@/utils/richText';
 import TaskHtmlPromptDialog from './components/TaskHtmlPromptDialog.vue';
 import LessonPlanTaskEditorCard from './components/LessonPlanTaskEditorCard.vue';
@@ -469,6 +485,8 @@ import type {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
 const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
@@ -548,10 +566,6 @@ type AssistantHtmlDraftResponse = {
     reasoning_content?: string | null;
   };
   active_provider?: TaskHtmlPromptAssistantBootstrap['active_provider'];
-};
-
-type StreamTokenPayload = {
-  text?: string;
 };
 
 type HtmlDraftRequestOptions = {
@@ -845,6 +859,76 @@ const totalPendingCount = computed(() =>
 const totalCompletedCount = computed(() =>
   plans.value.reduce((sum, item) => sum + item.progress.completed_count, 0)
 );
+
+const overallProgressOption = computed(() => {
+  const pending = totalPendingCount.value;
+  const completed = totalCompletedCount.value;
+  const total = pending + completed;
+  const rate = total ? Math.round((completed / total) * 100) : 0;
+
+  return base({
+    tooltip: tooltip('item'),
+    legend: legend({ bottom: 0, top: 'auto' }),
+    series: [
+      {
+        type: 'pie',
+        radius: ['50%', '72%'],
+        center: ['50%', '44%'],
+        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
+        label: { show: false },
+        data: [
+          { value: completed, name: '已完成', itemStyle: { color: palette.value[2] } },
+          { value: pending, name: '待完成', itemStyle: { color: tokens.value.warning } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '38%',
+        style: { text: `${rate}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '50%',
+        style: { text: '完成率', fill: tokens.value.muted, fontSize: 12 },
+      },
+    ],
+  });
+});
+
+const planProgressOption = computed(() => {
+  const items = plans.value.slice(0, 10);
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(items.map((item) => item.title), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: axisY(),
+    series: [
+      {
+        name: '已完成',
+        type: 'bar',
+        stack: 'plan',
+        barMaxWidth: 30,
+        itemStyle: { color: palette.value[2] },
+        data: items.map((item) => item.progress.completed_count),
+      },
+      {
+        name: '待完成',
+        type: 'bar',
+        stack: 'plan',
+        barMaxWidth: 30,
+        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
+        data: items.map((item) => item.progress.pending_count),
+      },
+    ],
+  });
+});
 const lessonOptions = computed<LessonOptionGroup[]>(() =>
   curriculumBooks.value.flatMap((book) =>
     book.units.map((unit) => ({
@@ -856,6 +940,31 @@ const lessonOptions = computed<LessonOptionGroup[]>(() =>
     }))
   )
 );
+const lessonSelectOptions = computed(() =>
+  lessonOptions.value.map((group) => ({
+    type: 'group' as const,
+    key: group.label,
+    label: group.label,
+    children: group.lessons.map((lesson) => ({
+      label: lesson.label,
+      value: lesson.id,
+    })),
+  }))
+);
+const planStatusOptions = computed(() => [
+  { label: '草稿', value: 'draft' },
+  { label: '已发布', value: 'published', disabled: !planForm.value.lesson_id },
+  {
+    label: '上课中',
+    value: 'active',
+    disabled: !editingPlanId.value || !planForm.value.lesson_id,
+  },
+  {
+    label: '已完成',
+    value: 'completed',
+    disabled: !editingPlanId.value || !planForm.value.lesson_id,
+  },
+]);
 const taskHtmlPromptDialogTask = computed(
   () => planForm.value.tasks.find((task) => task.key === taskHtmlPromptDialogState.value.task_key) || null
 );
@@ -1395,38 +1504,6 @@ async function ensureTaskHtmlPromptAssistantBootstrap() {
   await loadTaskHtmlPromptAssistantBootstrap();
 }
 
-async function readAssistantStreamError(response: Response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const payload = await response.json();
-    return payload.detail || payload.message || `请求失败：${response.status}`;
-  }
-  const text = await response.text();
-  return text || `请求失败：${response.status}`;
-}
-
-function parseSseBlock(block: string) {
-  const lines = block.replace(/\r/g, '').split('\n');
-  let eventName = 'message';
-  const dataLines: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      eventName = line.slice(6).trim() || 'message';
-      continue;
-    }
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
-    }
-  }
-  if (!dataLines.length) {
-    return null;
-  }
-  return {
-    event: eventName,
-    data: dataLines.join('\n'),
-  };
-}
-
 async function openTaskHtmlPromptDialog(task: PlanFormTask, slot: TaskAssetSlot) {
   void ensureTaskHtmlPromptAssistantBootstrap();
   if (task.task_type === 'data_submit') {
@@ -1623,75 +1700,28 @@ async function requestHtmlDraftStream(
     throw new Error('请先登录后再使用 AI 生成功能');
   }
 
-  const response = await fetch(`${apiBaseUrl}/assistants/companion/respond/stream`, {
-    method: 'POST',
-    headers: {
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${authStore.token}`,
-    },
-    body: JSON.stringify({
-      ...buildHtmlDraftAssistantRequestBody(prompt, {
-        providerId: options.providerId,
-        thinkingEnabled: options.thinkingEnabled,
-        knowledgeBaseIds: options.knowledgeBaseIds,
-        conversation: options.conversation,
-      }),
-      stream: true,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await readAssistantStreamError(response));
-  }
-  if (!response.body) {
-    throw new Error('流式响应不可用，请稍后重试');
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let buffer = '';
   let accumulatedText = '';
-  let donePayload: AssistantHtmlDraftResponse | null = null;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-
-    let boundary = buffer.indexOf('\n\n');
-    while (boundary !== -1) {
-      const rawBlock = buffer.slice(0, boundary);
-      buffer = buffer.slice(boundary + 2);
-      const parsed = parseSseBlock(rawBlock);
-      if (parsed?.event === 'token') {
-        try {
-          const tokenPayload = JSON.parse(parsed.data) as StreamTokenPayload;
-          if (tokenPayload.text) {
-            accumulatedText += tokenPayload.text;
-            options.onToken?.(accumulatedText);
-          }
-        } catch {
-          // Ignore malformed token events from upstream streams.
-        }
-      }
-      if (parsed?.event === 'done') {
-        try {
-          donePayload = JSON.parse(parsed.data) as AssistantHtmlDraftResponse;
-        } catch {
-          donePayload = null;
-        }
-      }
-      boundary = buffer.indexOf('\n\n');
+  const donePayload = await streamCompanionReply<AssistantHtmlDraftResponse>(
+    `${apiBaseUrl}/assistants/companion/respond/stream`,
+    {
+      body: {
+        ...buildHtmlDraftAssistantRequestBody(prompt, {
+          providerId: options.providerId,
+          thinkingEnabled: options.thinkingEnabled,
+          knowledgeBaseIds: options.knowledgeBaseIds,
+          conversation: options.conversation,
+        }),
+        stream: true,
+      },
+      token: authStore.token,
+      onToken: (text) => {
+        accumulatedText += text;
+        options.onToken?.(accumulatedText);
+      },
     }
+  );
 
-    if (done) {
-      break;
-    }
-  }
-
-  if (!donePayload) {
-    throw new Error('流式响应中断，请稍后重试');
-  }
   return donePayload;
 }
 
@@ -2493,6 +2523,34 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
+.plan-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
+  gap: var(--ls-gap-md, 12px);
+}
+
+.plan-charts :deep(.sa-panel__body) {
+  display: grid;
+  gap: 12px;
+}
+
+.plan-chart-head strong {
+  color: var(--ls-ink);
+  font-size: 15px;
+}
+
+.plan-chart-head .section-note {
+  margin: 4px 0 0;
+  color: var(--ls-muted);
+  font-size: 13px;
+}
+
+@media (max-width: 1080px) {
+  .plan-charts {
+    grid-template-columns: 1fr;
+  }
+}
+
 .lesson-plan-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
@@ -2500,13 +2558,7 @@ onBeforeUnmount(() => {
   align-items: stretch;
 }
 
-.lesson-plan-hero__copy {
-  display: grid;
-  gap: 10px;
-}
-
-.lesson-plan-hero__copy h2 {
-  margin: 0;
+.lesson-plan-hero :deep(.sa-page-header__title) {
   font-size: clamp(34px, 4vw, 44px);
 }
 
@@ -2514,6 +2566,14 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 14px;
   align-content: space-between;
+  width: 100%;
+}
+
+.lesson-plan-hero__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-start;
 }
 
 .lesson-plan-hero__summary {
@@ -2544,8 +2604,11 @@ onBeforeUnmount(() => {
   text-transform: uppercase;
 }
 
-.lesson-plan-hero__buttons {
-  align-items: flex-start;
+.chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .info-row {
@@ -2596,7 +2659,7 @@ onBeforeUnmount(() => {
 .plan-title-cell__thumb--placeholder {
   display: grid;
   place-items: center;
-  color: #4261a2;
+  color: var(--ls-text);
   font-weight: 700;
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.2), rgba(111, 179, 149, 0.2)),
@@ -2615,7 +2678,7 @@ onBeforeUnmount(() => {
 }
 
 .plan-title-cell__title {
-  color: #1f2a44;
+  color: var(--ls-ink);
   font-weight: 700;
   line-height: 1.4;
 }
@@ -2661,9 +2724,16 @@ onBeforeUnmount(() => {
   line-height: 1.7;
 }
 
-.plan-editor-card {
+.plan-editor-body {
   display: grid;
   gap: 18px;
+}
+
+.plan-form-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 0 16px;
+  align-items: start;
 }
 
 .plan-editor-card__header {
@@ -2700,6 +2770,10 @@ onBeforeUnmount(() => {
   .info-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .plan-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .plan-title-cell {

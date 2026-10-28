@@ -1,26 +1,32 @@
 <template>
-  <el-dialog v-model="dialogVisible" :close-on-click-modal="false" :title="title" width="960px">
+  <n-modal
+    v-model:show="dialogVisible"
+    preset="card"
+    :title="title"
+    :mask-closable="false"
+    style="width: min(960px, 96vw)"
+  >
     <template v-if="task">
-      <el-form label-position="top">
-        <el-form-item label="提示词模板">
-          <el-radio-group v-model="templateIdValue" class="task-html-prompt-template-group">
-            <el-radio-button v-for="option in currentTemplates" :key="option.id" :value="option.id">
+      <n-form label-placement="top">
+        <n-form-item label="提示词模板">
+          <n-radio-group v-model:value="templateIdValue" class="task-html-prompt-template-group">
+            <n-radio-button v-for="option in currentTemplates" :key="option.id" :value="option.id">
               {{ option.label }}
-            </el-radio-button>
-          </el-radio-group>
+            </n-radio-button>
+          </n-radio-group>
           <p class="section-note">
             {{ selectedTemplateDescription || '请选择一个更贴合当前页面结构的提示词模板。' }}
           </p>
-        </el-form-item>
+        </n-form-item>
 
-        <el-form-item label="自定义提示词">
+        <n-form-item label="自定义提示词">
           <RichTextEditor
             v-model="customPromptValue"
             class="task-html-prompt-editor"
             :min-height="180"
             placeholder="可补充字段、交互方式、页面风格、配色、版式、图表形式、校验规则等要求。"
           />
-        </el-form-item>
+        </n-form-item>
 
         <section class="task-html-provider-settings">
           <div class="task-html-provider-settings__head">
@@ -28,10 +34,10 @@
               <strong>AI 生成设置</strong>
               <p class="section-note">与 AI 学伴共用模型服务配置，可临时切换本次网页生成使用的 API。</p>
             </div>
-            <el-tag round type="info">{{ generationModeLabel }}</el-tag>
+            <n-tag round type="info">{{ generationModeLabel }}</n-tag>
           </div>
 
-          <el-alert
+          <n-alert
             v-if="assistantBootstrapError"
             :closable="false"
             :title="assistantBootstrapError"
@@ -44,21 +50,14 @@
                 <strong>模型服务</strong>
                 <span>默认跟随系统配置，也可选择指定 API。</span>
               </div>
-              <el-select
-                v-model="providerIdValue"
+              <n-select
+                v-model:value="providerIdValue"
                 class="full-width"
                 clearable
                 :disabled="isGenerating || assistantBootstrapLoading || !assistantProviders.length"
-                :value-on-clear="null"
+                :options="providerOptions"
                 placeholder="跟随系统默认模型服务"
-              >
-                <el-option
-                  v-for="item in assistantProviders"
-                  :key="item.id"
-                  :label="`${item.name} · ${item.model_name}`"
-                  :value="item.id"
-                />
-              </el-select>
+              />
               <p v-if="!assistantProviders.length && !assistantBootstrapLoading" class="section-note">
                 当前未启用外部模型服务，将使用系统默认学伴。
               </p>
@@ -72,12 +71,10 @@
                 <strong>生成模式</strong>
                 <span>流式会逐段接收模型内容。</span>
               </div>
-              <el-switch
-                v-model="streamEnabledValue"
-                :disabled="isGenerating || !streamCapabilityEnabled"
-                active-text="流式"
-                inactive-text="标准"
-              />
+              <n-switch v-model:value="streamEnabledValue" :disabled="isGenerating || !streamCapabilityEnabled">
+                <template #checked>流式</template>
+                <template #unchecked>标准</template>
+              </n-switch>
             </div>
 
             <div class="task-html-provider-field">
@@ -85,12 +82,10 @@
                 <strong>推理模式</strong>
                 <span>开启后会请求模型进行额外推理。</span>
               </div>
-              <el-switch
-                v-model="thinkingEnabledValue"
-                :disabled="isGenerating"
-                active-text="开启"
-                inactive-text="关闭"
-              />
+              <n-switch v-model:value="thinkingEnabledValue" :disabled="isGenerating">
+                <template #checked>开启</template>
+                <template #unchecked>关闭</template>
+              </n-switch>
             </div>
 
             <div class="task-html-provider-field task-html-provider-field--wide">
@@ -98,38 +93,27 @@
                 <strong>知识库</strong>
                 <span>生成网页时会优先参考所选知识库。</span>
               </div>
-              <el-select
-                v-model="knowledgeBaseIdsValue"
+              <n-select
+                v-model:value="knowledgeBaseIdsValue"
                 class="full-width"
-                collapse-tags
-                collapse-tags-tooltip
                 multiple
+                :max-tag-count="2"
+                :options="knowledgeBaseOptions"
                 placeholder="请选择知识库"
-              >
-                <el-option
-                  v-for="item in assistantKnowledgeBases"
-                  :key="item.id"
-                  :label="item.name"
-                  :value="item.id"
-                >
-                  <div class="task-html-knowledge-option">
-                    <strong>{{ item.name }}</strong>
-                    <span>{{ item.description }}</span>
-                  </div>
-                </el-option>
-              </el-select>
+                :render-option="renderKnowledgeBaseOption"
+              />
             </div>
           </div>
         </section>
 
-        <el-form-item label="将发送给 AI 的提示词预览">
+        <n-form-item label="将发送给 AI 的提示词预览">
           <RichTextEditor
             :model-value="previewText"
             class="task-html-prompt-preview"
             :min-height="240"
             readonly
           />
-        </el-form-item>
+        </n-form-item>
 
         <section v-if="hasGeneratedHtml" class="task-html-result-panel">
           <div class="task-html-result-panel__head">
@@ -138,34 +122,34 @@
               <p class="section-note">接口返回内容会保留在这里，可复制、预览，确认后再写入下方源码编辑区。</p>
             </div>
             <div class="task-html-result-panel__actions">
-              <el-tag round type="success">{{ generatedHtmlSource.length }} 字符</el-tag>
-              <el-button :disabled="isGenerating || isContinuing" plain size="small" @click="$emit('copy')">
+              <n-tag round type="success">{{ generatedHtmlSource.length }} 字符</n-tag>
+              <n-button :disabled="isGenerating || isContinuing" secondary size="small" @click="$emit('copy')">
                 复制源码
-              </el-button>
-              <el-button
+              </n-button>
+              <n-button
                 :disabled="generatedHtmlApplied || isGenerating || isContinuing"
-                plain
+                secondary
                 size="small"
                 type="primary"
                 @click="$emit('apply')"
               >
                 {{ applyButtonLabel }}
-              </el-button>
+              </n-button>
             </div>
           </div>
-          <el-tabs v-model="resultTab" class="task-html-result-tabs">
-            <el-tab-pane label="源码" name="source">
+          <n-tabs v-model:value="resultTab" class="task-html-result-tabs">
+            <n-tab-pane name="source" tab="源码" display-directive="show">
               <pre class="task-html-result-source"><code>{{ generatedHtmlSource }}</code></pre>
-            </el-tab-pane>
-            <el-tab-pane label="预览" name="preview">
+            </n-tab-pane>
+            <n-tab-pane name="preview" tab="预览" display-directive="show">
               <iframe
                 :key="generatedHtmlSource"
                 class="task-html-result-preview"
                 sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
                 :srcdoc="generatedHtmlPreviewSrcdoc"
               ></iframe>
-            </el-tab-pane>
-          </el-tabs>
+            </n-tab-pane>
+          </n-tabs>
         </section>
 
         <section v-if="hasGeneratedHtml" class="task-html-followup-panel">
@@ -174,7 +158,7 @@
               <strong>连续对话修改</strong>
               <p class="section-note">输入新的修改要求，AI 会基于当前 HTML 返回一份完整新版本。</p>
             </div>
-            <el-tag v-if="conversation.length" round type="info">已对话 {{ conversation.length }} 条</el-tag>
+            <n-tag v-if="conversation.length" round type="info">已对话 {{ conversation.length }} 条</n-tag>
           </div>
           <div v-if="conversation.length" class="task-html-followup-history">
             <article
@@ -187,25 +171,25 @@
               <p>{{ conversationExcerpt(message.content) }}</p>
             </article>
           </div>
-          <el-input
-            v-model="followupPromptValue"
+          <n-input
+            v-model:value="followupPromptValue"
             :autosize="{ minRows: 3, maxRows: 6 }"
             :disabled="isGenerating || isContinuing"
-            maxlength="2000"
+            :maxlength="2000"
             placeholder="例如：把表单字段改为姓名、班级、实验现象，并增加提交成功后的绿色提示。"
-            show-word-limit
+            show-count
             type="textarea"
           />
           <div class="task-html-followup-actions">
-            <el-button
+            <n-button
               :disabled="!normalizedFollowupPrompt || !canContinue"
               :loading="isContinuing"
-              plain
+              secondary
               type="primary"
               @click="$emit('continue')"
             >
               发送修改要求
-            </el-button>
+            </n-button>
           </div>
         </section>
 
@@ -219,9 +203,9 @@
               <strong>{{ generationStatusTitle }}</strong>
               <p>{{ generationStatusSummary }}</p>
             </div>
-            <el-tag round :type="generationStatusTagType">
+            <n-tag round :type="generationStatusTagType">
               {{ generationStatusTagLabel }}
-            </el-tag>
+            </n-tag>
           </div>
 
           <div class="task-html-generation-status__grid">
@@ -259,36 +243,52 @@
           </p>
 
           <div v-if="generationStatus.state === 'error'" class="task-html-generation-status__actions">
-            <el-button plain type="primary" @click="$emit('submit')">立即重试</el-button>
+            <n-button secondary type="primary" @click="$emit('submit')">立即重试</n-button>
           </div>
         </section>
-      </el-form>
+      </n-form>
     </template>
 
     <template #footer>
-      <el-space wrap>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button v-if="hasGeneratedHtml" :disabled="isGenerating || isContinuing" plain @click="$emit('copy')">
+      <div class="dialog-footer">
+        <n-button @click="dialogVisible = false">取消</n-button>
+        <n-button v-if="hasGeneratedHtml" :disabled="isGenerating || isContinuing" secondary @click="$emit('copy')">
           复制源码
-        </el-button>
-        <el-button :loading="isGenerating" type="primary" @click="$emit('submit')">
+        </n-button>
+        <n-button :loading="isGenerating" type="primary" @click="$emit('submit')">
           {{ submitButtonLabel }}
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           v-if="hasGeneratedHtml"
           :disabled="isGenerating || isContinuing"
           type="success"
           @click="$emit('apply', true)"
         >
           {{ confirmApplyButtonLabel }}
-        </el-button>
-      </el-space>
+        </n-button>
+      </div>
     </template>
-  </el-dialog>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import type { SelectRenderOption } from 'naive-ui';
+import {
+  NAlert,
+  NButton,
+  NForm,
+  NFormItem,
+  NInput,
+  NModal,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSwitch,
+  NTabPane,
+  NTabs,
+  NTag,
+} from 'naive-ui';
+import { computed, h, ref } from 'vue';
 
 import RichTextEditor from '@/components/RichTextEditor.vue';
 import { richTextToPlainText } from '@/utils/richText';
@@ -401,6 +401,38 @@ const followupPromptValue = computed({
   set: (value: string) => emit('update:followupPrompt', value),
 });
 
+const providerOptions = computed(() =>
+  props.assistantProviders.map((item) => ({
+    label: `${item.name} · ${item.model_name}`,
+    value: item.id,
+  }))
+);
+
+const knowledgeBaseOptions = computed(() =>
+  props.assistantKnowledgeBases.map((item) => ({
+    label: item.name,
+    value: item.id,
+  }))
+);
+
+const knowledgeBaseDescriptions = computed(() => {
+  const map = new Map<string, string>();
+  for (const item of props.assistantKnowledgeBases) {
+    map.set(item.id, item.description);
+  }
+  return map;
+});
+
+/** 下拉项由下拉层渲染，scoped 样式不会命中，排版改用行内样式。 */
+const renderKnowledgeBaseOption: SelectRenderOption = (info) => {
+  const option = info.option as { value?: string | number; label?: string };
+  const description = knowledgeBaseDescriptions.value.get(String(option.value)) || '';
+  return h('div', { style: 'display: grid; gap: 2px; line-height: 1.4; white-space: normal;' }, [
+    h('strong', { style: 'display: block; font-size: 13px; color: var(--ls-text);' }, option.label || ''),
+    h('span', { style: 'display: block; font-size: 12px; color: var(--ls-muted);' }, description),
+  ]);
+};
+
 const generationModeLabel = computed(() =>
   props.dialogState.stream_enabled && props.streamCapabilityEnabled ? '流式生成' : '标准生成'
 );
@@ -496,7 +528,7 @@ const generationStatusTagType = computed(() => {
     return 'info';
   }
   if (props.generationStatus.state === 'error') {
-    return 'danger';
+    return 'error';
   }
   return 'success';
 });
@@ -569,7 +601,7 @@ const submitButtonLabel = computed(() => {
 }
 
 .task-html-provider-field__head strong {
-  color: #1f2a44;
+  color: var(--ls-ink);
   line-height: 1.4;
 }
 
@@ -577,24 +609,6 @@ const submitButtonLabel = computed(() => {
   color: var(--ls-muted);
   font-size: 12px;
   line-height: 1.5;
-}
-
-.task-html-knowledge-option {
-  display: grid;
-  gap: 2px;
-  line-height: 1.4;
-}
-
-.task-html-knowledge-option strong,
-.task-html-knowledge-option span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.task-html-knowledge-option span {
-  color: var(--ls-muted);
-  font-size: 12px;
 }
 
 .full-width {
@@ -615,7 +629,7 @@ const submitButtonLabel = computed(() => {
   padding: 16px;
   border: 1px solid rgba(66, 97, 162, 0.16);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ls-card);
 }
 
 .task-html-result-panel__head,
@@ -640,7 +654,7 @@ const submitButtonLabel = computed(() => {
   color: var(--ls-text);
 }
 
-.task-html-result-tabs :deep(.el-tabs__header) {
+.task-html-result-tabs :deep(.n-tabs-nav) {
   margin-bottom: 12px;
 }
 
@@ -651,8 +665,8 @@ const submitButtonLabel = computed(() => {
   overflow: auto;
   border: 1px solid rgba(66, 97, 162, 0.14);
   border-radius: 14px;
-  background: #101827;
-  color: #f7fafc;
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   font-size: 12px;
   line-height: 1.6;
@@ -678,15 +692,15 @@ const submitButtonLabel = computed(() => {
   gap: 4px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(24, 39, 75, 0.05);
+  background: var(--ls-panel-soft);
 }
 
 .task-html-followup-message--user {
-  background: rgba(66, 97, 162, 0.09);
+  background: var(--ls-primary-soft);
 }
 
 .task-html-followup-message strong {
-  color: #1f2a44;
+  color: var(--ls-ink);
 }
 
 .task-html-followup-message p {
@@ -707,12 +721,12 @@ const submitButtonLabel = computed(() => {
   padding: 16px;
   border: 1px solid rgba(66, 97, 162, 0.18);
   border-radius: 18px;
-  background: rgba(248, 251, 255, 0.96);
+  background: var(--ls-panel-soft);
 }
 
 .task-html-generation-status--error {
   border-color: rgba(215, 74, 74, 0.24);
-  background: rgba(255, 246, 246, 0.96);
+  background: rgba(215, 74, 74, 0.12);
 }
 
 .task-html-generation-status__head {
@@ -745,7 +759,7 @@ const submitButtonLabel = computed(() => {
   gap: 6px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(24, 39, 75, 0.05);
+  background: var(--ls-chip-bg);
 }
 
 .task-html-generation-status__item span {
@@ -755,7 +769,7 @@ const submitButtonLabel = computed(() => {
 
 .task-html-generation-status__item strong {
   font-size: 14px;
-  color: #1f2a44;
+  color: var(--ls-ink);
   line-height: 1.5;
   word-break: break-word;
 }
@@ -767,16 +781,23 @@ const submitButtonLabel = computed(() => {
 }
 
 .task-html-generation-status__warning {
-  color: #8a5a00;
+  color: var(--ls-warning-text);
 }
 
 .task-html-generation-status__error {
-  color: #c0392b;
+  color: var(--ls-error-text);
 }
 
 .task-html-generation-status__actions {
   display: flex;
   justify-content: flex-start;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 @media (max-width: 768px) {

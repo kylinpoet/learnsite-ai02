@@ -88,7 +88,7 @@ const sanitizedHtml = computed(() => {
 .markdown-content :deep(code) {
   padding: 0.1em 0.35em;
   border-radius: 6px;
-  background: rgba(32, 60, 112, 0.08);
+  background: var(--ls-border);
   font-size: 0.92em;
 }
 
@@ -96,7 +96,8 @@ const sanitizedHtml = computed(() => {
   overflow-x: auto;
   padding: 14px;
   border-radius: 12px;
-  background: rgba(32, 60, 112, 0.06);
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
 }
 
 .markdown-content :deep(pre code) {
@@ -129,7 +130,7 @@ const sanitizedHtml = computed(() => {
 .markdown-content :deep(th),
 .markdown-content :deep(td) {
   padding: 8px 10px;
-  border: 1px solid rgba(32, 60, 112, 0.12);
+  border: 1px solid var(--ls-border);
   text-align: left;
   vertical-align: top;
 }

@@ -1,5 +1,5 @@
 import { computed, ref, watch, type Ref } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox } from '@/ui/feedback';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
 import { richTextToPlainText } from '@/utils/richText';

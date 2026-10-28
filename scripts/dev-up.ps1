@@ -1,8 +1,8 @@
 param(
     [int]$ApiPort = 8010,
     [int]$WebPort = 5173,
-    [string]$ApiHost = "127.0.0.1",
-    [string]$WebHost = "localhost"
+    [string]$ApiHost = "0.0.0.0",
+    [string]$WebHost = "0.0.0.0"
 )
 
 $ErrorActionPreference = "Stop"
@@ -149,6 +149,9 @@ Write-Host ""
 Write-Host "LearnSite development windows launched." -ForegroundColor Green
 Write-Host "API      $apiStatus http://$ApiHost`:$ApiPort"
 Write-Host "Web      $webStatus http://$WebHost`:$WebPort"
+if ($ApiHost -eq "0.0.0.0" -or $WebHost -eq "0.0.0.0") {
+    Write-Host "LAN      Use this machine's LAN IP from other devices, for example http://<your-ip>:$WebPort" -ForegroundColor Green
+}
 Write-Host "Demo seed (explicit)  npm run dev:seed-demo"
 Write-Host "After seeding: Student 70101 / 12345"
 Write-Host "After seeding: Teacher t1 / 222221 | Teacher2 t2 / 222221 | Admin admin / 222221"

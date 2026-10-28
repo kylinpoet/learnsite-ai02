@@ -1,75 +1,72 @@
 <template>
-  <el-dialog v-model="dialogVisible" title="自定义任务模板库" width="760px">
+  <n-modal
+    v-model:show="dialogVisible"
+    preset="card"
+    title="自定义任务模板库"
+    style="width: min(760px, 96vw)"
+  >
     <div v-if="loading" class="task-template-library task-template-library--loading">
       正在加载自定义模板...
     </div>
-    <el-empty v-else-if="!templates.length" description="还没有保存过自定义任务模板" />
+    <n-empty v-else-if="!templates.length" description="还没有保存过自定义任务模板" />
     <template v-else>
       <div class="task-template-library-toolbar">
-        <el-input
-          v-model="keywordValue"
+        <n-input
+          v-model:value="keywordValue"
           clearable
           class="task-template-library-toolbar__search"
           placeholder="搜索模板名称、分组、预设任务名或说明"
         />
-        <el-select
-          v-model="groupNameValue"
+        <n-select
+          v-model:value="groupNameValue"
           clearable
           filterable
           class="task-template-library-toolbar__group"
+          :options="groupNameOptions"
           placeholder="按分组筛选"
-        >
-          <el-option v-for="groupName in groupOptions" :key="groupName" :label="groupName" :value="groupName" />
-        </el-select>
-        <el-tag round type="info">结果 {{ filteredTemplates.length }}</el-tag>
-        <el-tag round type="warning">置顶 {{ pinnedTemplates.length }}</el-tag>
-        <el-tag round>最近使用 {{ recentTemplates.length }}</el-tag>
-        <el-tag v-if="selectedIds.length" round type="success">已选 {{ selectedIds.length }}</el-tag>
-        <el-tag
+        />
+        <n-tag round type="info">结果 {{ filteredTemplates.length }}</n-tag>
+        <n-tag round type="warning">置顶 {{ pinnedTemplates.length }}</n-tag>
+        <n-tag round>最近使用 {{ recentTemplates.length }}</n-tag>
+        <n-tag v-if="selectedIds.length" round type="success">已选 {{ selectedIds.length }}</n-tag>
+        <n-tag
           v-if="selectedIds.length && selectedFilteredCount !== selectedIds.length"
           round
           type="info"
         >
           当前结果命中 {{ selectedFilteredCount }}
-        </el-tag>
+        </n-tag>
       </div>
 
-      <el-empty v-if="!filteredTemplates.length" description="当前筛选条件下暂无模板" />
+      <n-empty v-if="!filteredTemplates.length" description="当前筛选条件下暂无模板" />
       <div v-else class="task-template-library">
         <div class="task-template-library-batch">
           <div class="task-template-library-batch__summary">
             <strong>批量整理</strong>
             <span>多选模板后可统一改分组、批量置顶，或直接批量移出分组。</span>
           </div>
-          <el-space wrap>
-            <el-button
-              plain
+          <div class="chip-row">
+            <n-button
+              secondary
               size="small"
               :disabled="batchBusy || !filteredTemplates.length || allFilteredSelected"
               @click="selectAllFiltered"
             >
               全选当前结果
-            </el-button>
-            <el-button plain size="small" :disabled="batchBusy || !selectedIds.length" @click="clearSelected">
+            </n-button>
+            <n-button secondary size="small" :disabled="batchBusy || !selectedIds.length" @click="clearSelected">
               清空选择
-            </el-button>
-            <el-select
-              v-model="batchGroupNameValue"
-              allow-create
+            </n-button>
+            <n-select
+              v-model:value="batchGroupNameValue"
               clearable
-              default-first-option
               filterable
+              tag
               class="task-template-library-batch__group"
+              :options="groupNameOptions"
               placeholder="选择或输入目标分组"
-            >
-              <el-option
-                v-for="groupName in groupOptions"
-                :key="`batch-${groupName}`"
-                :label="groupName"
-                :value="groupName"
-              />
-            </el-select>
-            <el-button
+            />
+            <n-button
               :disabled="batchBusy || !selectedIds.length || !normalizedBatchGroupName"
               :loading="batchUpdatingGroups"
               size="small"
@@ -77,18 +74,18 @@
               @click="applyBatchGroup"
             >
               批量改分组
-            </el-button>
-            <el-button
-              plain
+            </n-button>
+            <n-button
+              secondary
               size="small"
               :disabled="batchBusy || !selectedIds.length"
               :loading="batchUpdatingGroups"
               @click="clearBatchGroup"
             >
               批量移出分组
-            </el-button>
-            <el-button
-              plain
+            </n-button>
+            <n-button
+              secondary
               size="small"
               type="warning"
               :disabled="batchBusy || !selectedIds.length"
@@ -96,17 +93,17 @@
               @click="applyBatchPinned(true)"
             >
               批量置顶
-            </el-button>
-            <el-button
-              plain
+            </n-button>
+            <n-button
+              secondary
               size="small"
               :disabled="batchBusy || !selectedIds.length"
               :loading="batchUpdatingPins"
               @click="applyBatchPinned(false)"
             >
               批量取消置顶
-            </el-button>
-          </el-space>
+            </n-button>
+          </div>
         </div>
 
         <div
@@ -128,11 +125,11 @@
               <strong>已置顶</strong>
               <span>{{ pinnedTemplates.length }} 个模板</span>
             </div>
-            <el-space wrap class="task-template-library__group-header-actions">
-              <el-button plain size="small" :disabled="batchBusy" @click.stop="toggleSelectionForList(pinnedTemplates)">
+            <div class="chip-row task-template-library__group-header-actions">
+              <n-button secondary size="small" :disabled="batchBusy" @click.stop="toggleSelectionForList(pinnedTemplates)">
                 {{ areAllSelected(pinnedTemplates) ? '取消本区' : '选择本区' }}
-              </el-button>
-            </el-space>
+              </n-button>
+            </div>
           </div>
           <article
             v-for="templateItem in pinnedTemplates"
@@ -149,12 +146,12 @@
           >
             <div class="task-template-library__sort-toolbar">
               <div class="task-template-library__sort-meta">
-                <el-checkbox
-                  :model-value="isTemplateSelected(templateItem.id)"
-                  @change="setTemplateSelected(templateItem.id, Boolean($event))"
+                <n-checkbox
+                  :checked="isTemplateSelected(templateItem.id)"
+                  @update:checked="setTemplateSelected(templateItem.id, $event)"
                 >
                   选择
-                </el-checkbox>
+                </n-checkbox>
                 <button
                   class="task-template-library__drag-handle"
                   :disabled="sortingTaskTemplates || pinnedTemplates.length < 2"
@@ -166,38 +163,38 @@
                   拖拽排序
                 </button>
               </div>
-              <el-space wrap>
-                <el-button
-                  plain
+              <div class="chip-row">
+                <n-button
+                  secondary
                   size="small"
                   :disabled="!canMove(templateItem.id, taskTemplateIdList(pinnedTemplates), -1)"
                   @click="moveTemplate(templateItem.id, taskTemplateIdList(pinnedTemplates), -1)"
                 >
                   上移
-                </el-button>
-                <el-button
-                  plain
+                </n-button>
+                <n-button
+                  secondary
                   size="small"
                   :disabled="!canMove(templateItem.id, taskTemplateIdList(pinnedTemplates), 1)"
                   @click="moveTemplate(templateItem.id, taskTemplateIdList(pinnedTemplates), 1)"
                 >
                   下移
-                </el-button>
-              </el-space>
+                </n-button>
+              </div>
             </div>
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
                 <span>预设任务名：{{ templateItem.task_title }}</span>
               </div>
-              <el-space wrap>
-                <el-tag round type="danger">置顶</el-tag>
-                <el-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</el-tag>
-                <el-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</el-tag>
-                <el-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
+              <div class="chip-row">
+                <n-tag round type="error">置顶</n-tag>
+                <n-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</n-tag>
+                <n-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</n-tag>
+                <n-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
                   {{ templateItem.submission_scope === 'group' ? '小组共同提交' : '个人提交' }}
-                </el-tag>
-              </el-space>
+                </n-tag>
+              </div>
             </div>
             <p class="section-note">
               {{ templateItem.summary || richTextToExcerpt(templateItem.task_description, 120) || '当前模板没有补充说明。' }}
@@ -206,20 +203,20 @@
               <span class="section-note">
                 最近使用：{{ formatTaskTemplateUpdatedAt(templateItem.last_used_at) }} · 使用 {{ templateItem.use_count }} 次
               </span>
-              <el-space wrap>
-                <el-button plain size="small" @click="applyTemplate(templateItem)">使用模板</el-button>
-                <el-button plain size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</el-button>
-                <el-button plain size="small" @click="togglePinned(templateItem)">取消置顶</el-button>
-                <el-button
+              <div class="chip-row">
+                <n-button secondary size="small" @click="applyTemplate(templateItem)">使用模板</n-button>
+                <n-button secondary size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</n-button>
+                <n-button secondary size="small" @click="togglePinned(templateItem)">取消置顶</n-button>
+                <n-button
                   :loading="deletingTaskTemplateId === templateItem.id"
-                  link
                   size="small"
-                  type="danger"
+                  text
+                  type="error"
                   @click="deleteTemplate(templateItem)"
                 >
                   删除
-                </el-button>
-              </el-space>
+                </n-button>
+              </div>
             </div>
           </article>
         </section>
@@ -240,26 +237,26 @@
             }"
           >
             <div class="task-template-library__select-row">
-              <el-checkbox
-                :model-value="isTemplateSelected(templateItem.id)"
-                @change="setTemplateSelected(templateItem.id, Boolean($event))"
+              <n-checkbox
+                :checked="isTemplateSelected(templateItem.id)"
+                @update:checked="setTemplateSelected(templateItem.id, $event)"
               >
                 选择
-              </el-checkbox>
+              </n-checkbox>
             </div>
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
                 <span>预设任务名：{{ templateItem.task_title }}</span>
               </div>
-              <el-space wrap>
-                <el-tag round>最近使用</el-tag>
-                <el-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</el-tag>
-                <el-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</el-tag>
-                <el-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
+              <div class="chip-row">
+                <n-tag round>最近使用</n-tag>
+                <n-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</n-tag>
+                <n-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</n-tag>
+                <n-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
                   {{ templateItem.submission_scope === 'group' ? '小组共同提交' : '个人提交' }}
-                </el-tag>
-              </el-space>
+                </n-tag>
+              </div>
             </div>
             <p class="section-note">
               {{ templateItem.summary || richTextToExcerpt(templateItem.task_description, 120) || '当前模板没有补充说明。' }}
@@ -268,20 +265,20 @@
               <span class="section-note">
                 最近使用：{{ formatTaskTemplateUpdatedAt(templateItem.last_used_at) }} · 使用 {{ templateItem.use_count }} 次
               </span>
-              <el-space wrap>
-                <el-button plain size="small" @click="applyTemplate(templateItem)">使用模板</el-button>
-                <el-button plain size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</el-button>
-                <el-button plain size="small" @click="togglePinned(templateItem)">置顶</el-button>
-                <el-button
+              <div class="chip-row">
+                <n-button secondary size="small" @click="applyTemplate(templateItem)">使用模板</n-button>
+                <n-button secondary size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</n-button>
+                <n-button secondary size="small" @click="togglePinned(templateItem)">置顶</n-button>
+                <n-button
                   :loading="deletingTaskTemplateId === templateItem.id"
-                  link
                   size="small"
-                  type="danger"
+                  text
+                  type="error"
                   @click="deleteTemplate(templateItem)"
                 >
                   删除
-                </el-button>
-              </el-space>
+                </n-button>
+              </div>
             </div>
           </article>
         </section>
@@ -300,11 +297,11 @@
               <strong>{{ group.label }}</strong>
               <span>{{ group.items.length }} 个模板</span>
             </div>
-            <el-space wrap class="task-template-library__group-header-actions">
-              <el-button plain size="small" :disabled="batchBusy" @click.stop="toggleSelectionForList(group.items)">
+            <div class="chip-row task-template-library__group-header-actions">
+              <n-button secondary size="small" :disabled="batchBusy" @click.stop="toggleSelectionForList(group.items)">
                 {{ areAllSelected(group.items) ? '取消本组' : '选择本组' }}
-              </el-button>
-            </el-space>
+              </n-button>
+            </div>
           </div>
           <article
             v-for="templateItem in group.items"
@@ -321,12 +318,12 @@
           >
             <div class="task-template-library__sort-toolbar">
               <div class="task-template-library__sort-meta">
-                <el-checkbox
-                  :model-value="isTemplateSelected(templateItem.id)"
-                  @change="setTemplateSelected(templateItem.id, Boolean($event))"
+                <n-checkbox
+                  :checked="isTemplateSelected(templateItem.id)"
+                  @update:checked="setTemplateSelected(templateItem.id, $event)"
                 >
                   选择
-                </el-checkbox>
+                </n-checkbox>
                 <button
                   class="task-template-library__drag-handle"
                   :disabled="sortingTaskTemplates"
@@ -338,41 +335,41 @@
                   拖拽排序
                 </button>
               </div>
-              <el-space wrap>
-                <el-button
-                  plain
+              <div class="chip-row">
+                <n-button
+                  secondary
                   size="small"
                   :disabled="!canMove(templateItem.id, taskTemplateIdList(group.items), -1)"
                   @click="moveTemplate(templateItem.id, taskTemplateIdList(group.items), -1)"
                 >
                   上移
-                </el-button>
-                <el-button
-                  plain
+                </n-button>
+                <n-button
+                  secondary
                   size="small"
                   :disabled="!canMove(templateItem.id, taskTemplateIdList(group.items), 1)"
                   @click="moveTemplate(templateItem.id, taskTemplateIdList(group.items), 1)"
                 >
                   下移
-                </el-button>
-              </el-space>
+                </n-button>
+              </div>
             </div>
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
                 <span>预设任务名：{{ templateItem.task_title }}</span>
               </div>
-              <el-space wrap>
-                <el-tag v-if="templateItem.is_pinned" round type="danger">置顶</el-tag>
-                <el-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</el-tag>
-                <el-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</el-tag>
-                <el-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
+              <div class="chip-row">
+                <n-tag v-if="templateItem.is_pinned" round type="error">置顶</n-tag>
+                <n-tag v-if="templateItem.group_name" round type="warning">{{ templateItem.group_name }}</n-tag>
+                <n-tag round type="info">{{ taskTypeLabel(templateItem.task_type) }}</n-tag>
+                <n-tag round :type="templateItem.submission_scope === 'group' ? 'warning' : 'success'">
                   {{ templateItem.submission_scope === 'group' ? '小组共同提交' : '个人提交' }}
-                </el-tag>
-                <el-tag round :type="templateItem.is_required ? 'success' : 'warning'">
+                </n-tag>
+                <n-tag round :type="templateItem.is_required ? 'success' : 'warning'">
                   {{ templateItem.is_required ? '必做' : '选做' }}
-                </el-tag>
-              </el-space>
+                </n-tag>
+              </div>
             </div>
             <p class="section-note">
               {{ templateItem.summary || richTextToExcerpt(templateItem.task_description, 120) || '当前模板没有补充说明。' }}
@@ -381,31 +378,37 @@
               <span class="section-note">
                 最近使用：{{ formatTaskTemplateUpdatedAt(templateItem.last_used_at) }} · 使用 {{ templateItem.use_count }} 次
               </span>
-              <el-space wrap>
-                <el-button plain size="small" @click="applyTemplate(templateItem)">使用模板</el-button>
-                <el-button plain size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</el-button>
-                <el-button plain size="small" @click="togglePinned(templateItem)">
+              <div class="chip-row">
+                <n-button secondary size="small" @click="applyTemplate(templateItem)">使用模板</n-button>
+                <n-button secondary size="small" type="warning" @click="editTemplate(templateItem)">编辑后覆盖</n-button>
+                <n-button secondary size="small" @click="togglePinned(templateItem)">
                   {{ templateItem.is_pinned ? '取消置顶' : '置顶' }}
-                </el-button>
-                <el-button
+                </n-button>
+                <n-button
                   :loading="deletingTaskTemplateId === templateItem.id"
-                  link
                   size="small"
-                  type="danger"
+                  text
+                  type="error"
                   @click="deleteTemplate(templateItem)"
                 >
                   删除
-                </el-button>
-              </el-space>
+                </n-button>
+              </div>
             </div>
           </article>
         </section>
       </div>
     </template>
-  </el-dialog>
+    <template #footer>
+      <div class="dialog-footer">
+        <n-button @click="dialogVisible = false">关闭</n-button>
+      </div>
+    </template>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
+import { NButton, NCheckbox, NEmpty, NInput, NModal, NSelect, NTag } from 'naive-ui';
 import { computed } from 'vue';
 
 import type {
@@ -499,6 +502,13 @@ const batchGroupNameValue = computed({
 });
 
 const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
+
+const groupNameOptions = computed(() =>
+  props.groupOptions.map((groupName) => ({
+    label: groupName,
+    value: groupName,
+  }))
+);
 </script>
 
 <style scoped>
@@ -516,6 +526,19 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
   line-height: 1.7;
 }
 
+.chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .task-template-library {
   display: grid;
   gap: 14px;
@@ -530,7 +553,7 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
   padding: 14px 16px;
   border: 1px solid rgba(66, 97, 162, 0.12);
   border-radius: 18px;
-  background: rgba(248, 251, 255, 0.88);
+  background: var(--ls-panel-soft);
 }
 
 .task-template-library-batch__summary {
@@ -586,7 +609,7 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
   padding: 14px 16px;
   border: 1px dashed rgba(66, 97, 162, 0.24);
   border-radius: 18px;
-  background: rgba(248, 251, 255, 0.7);
+  background: var(--ls-panel-soft);
   color: var(--ls-muted);
   transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -604,7 +627,7 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
 .task-template-library__drop-zone-target,
 .task-template-library__group-header-target {
   border-color: rgba(66, 97, 162, 0.4);
-  background: rgba(235, 242, 255, 0.94);
+  background: var(--ls-primary-soft);
   box-shadow: 0 12px 26px rgba(66, 97, 162, 0.1);
 }
 
@@ -644,13 +667,13 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
   padding: 18px;
   border: 1px solid rgba(66, 97, 162, 0.12);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--ls-card);
   transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease, opacity 0.18s ease;
 }
 
 .task-template-library__card-selected {
   border-color: rgba(66, 97, 162, 0.3);
-  background: rgba(244, 248, 255, 0.94);
+  background: var(--ls-primary-soft);
   box-shadow: 0 12px 26px rgba(66, 97, 162, 0.08);
 }
 
@@ -688,7 +711,7 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
   border: 1px dashed rgba(66, 97, 162, 0.3);
   border-radius: 999px;
   padding: 6px 12px;
-  background: rgba(248, 251, 255, 0.96);
+  background: var(--ls-chip-bg);
   color: var(--ls-text);
   font: inherit;
   cursor: grab;
@@ -698,8 +721,8 @@ const normalizedBatchGroupName = computed(() => props.batchGroupName.trim());
 .task-template-library__drag-handle:hover,
 .task-template-library__drag-handle:focus-visible {
   border-color: rgba(66, 97, 162, 0.56);
-  background: rgba(239, 244, 255, 0.98);
-  color: #2d4e9b;
+  background: var(--ls-primary-soft);
+  color: var(--ls-primary);
   outline: none;
 }
 

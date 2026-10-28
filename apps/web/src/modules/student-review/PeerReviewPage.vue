@@ -1,23 +1,21 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">作品互评</p>
-        <h2>{{ pageData?.task.title || `任务 ${route.params.taskId}` }}</h2>
-        <p class="hero-copy">
-          {{ pageData?.task.course.title || '正在加载课次信息' }}
-          <span v-if="pageData">
-            · {{ pageData.task.course.unit_title }} · {{ pageData.task.course.lesson_title }}
-          </span>
-        </p>
-      </div>
-      <div class="action-group">
-        <el-button plain @click="goToTask">返回任务</el-button>
-        <el-button plain @click="goToCourse">返回课程</el-button>
-      </div>
-    </section>
+    <SaPageHeader eyebrow="作品互评" :title="pageData?.task.title || `任务 ${route.params.taskId}`">
+      <p class="hero-copy">
+        {{ pageData?.task.course.title || '正在加载课次信息' }}
+        <span v-if="pageData">
+          · {{ pageData.task.course.unit_title }} · {{ pageData.task.course.lesson_title }}
+        </span>
+      </p>
+      <template #actions>
+        <div class="action-group">
+          <n-button secondary @click="goToTask">返回任务</n-button>
+          <n-button secondary @click="goToCourse">返回课程</n-button>
+        </div>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
     <div v-if="pageData" class="metric-grid">
       <article class="mini-panel">
@@ -44,198 +42,204 @@
       </article>
     </div>
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <div v-if="pageData" class="page-stack">
-          <el-card v-if="pageData.gate.requires_submission" class="soft-card gate-card">
-            <template #header>参与说明</template>
-            <div class="gate-body">
-              <p>{{ pageData.gate.message }}</p>
-              <el-button type="primary" @click="goToTask">先去提交作品</el-button>
+    <div v-else-if="pageData" class="page-stack">
+      <SaPanel v-if="pageData.gate.requires_submission" class="gate-card" title="参与说明">
+        <div class="gate-body">
+          <p>{{ pageData.gate.message }}</p>
+          <n-button type="primary" @click="goToTask">先去提交作品</n-button>
+        </div>
+      </SaPanel>
+
+      <template v-else>
+        <SaPanel>
+          <template #header>
+            <div class="chart-head">
+              <div>
+                <strong>作品得票与互评对比</strong>
+                <p class="section-note">柱为每份作品的推荐票数，折线为互评得分，便于横向比较人气与评分。</p>
+              </div>
             </div>
-          </el-card>
+          </template>
+          <n-empty v-if="!pageData.items.length" description="作品墙上还没有作品。" />
+          <AppChart v-else :height="280" :option="voteComparisonOption" />
+        </SaPanel>
 
-          <el-row v-else :gutter="16">
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>作品墙</span>
-                    <el-tag round type="success">共 {{ pageData.items.length }} 份</el-tag>
-                  </div>
-                </template>
+        <div class="detail-grid">
+        <SaPanel title="作品墙">
+          <template #actions>
+            <n-tag round type="success">共 {{ pageData.items.length }} 份</n-tag>
+          </template>
 
-                <div class="wall-list">
-                  <button
-                    v-for="item in pageData.items"
-                    :key="item.submission_id"
-                    :class="['wall-item', { 'wall-item--active': item.submission_id === selectedSubmissionId }]"
-                    type="button"
-                    @click="selectSubmission(item.submission_id)"
-                  >
-                    <div class="wall-item-head">
-                      <strong>{{ item.student_name }}</strong>
-                      <div class="wall-tags">
-                        <el-tag v-if="item.is_mine" round type="info">我的作品</el-tag>
-                        <el-tag v-else-if="item.has_voted" round type="success">已推荐</el-tag>
-                        <el-tag v-if="item.is_teacher_recommended" round type="warning">教师推荐</el-tag>
-                      </div>
-                    </div>
-                    <p class="wall-meta">{{ item.student_no }} · {{ item.class_name }}</p>
-                    <p class="wall-note">
-                      {{ richTextToExcerpt(item.submission_note, 90) || '这份作品还没有填写额外说明。' }}
-                    </p>
-                    <div class="wall-item-foot">
-                      <span>得票 {{ item.vote_count }}</span>
-                      <span>互评 {{ item.peer_review_score }}</span>
-                    </div>
-                  </button>
+          <div class="wall-list">
+            <button
+              v-for="item in pageData.items"
+              :key="item.submission_id"
+              :class="['wall-item', { 'wall-item--active': item.submission_id === selectedSubmissionId }]"
+              type="button"
+              @click="selectSubmission(item.submission_id)"
+            >
+              <div class="wall-item-head">
+                <strong>{{ item.student_name }}</strong>
+                <div class="wall-tags">
+                  <n-tag v-if="item.is_mine" round type="info">我的作品</n-tag>
+                  <n-tag v-else-if="item.has_voted" round type="success">已推荐</n-tag>
+                  <n-tag v-if="item.is_teacher_recommended" round type="warning">教师推荐</n-tag>
                 </div>
-              </el-card>
-            </el-col>
+              </div>
+              <p class="wall-meta">{{ item.student_no }} · {{ item.class_name }}</p>
+              <p class="wall-note">
+                {{ richTextToExcerpt(item.submission_note, 90) || '这份作品还没有填写额外说明。' }}
+              </p>
+              <div class="wall-item-foot">
+                <span>得票 {{ item.vote_count }}</span>
+                <span>互评 {{ item.peer_review_score }}</span>
+              </div>
+            </button>
+          </div>
+        </SaPanel>
 
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card stage-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>作品详情</span>
-                    <el-tag round type="info">
-                      {{ selectedItem ? formatDateTime(selectedItem.updated_at) : '请选择作品' }}
-                    </el-tag>
+        <SaPanel class="stage-card" title="作品详情">
+          <template #actions>
+            <n-tag round type="info">
+              {{ selectedItem ? formatDateTime(selectedItem.updated_at) : '请选择作品' }}
+            </n-tag>
+          </template>
+
+          <n-empty v-if="!selectedItem" description="请选择左侧的一份作品查看" />
+
+          <div v-else class="stage-stack">
+            <div class="detail-hero">
+              <div>
+                <div class="wall-item-head">
+                  <strong>{{ selectedItem.student_name }}</strong>
+                  <div class="wall-tags">
+                    <n-tag v-if="selectedItem.is_mine" round type="info">我的作品</n-tag>
+                    <n-tag v-if="selectedItem.has_voted" round type="success">已推荐</n-tag>
+                    <n-tag v-if="selectedItem.is_teacher_recommended" round type="warning">
+                      教师推荐
+                    </n-tag>
                   </div>
-                </template>
+                </div>
+                <p class="wall-meta">{{ selectedItem.student_no }} · {{ selectedItem.class_name }}</p>
+              </div>
 
-                <el-empty v-if="!selectedItem" description="请选择左侧的一份作品查看" />
+              <div class="detail-score-grid">
+                <div>
+                  <span class="detail-score-label">得票</span>
+                  <strong>{{ selectedItem.vote_count }}</strong>
+                </div>
+                <div>
+                  <span class="detail-score-label">互评</span>
+                  <strong>{{ selectedItem.peer_review_score }}</strong>
+                </div>
+              </div>
+            </div>
 
-                <div v-else class="stage-stack">
-                  <div class="detail-hero">
-                    <div>
-                      <div class="wall-item-head">
-                        <strong>{{ selectedItem.student_name }}</strong>
-                        <div class="wall-tags">
-                          <el-tag v-if="selectedItem.is_mine" round type="info">我的作品</el-tag>
-                          <el-tag v-if="selectedItem.has_voted" round type="success">已推荐</el-tag>
-                          <el-tag v-if="selectedItem.is_teacher_recommended" round type="warning">
-                            教师推荐
-                          </el-tag>
-                        </div>
-                      </div>
-                      <p class="wall-meta">{{ selectedItem.student_no }} · {{ selectedItem.class_name }}</p>
-                    </div>
+            <div class="content-block">
+              <h3>作品说明</h3>
+              <RichTextContent
+                :html="selectedItem.submission_note"
+                empty-text="该作品没有填写额外说明。"
+              />
+            </div>
 
-                    <div class="detail-score-grid">
-                      <div>
-                        <span class="detail-score-label">得票</span>
-                        <strong>{{ selectedItem.vote_count }}</strong>
-                      </div>
-                      <div>
-                        <span class="detail-score-label">互评</span>
-                        <strong>{{ selectedItem.peer_review_score }}</strong>
-                      </div>
-                    </div>
-                  </div>
+            <div class="vote-panel">
+              <div>
+                <h3>推荐操作</h3>
+                <p>{{ voteStatusText }}</p>
+              </div>
+              <n-button
+                :disabled="voteDisabled"
+                :loading="isVoting"
+                type="primary"
+                @click="voteForSelected"
+              >
+                推荐这份作品
+              </n-button>
+            </div>
 
-                  <div class="content-block">
-                    <h3>作品说明</h3>
-                    <RichTextContent
-                      :html="selectedItem.submission_note"
-                      empty-text="该作品没有填写额外说明。"
-                    />
-                  </div>
+            <div class="showcase-files-head">
+              <h3>附件展示</h3>
+              <n-tag round type="success">共 {{ selectedItem.files.length }} 个附件</n-tag>
+            </div>
 
-                  <div class="vote-panel">
-                    <div>
-                      <h3>推荐操作</h3>
-                      <p>{{ voteStatusText }}</p>
-                    </div>
-                    <el-button
-                      :disabled="voteDisabled"
-                      :loading="isVoting"
-                      type="primary"
-                      @click="voteForSelected"
+            <n-empty v-if="!selectedItem.files.length" description="这份作品没有附件" />
+
+            <template v-else>
+              <div class="showcase-file-list">
+                <button
+                  v-for="file in selectedItem.files"
+                  :key="file.id"
+                  :class="['showcase-file-card', { 'showcase-file-card--active': file.id === selectedFileId }]"
+                  type="button"
+                  @click="selectFile(file.id)"
+                >
+                  <span class="showcase-file-name">{{ file.name }}</span>
+                  <span class="showcase-file-meta">
+                    {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB
+                    {{ file.previewable ? ' · 可直接展示' : ' · 仅下载' }}
+                  </span>
+                </button>
+              </div>
+
+              <n-spin :show="isPreviewLoading">
+                <div class="showcase-preview">
+                  <iframe
+                    v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
+                    :src="previewUrl"
+                    class="preview-frame"
+                    title="互评作品预览"
+                  />
+                  <img
+                    v-else-if="!isPreviewLoading && previewKind === 'image' && previewUrl"
+                    :src="previewUrl"
+                    alt="互评作品预览"
+                    class="preview-image"
+                  />
+                  <pre v-else-if="!isPreviewLoading && previewKind === 'text'" class="preview-text">{{
+                    previewText
+                  }}</pre>
+                  <div v-else-if="selectedFile" class="preview-fallback">
+                    <p>当前附件暂不支持直接展示，请下载后查看。</p>
+                    <n-button
+                      :loading="downloadLoadingFileId === selectedFile.id"
+                      type="success"
+                      @click="downloadFile(selectedFile)"
                     >
-                      推荐这份作品
-                    </el-button>
+                      下载当前附件
+                    </n-button>
                   </div>
-
-                  <div class="showcase-files-head">
-                    <h3>附件展示</h3>
-                    <el-tag round type="success">共 {{ selectedItem.files.length }} 个附件</el-tag>
-                  </div>
-
-                  <el-empty v-if="!selectedItem.files.length" description="这份作品没有附件" />
-
-                  <template v-else>
-                    <div class="showcase-file-list">
-                      <button
-                        v-for="file in selectedItem.files"
-                        :key="file.id"
-                        :class="['showcase-file-card', { 'showcase-file-card--active': file.id === selectedFileId }]"
-                        type="button"
-                        @click="selectFile(file.id)"
-                      >
-                        <span class="showcase-file-name">{{ file.name }}</span>
-                        <span class="showcase-file-meta">
-                          {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB
-                          {{ file.previewable ? ' · 可直接展示' : ' · 仅下载' }}
-                        </span>
-                      </button>
-                    </div>
-
-                    <div v-loading="isPreviewLoading" class="showcase-preview">
-                      <iframe
-                        v-if="!isPreviewLoading && previewKind === 'pdf' && previewUrl"
-                        :src="previewUrl"
-                        class="preview-frame"
-                        title="互评作品预览"
-                      />
-                      <img
-                        v-else-if="!isPreviewLoading && previewKind === 'image' && previewUrl"
-                        :src="previewUrl"
-                        alt="互评作品预览"
-                        class="preview-image"
-                      />
-                      <pre v-else-if="!isPreviewLoading && previewKind === 'text'" class="preview-text">{{
-                        previewText
-                      }}</pre>
-                      <div v-else-if="selectedFile" class="preview-fallback">
-                        <p>当前附件暂不支持直接展示，请下载后查看。</p>
-                        <el-button
-                          :loading="downloadLoadingFileId === selectedFile.id"
-                          type="success"
-                          @click="downloadFile(selectedFile)"
-                        >
-                          下载当前附件
-                        </el-button>
-                      </div>
-                      <el-empty v-else description="请选择一个附件进行查看" />
-                    </div>
-                  </template>
+                  <n-empty v-else description="请选择一个附件进行查看" />
                 </div>
-              </el-card>
-            </el-col>
-          </el-row>
+              </n-spin>
+            </template>
+          </div>
+        </SaPanel>
         </div>
       </template>
-    </el-skeleton>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NEmpty, NSkeleton, NSpin, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
 import { richTextToExcerpt } from '@/utils/richText';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type PeerReviewFile = {
   id: number;
@@ -308,6 +312,7 @@ type PreviewKind = 'pdf' | 'image' | 'text' | 'unsupported';
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 
 const pageData = ref<PeerReviewPayload | null>(null);
 const selectedSubmissionId = ref<number | null>(null);
@@ -326,6 +331,37 @@ const selectedItem = computed(() => {
     return null;
   }
   return pageData.value.items.find((item) => item.submission_id === selectedSubmissionId.value) || null;
+});
+
+const voteComparisonOption = computed(() => {
+  const items = (pageData.value?.items || []).slice(0, 12);
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 40, bottom: 8 }),
+    xAxis: axisX(items.map((item) => item.student_name), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 54, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: axisY({ name: '得票 / 互评', nameTextStyle: { color: tokens.value.muted } }),
+    series: [
+      {
+        name: '得票',
+        type: 'bar',
+        barMaxWidth: 26,
+        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
+        data: items.map((item) => item.vote_count),
+      },
+      {
+        name: '互评得分',
+        type: 'line',
+        smooth: true,
+        symbolSize: 7,
+        lineStyle: { color: palette.value[1] },
+        itemStyle: { color: palette.value[1] },
+        data: items.map((item) => item.peer_review_score),
+      },
+    ],
+  });
 });
 
 const selectedFile = computed(() => {
@@ -611,7 +647,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.action-group,
+.action-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .wall-tags,
 .wall-item-head,
 .info-row,
@@ -623,7 +678,7 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.gate-card :deep(.el-card__body) {
+.gate-card :deep(.sa-panel__body) {
   display: grid;
   gap: 16px;
 }
@@ -649,9 +704,9 @@ onBeforeUnmount(() => {
 .wall-item,
 .showcase-file-card {
   width: 100%;
-  border: 1px solid rgba(67, 109, 185, 0.14);
+  border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ls-card);
   text-align: left;
   transition:
     border-color 0.2s ease,
@@ -676,7 +731,7 @@ onBeforeUnmount(() => {
   border-color: rgba(67, 109, 185, 0.42);
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
-    rgba(255, 255, 255, 0.98);
+    var(--ls-card);
 }
 
 .wall-meta {
@@ -697,11 +752,11 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 12px;
   margin-top: 12px;
-  color: #1f2a44;
+  color: var(--ls-ink);
   font-weight: 700;
 }
 
-.stage-card :deep(.el-card__body) {
+.stage-card :deep(.sa-panel__body) {
   display: grid;
   gap: 16px;
 }
@@ -712,7 +767,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .detail-score-grid {
@@ -724,7 +779,7 @@ onBeforeUnmount(() => {
 .detail-score-grid > div {
   padding: 12px 14px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--ls-elevated);
   text-align: center;
 }
 
@@ -732,7 +787,7 @@ onBeforeUnmount(() => {
   display: block;
   margin-top: 6px;
   font-size: 24px;
-  color: #1f2a44;
+  color: var(--ls-ink);
 }
 
 .vote-panel {
@@ -744,7 +799,7 @@ onBeforeUnmount(() => {
   border-radius: 18px;
   background:
     linear-gradient(135deg, rgba(111, 179, 149, 0.12), rgba(255, 186, 73, 0.14)),
-    rgba(255, 255, 255, 0.92);
+    var(--ls-card);
 }
 
 .vote-panel h3,
@@ -770,7 +825,7 @@ onBeforeUnmount(() => {
 
 .showcase-file-name {
   font-weight: 700;
-  color: #1f2a44;
+  color: var(--ls-ink);
   word-break: break-word;
 }
 
@@ -783,10 +838,10 @@ onBeforeUnmount(() => {
   min-height: 380px;
   padding: 14px;
   border-radius: 20px;
-  border: 1px solid rgba(67, 109, 185, 0.14);
+  border: 1px solid var(--ls-border);
   background:
     radial-gradient(circle at top left, rgba(67, 109, 185, 0.08), transparent 45%),
-    rgba(255, 255, 255, 0.96);
+    var(--ls-card);
 }
 
 .preview-frame {
@@ -811,8 +866,8 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 16px;
   border-radius: 16px;
-  background: rgba(67, 109, 185, 0.08);
-  color: #1f2a44;
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   line-height: 1.7;
   white-space: pre-wrap;

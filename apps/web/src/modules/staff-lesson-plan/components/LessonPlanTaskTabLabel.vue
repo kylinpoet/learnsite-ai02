@@ -99,7 +99,7 @@ defineProps<{
 .task-tab-close:hover,
 .task-tab-close:focus-visible {
   background: rgba(215, 74, 74, 0.12);
-  color: #c0392b;
+  color: var(--ls-error-text);
   outline: none;
 }
 

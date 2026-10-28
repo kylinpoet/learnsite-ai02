@@ -1,0 +1,83 @@
+[
+  {
+    "id": "msg-1793106318417-q5h7tu",
+    "from": "sweep-staff",
+    "to": "team-lead",
+    "type": "message",
+    "content": "已完成，只改 <style> 内底色/描边/文字色，未动模板、类名、布局、脚本。\n\n改动 16 个文件：\n1. staff-admin/AdminSystemPage.vue：输入框→input-bg；list-card、drag-seat-card→card；机房格子、空座位→panel-soft；拖放高亮→primary-soft；权限项→chip-bg；座位阴影→soft-shadow。\n2. staff-assistant：审核气泡→card。\n3. staff-classroom：session-focus-card、roll-call-history、task-focus-item→card；switch-item→panel-soft。\n4. staff-curriculum：折叠块→card。\n5. staff-dashboard：hero 浅渐变→panel-strong（保留两层光晕）；accent 图标 color-mix 白→card；seat-card、member-pill、activity-item、drag-member-chip→card；group-card 等→panel；metric-tile/list-card→panel-strong；空位/放置区→panel-soft；已签/组长薄荷底→半透明 success 14%；奶油底（drive-panel、unassigned-pool）→半透明琥珀 12%。\n6. staff-lesson-plan/LessonPlanPage.vue：占位字 #4261a2→text，标题 #1f2a44→ink。\n7-12. lesson-plan 组件：LessonPlanTaskEditorCard（卡→card、类型面板→panel-soft）、TaskDataSubmitEditor（卡→card、slot→panel-soft、code 块→chip-bg）、TaskHtmlPromptDialog（面板→card、源码 pre→code-bg/code-text、状态块→panel-soft、状态项→chip-bg、3 处 #1f2a44→ink、追问气泡→panel-soft/primary-soft）、TaskPreviewFeedbackPanel（警告/错误浅底→同色 14%，detail→chip-bg）、TaskTemplateLibraryDialog（卡→card、选中/放置→primary-soft、拖拽手柄→chip-bg、hover 字→primary）、TaskTemplateSaveDialog（来源块→panel-soft）。\n13. staff-quiz：bank-card、question-bank-item→card；selected-question-box→panel-soft。\n14. staff-resource：category-card→card。\n15. staff-submission/SubmissionTaskPage：4 处渐变浅底→card；template-card、grading-file-card、preview-stage→card；template-panel→panel-soft；文字 #1f2a44→text/ink；student-card→primary-soft；file-item:hover→nav-hover-bg。\n16. staff-typing：set-card→card，预览块→panel-soft。\n\n刻意保留：3 处 iframe 预览画布 #fff（TaskAssetSlotEditor、TaskHtmlPromptDialog、SubmissionTaskPage）——内部是学生 HTML，默认黑字，改深底会黑压黑；语义色 #e53935/#1e88e5/#2e7d32 提交状态点、#d03050/#137333/#c97805/#1a9a68/#c0392b 状态文字、审核气泡状态边框。\n\n风险：①warning/error 状态文字（#8a5a00、#6c4d14、#c0392b、#8b2f2f）留在半透明同色底上仍偏暗，需你补 --ls-warning-text/--ls-error-text；②深色下 primary-soft 18% 用于\"选中/放置\"在莓莓汽泡上略艳，需目视；③rgba(67,109,185,.xx) 蓝描边保留未统一到 border。staff-student、staff-attendance、staff-report、SubmissionOverviewPage 等 0 命中未改。已跑 check-no-element（33 文件 0 残留）、括号配平、无 BOM；未跑 build/vue-tsc。",
+    "timestamp": "2026-10-27T13:05:18.417Z",
+    "read": true
+  },
+  {
+    "id": "msg-1793106326766-1jk9db",
+    "from": "sweep-student",
+    "to": "team-lead",
+    "type": "message",
+    "content": "改动 15 个文件（仅 <style>，未动 template/script/类名）：\n1 CourseDetailPage：tab hover→chip-bg、active→primary-soft+ls-border；#2b3855→ls-ink、#1849a4→ls-primary；task-card 白底→ls-card。\n2 StudentHomePage：hero 白色径向光→chip-bg；accent 图标 color-mix 混白→混透明；4 处内部小块→ls-elevated。\n3 ProfilePage：avatar 白底→elevated；tip-card 白渐变→panel。\n4 QuizHomePage：quiz-card 白渐变→panel；ranking 项白底+浅蓝描边→elevated/border；question-card→card；对/错块不透明白底→同色 0.12 半透明；option→elevated；答案格→panel-soft。\n5 QuizRankingsPage / TypingRankingsPage：pending 奶油底→橙色 0.12。\n6 TypingHomePage：5 处→panel / panel-soft / elevated / border / card。\n7 ReadingTaskPage：tip 蓝块→primary-soft；resource-card→panel。\n8 ResourcePage：featured→panel；item→elevated。\n9 PeerReviewPage：墙卡白底+浅蓝描边→card/border；评分块→elevated；#1f2a44×3→ls-ink；代码块→code-bg/code-text。\n10 TaskPage：讨论项→card；空态/工具栏/review 块→chip-bg+border；代码预览→code-bg/text；tip→primary-soft。\n11 ProgramTaskPage：编辑器壳→card（保留暗色叠加），代码字色→ls-text；tip/review/工具栏/预览同 TaskPage。\n12 GroupDraftHistoryDialog：sidebar→panel-soft；版本卡→elevated+border；history-card→card；代码→code-bg/text；diff 行→chip-bg。\n13 GroupPage、DrivePage：遗留蓝色 0.08 块→primary-soft。\n\n刻意保留的硬编码：#fff 的 iframe 预览底 3 处（TaskPage/ProgramTaskPage/PeerReviewPage）——学生提交的 HTML 稿件本身按浅色设计，改深会让正文不可读；状态胶囊内小白点与彩块上的 #fff 文字；语义色（success/warning 图标块、diff 增删行、蓝色 accent 描边/阴影）。\n\n残留风险：① 3 处遗留 rgba(67,109,185,.08) 改成了 primary-soft，浅色下色相由蓝变主题色，若要严格零视觉变更可回退为半透明蓝；② StudentHomePage 的 success/warning 图标文字 #1a9a68/#c97805 按规则未动，深色下对比偏低；③ iframe 白底在深色页面里仍偏亮。\n\n自查：check-no-element 12 个目录全部 0 命中；17 个 vue 均 UTF-8 无 BOM；未跑 build、未提交。",
+    "timestamp": "2026-10-27T13:05:26.766Z",
+    "read": true
+  },
+  {
+    "id": "msg-1793106347852-xiqe4u",
+    "from": "sweep-shared",
+    "to": "team-lead",
+    "type": "message",
+    "content": "共享层深色适配完成（7 文件，编译未跑、按约定由你验证）。\n\n改动清单\n1. styles/page-icon-chrome.css：图标胶囊的 `--ls-page-icon-chip-border` 值 `rgba(255,255,255,.78)`→`var(--ls-border)`；`--ls-page-icon-heading-shadow` 的 inset 白高光→`var(--ls-surface-glow)`（只换值，未改名未新增）。\n2. styles/base.css：`.metric-tile/.mini-panel` 回退值去掉写死白色渐变，改 `var(--ls-panel-strong, var(--ls-surface))`。\n3. layouts/shared/SoybeanShell.vue：标签页关闭按钮 hover 底 `rgba(44,64,106,.12)`→`var(--ls-border)`。\n4. components/MarkdownContent.vue：行内 code 底→`var(--ls-border)`；pre→`var(--ls-code-bg)`+`color:var(--ls-code-text)`；表格 th/td 描边→`var(--ls-border)`。\n5. components/FloatingAiCompanion.vue：面板白渐变→`var(--ls-panel)`（保留橙色光斑）；hero `.88 白`、气泡 `.9 白`、用户气泡渐变末端、附件 `.72 白`→`--ls-card`/`--ls-panel-soft`，气泡阴影→`var(--ls-soft-shadow)`。\n6. components/RecommendedWorksShowcase.vue：列表/文件卡底+边→`--ls-card`/`--ls-border`；选中态白底→`var(--ls-card)`；文件名与预览文本 `#1f2a44`→`--ls-ink`/`--ls-text`；预览容器与预览 iframe 白底→`var(--ls-card)`。\n7. components/RichTextEditorCk.vue：在 `.rich-text-editor` 覆写 6 个 CK 自带调色板变量（base-background/text/border、按钮 hover/active/on 底）接 `--ls-*`；编辑区加 `color:var(--ls-text)`；嵌入 iframe 的 `#fff`→`var(--ls-card)`。\n\n已核对无需改：ThemeDrawer、sa/* 四个、RichTextContent/RichTextEditor/AppIcon/WorkspacePlaceholder/SessionActionMenu、AuthLayout、两个登录页、RulesPage、layouts/{staff,student}/*Layout（无 style 块）、src/ui（仅 .ts）。\n\n刻意保留的白色：FAB 的 `#fff` 文字/`.62` 白边/halo `.18`/icon 底 `.16`、SoybeanShell 品牌 logo `#fff`、SessionActionMenu 头像 `#fff`——都在品牌/彩色渐变上；ThemeDrawer 色卡 `inset 0 0 0 1px rgba(255,255,255,.4)` 是色卡内高光非容器底；`rgba(47,135,255,.08/.35)`、`rgba(67,109,185,.08~.42)` 属彩色语义层，深色下成立且改了会动浅色观感。\n\n残留风险：①CKEditor 只覆盖了 CK 的 CSS 变量，`.ck-color-grid` 色板、图片 resize 手柄、`--ck-color-shadow-*`、source editing 的 textarea 底、balloon 箭头白边仍可能偏亮；彻底解法是全局 `[data-scheme='dark']` 整套覆写 `--ck-*` 或换 CK 深色主题，需你定。②AI 助手抽屉外壳（n-drawer 本体）底色归 naive-theme，我只改了内部面板/气泡。③Markdown `pre` 浅色下由浅灰变深色代码块（依你的 `--ls-code-bg` 口径，与 base.css `.code-block` 一致），若要保浅色原观感可退回 `var(--ls-border)`。\n\n验证：`node apps/web/scripts/check-no-element.mjs <abs apps/web/src>` → 90 文件 0 命中（脚本按 cwd 解析，本机 shell 固定在仓库根，需传绝对路径）；7 个文件 UTF-8 无 BOM/LF；read_lints 0 告警。",
+    "timestamp": "2026-10-27T13:05:47.852Z",
+    "read": true
+  },
+  {
+    "id": "msg-1793107812037-3065l8",
+    "from": "sweep-staff",
+    "to": "team-lead",
+    "type": "message",
+    "content": "已完成（不再改代码）。只动 <style> 内底色/描边/文字色，未碰模板、脚本、类名、间距。\n\n1) 改动文件（16 个）\n1. staff-admin/AdminSystemPage.vue：数字输入框→input-bg；list-card、drag-seat-card→card；机房格子与空座位→panel-soft；拖放高亮→primary-soft；权限项→chip-bg；座位阴影→soft-shadow。\n2. staff-assistant/StaffAssistantPage.vue：审核消息气泡 .audit-message→card。\n3. staff-classroom/ClassroomPage.vue：session-focus-card、roll-call-history、task-focus-item→card；switch-item→panel-soft。\n4. staff-curriculum/StaffCurriculumPage.vue：折叠单元块→card。\n5. staff-dashboard/StaffDashboardPage.vue：hero 浅渐变→panel-strong（保留两层光晕）；accent 图标 color-mix 白→card；seat-card、member-pill、activity-item、drag-member-chip→card；group/progress/task-progress→panel；metric-tile、list-card、group-edit-card→panel-strong；空位与放置区→panel-soft；已签/组长薄荷底→半透明 success 14%；drive-panel、unassigned-pool 奶油底→半透明琥珀 12%。\n6. staff-lesson-plan/LessonPlanPage.vue：缩略图占位字 #4261a2→text；标题 #1f2a44→ink。\n7. LessonPlanTaskEditorCard.vue：卡片→card；任务类型面板→panel-soft。\n8. TaskDataSubmitEditor.vue：endpoint 卡→card；slot-block→panel-soft；code 块→chip-bg+text。\n9. TaskHtmlPromptDialog.vue：结果/追问面板→card；源码 pre #101827→code-bg/code-text；生成状态→panel-soft、状态项→chip-bg；3 处 #1f2a44→ink；追问气泡→panel-soft/primary-soft。\n10. TaskPreviewFeedbackPanel.vue：警告/错误浅底→同色 14%；detail→chip-bg。\n11. TaskTemplateLibraryDialog.vue：批量条、放置区→panel-soft；卡→card；选中卡与放置高亮→primary-soft；拖拽手柄→chip-bg、hover 字→primary。\n12. TaskTemplateSaveDialog.vue：来源区块→panel-soft。\n13. staff-quiz/StaffQuizPage.vue：bank-card、question-bank-item→card；selected-question-box→panel-soft。\n14. staff-resource/StaffResourcePage.vue：category-card→card。\n15. staff-submission/SubmissionTaskPage.vue：batch-panel、template-editor-panel、grading-file-card-active、file-item-active 渐变浅底→card；template-card、grading-file-card、preview-stage→card；template-panel→panel-soft；#1f2a44→text/ink；student-card→primary-soft；file-item:hover→nav-hover-bg。\n16. staff-typing/StaffTypingPage.vue：set-card→card；预览块→panel-soft。\n\n2) 刻意保留的硬编码白\n- 3 处 iframe 预览画布 #fff（TaskAssetSlotEditor .asset-preview-frame、TaskHtmlPromptDialog .task-html-result-preview、SubmissionTaskPage .preview-frame）：内部渲染学生/教师 HTML，默认黑字，改深底会黑压黑，属刻意\"模拟浏览器画布\"。\n- 语义色未动：#e53935/#1e88e5/#2e7d32（提交状态点）、#d03050/#137333/#c97805/#1a9a68/#c0392b（状态文字）、审核气泡 is-student/is-assistant 边框。\n\n3) 残留风险\n- warning/error 文字（#8a5a00、#6c4d14、#c0392b、#8b2f2f）压在改为半透明的同色底上仍偏暗，需你新增 --ls-warning-text/--ls-error-text 才能根治。\n- 深色下 primary-soft（18%）作为\"选中/放置\"高亮，在莓莓汽泡主题略艳，需目视确认。\n- rgba(67,109,185,.xx) 蓝色描边/淡底保留（非白，深色可见），未统一到 --ls-border。\n- 0 命中未改：staff-student、staff-attendance、staff-report、SubmissionOverviewPage、TaskTemplatePickerDropdown、TaskWebPageEditor、TaskDescriptionEditor、LessonPlanTaskConfigPanel。\n- 已验证：check-no-element 33 文件 0 残留、括号配平、全部 UTF-8 无 BOM、IDE 无诊断；未跑 build/vue-tsc。",
+    "timestamp": "2026-10-27T13:30:12.037Z",
+    "read": true
+  },
+  {
+    "id": "msg-1793107814404-1ex8bv",
+    "from": "sweep-shared",
+    "to": "team-lead",
+    "type": "message",
+    "content": "已完成（不再改代码，仅交付报告）。\n\n一、改动文件清单（7 个）\n1. src/styles/page-icon-chrome.css —— 图标胶囊的 `--ls-page-icon-chip-border` 由 `rgba(255,255,255,.78)` 改为 `var(--ls-border)`，`--ls-page-icon-heading-shadow` 的 inset 白高光改为 `var(--ls-surface-glow)`（只换值，未改名未新增变量）。\n2. src/styles/base.css —— `.metric-tile/.mini-panel` 的回退值去掉写死白色渐变首段，改为 `var(--ls-panel-strong, var(--ls-surface))`。\n3. src/layouts/shared/SoybeanShell.vue —— 标签页关闭按钮 hover 底色 `rgba(44,64,106,.12)` 改为 `var(--ls-border)`，深色下才可见。\n4. src/components/MarkdownContent.vue —— 行内 code 底改 `var(--ls-border)`；pre 改 `var(--ls-code-bg)` + `color: var(--ls-code-text)`；表格 th/td 描边改 `var(--ls-border)`。\n5. src/components/FloatingAiCompanion.vue —— 面板白渐变改 `var(--ls-panel)`（保留橙色装饰光斑）；hero `.88 白`、气泡 `.9 白`、用户气泡渐变末端、附件 `.72 白` 改 `--ls-card`/`--ls-panel-soft`；气泡阴影改 `var(--ls-soft-shadow)`。\n6. src/components/RecommendedWorksShowcase.vue —— 列表/文件卡底与描边改 `--ls-card`/`--ls-border`；选中态白底改 `var(--ls-card)`（保留蓝绿渐层）；文件名与预览文本 `#1f2a44` 改 `--ls-ink`/`--ls-text`；预览容器与预览 iframe 白底改 `var(--ls-card)`。\n7. src/components/RichTextEditorCk.vue —— 在 `.rich-text-editor` 上覆写 6 个 CK 自带调色板变量（base-background/text/border、按钮 hover/active/on 底）接 `--ls-*`；编辑区补 `color: var(--ls-text)`；嵌入 iframe 的 `#fff` 底衬改 `var(--ls-card)`。\n\n已核对无需改动：ThemeDrawer、sa/ 四个组件、RichTextContent/RichTextEditor/AppIcon/WorkspacePlaceholder/SessionActionMenu、AuthLayout、两个登录页、RulesPage、layouts/{staff,student}/*Layout（无 style 块）、src/ui（仅 .ts）。\n\n二、刻意保留的硬编码白色及理由\n- FloatingAiCompanion FAB 的 `color:#fff`、`border rgba(255,255,255,.62)`、halo `.18`、icon 底 `.16`：都在蓝色品牌渐变胶囊上，属\"彩色渐变按钮上的白\"。\n- SoybeanShell 品牌 logo `color:#fff`（主色渐变底）；SessionActionMenu 头像渐变上的 `#fff`。\n- ThemeDrawer 色卡 `inset 0 0 0 1px rgba(255,255,255,.4)`：白色内环压在品牌色卡上，是色卡高光而非容器底。\n- 保留仍是 SVG data-uri 里的 `fill='white'`（页面图标字形，绘制在彩色胶囊上）。\n- 保留的彩色半透明层：`rgba(47,135,255,.08/.35)`（Markdown 引用）、`rgba(67,109,185,.08~.42)`（作品卡选中/hover 描边与 info 块）、`rgba(255,210,111,.15)` 光斑——彩色语义/装饰层，深色下仍成立，替换会改动浅色观感。\n\n三、残留风险\n1. CKEditor：只覆盖了 CK 的 CSS 变量，`ckeditor5.css` 里 `.ck-color-grid` 色板、图片 resize 手柄、`--ck-color-shadow-*`、source editing 的 textarea/pre 底、balloon 箭头白边等仍可能偏亮；彻底解法是在全局 `[data-scheme='dark']` 整套覆写 `--ck-*` 或引入 CK 深色主题，需你决策。\n2. 浮动助手：`n-drawer` 抽屉外壳底色由 naive-theme 控制，我只改了内部面板/气泡层级。\n3. MarkdownContent 的 `pre` 在浅色下由浅灰变为深色代码块（依你给的 `--ls-code-bg` 口径，与 base.css `.code-block` 一致）；若希望浅色保持原浅灰观感，把该行退回 `var(--ls-border)` 即可。\n4. page-icon-chrome.css 两个 `--ls-page-icon-*` 是布局局部变量，我只换值未改名，若你认为也算\"改变量定义\"可回退。\n\n验证：`check-no-element.mjs` 扫 apps/web/src 共 90 文件 0 命中（脚本按 cwd 解析，本机 shell 固定在仓库根，需传绝对路径）；7 个改动文件 UTF-8 无 BOM、LF、read_lints 0 告警；未运行 build/vue-tsc。",
+    "timestamp": "2026-10-27T13:30:14.404Z",
+    "read": true
+  },
+  {
+    "id": "msg-1793107815452-t0gmm7",
+    "from": "sweep-student",
+    "to": "team-lead",
+    "type": "message",
+    "content": "已完成（不再改代码）。以下为交付报告。\n\n一、改动文件清单（15 个文件，均只改 `<style>` 块）\n1. student-course/CourseDetailPage.vue：tab hover 蓝底→chip-bg、active→primary-soft+ls-border；任务标题 #2b3855→ls-ink、选中标题 #1849a4→ls-primary；task-card 白底→ls-card。\n2. student-home/StudentHomePage.vue：hero 白色径向高光→chip-bg；accent 图标 color-mix 混白→混透明；4 处内部小块白底→ls-elevated。\n3. student-profile/ProfilePage.vue：avatar-shell 白底→elevated；tip-card 白渐变→panel。\n4. student-quiz/QuizHomePage.vue：quiz-card 白渐变→panel；排名项白底+浅蓝描边→elevated/border；question-card→card；对/错块不透明白底→同色 0.12 半透明；option-item→elevated；答案格→panel-soft。\n5. student-quiz/QuizRankingsPage.vue：pending 项奶油底→橙色 0.12。\n6. student-typing/TypingHomePage.vue：5 处（卡片渐变→panel、内容块→panel-soft、排名项→elevated+border、面板→card、练习源→panel-soft）。\n7. student-typing/TypingRankingsPage.vue：pending 项奶油底→橙色 0.12。\n8. student-reading/ReadingTaskPage.vue：tip-panel 蓝块→primary-soft；resource-card 白渐变→panel。\n9. student-resource/ResourcePage.vue：featured-card 白渐变→panel；resource-item→elevated。\n10. student-review/PeerReviewPage.vue：墙卡白底+浅蓝描边→card/border；评分块→elevated；投票/预览白底→card；3 处 #1f2a44→ls-ink；代码块→code-bg/code-text。\n11. student-task/TaskPage.vue：讨论项→card；空态/工具栏/review 块→chip-bg+border；代码预览→code-bg/text；tip-panel→primary-soft。\n12. student-task/ProgramTaskPage.vue：编辑器壳→card（保留暗色叠加层），代码字色→ls-text；tip/review/工具栏/代码预览同 TaskPage。\n13. student-task/components/GroupDraftHistoryDialog.vue：sidebar→panel-soft；版本卡→elevated+border；history-card→card；代码预览→code-bg/text；diff 行底→chip-bg。\n14. student-group/GroupPage.vue：汇总块、活动项遗留蓝色 0.08→primary-soft。\n15. student-drive/DrivePage.vue：selected-files-panel 遗留蓝色 0.08→primary-soft。\n\n二、刻意保留的硬编码白色及理由\n1. TaskPage、ProgramTaskPage、PeerReviewPage 三处 `.file-preview-frame` / `.preview-frame` 的 `background: #fff`：这是 iframe 内学生提交的 HTML 稿件，稿件本身按浅色设计，容器改深会让正文与白底冲突/不可读。\n2. CourseDetailPage 状态胶囊内 `.task-tab-label__status::before` 的 `rgba(255,255,255,.88)` 小圆点，以及胶囊上的 `#ffffff` 文字：彩色渐变块上的白色点缀，属于规则 7 保留项。\n3. 语义色：success/warning 图标块（rgba(40,185,126,.16)、rgba(255,179,71,.18)）、diff 增删行（rgba(24,172,114,.12)/rgba(225,72,72,.1)）、选项卡与卡片的蓝色 accent 描边/阴影（rgba(67,109,185,…)、rgba(47,135,255,…)）——状态/品牌语义，不随主题改。\n\n三、残留风险\n1. 3 处遗留蓝色块（rgba(67,109,185,.08)：GroupPage、DrivePage、ReadingTaskPage 及各页 tip-panel）统一改成了 `--ls-primary-soft`，浅色模式下色相由蓝变主题色。若要求浅色零视觉变更，可回退为半透明蓝。\n2. StudentHomePage 的 success/warning 小图标文字 #1a9a68/#c97805 按规则未动，深色底上对比偏低（约 3:1），可访问性略有折扣。\n3. 上述 iframe 白底在深色页面里仍是一块亮区（属稿件面，非样式遗漏）。\n4. 未运行 build / vue-tsc（按约定由主控统一验证）；已自查 `check-no-element` 12 个目录全 0 命中、17 个 .vue 均 UTF-8 无 BOM、未触碰 template/script 与类名。",
+    "timestamp": "2026-10-27T13:30:15.452Z",
+    "read": true
+  },
+  {
+    "id": "resp-1793109151176-8d8cu5",
+    "from": "sweep-student",
+    "to": "team-lead",
+    "type": "shutdown_response",
+    "content": "{\"type\":\"shutdown_response\",\"request_id\":\"shutdown-1793109149619\",\"approve\":true,\"reason\":\"Auto-acknowledged by team-member runtime\",\"from\":\"sweep-student\",\"timestamp\":\"2026-10-27T13:52:31.176Z\"}",
+    "timestamp": "2026-10-27T13:52:31.176Z",
+    "read": true
+  },
+  {
+    "id": "resp-1793109151176-bf6407",
+    "from": "sweep-shared",
+    "to": "team-lead",
+    "type": "shutdown_response",
+    "content": "{\"type\":\"shutdown_response\",\"request_id\":\"shutdown-1793109149891\",\"approve\":true,\"reason\":\"Auto-acknowledged by team-member runtime\",\"from\":\"sweep-shared\",\"timestamp\":\"2026-10-27T13:52:31.176Z\"}",
+    "timestamp": "2026-10-27T13:52:31.176Z",
+    "read": true
+  },
+  {
+    "id": "resp-1793109151176-b00mp5",
+    "from": "sweep-staff",
+    "to": "team-lead",
+    "type": "shutdown_response",
+    "content": "{\"type\":\"shutdown_response\",\"request_id\":\"shutdown-1793109149362\",\"approve\":true,\"reason\":\"Auto-acknowledged by team-member runtime\",\"from\":\"sweep-staff\",\"timestamp\":\"2026-10-27T13:52:31.176Z\"}",
+    "timestamp": "2026-10-27T13:52:31.176Z",
+    "read": true
+  }
+]

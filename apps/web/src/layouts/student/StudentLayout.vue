@@ -15,13 +15,11 @@ import {
 } from 'lucide-vue-next';
 import type { LucideIcon } from 'lucide-vue-next';
 import { computed, markRaw } from 'vue';
-import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { useRoute } from 'vue-router';
 
-import AppIcon from '@/components/AppIcon.vue';
-import AppShellHeader from '@/components/AppShellHeader.vue';
 import FloatingAiCompanion from '@/components/FloatingAiCompanion.vue';
 import SessionActionMenu from '@/components/SessionActionMenu.vue';
-import '@/styles/page-icon-chrome.css';
+import SoybeanShell from '@/layouts/shared/SoybeanShell.vue';
 import { useAppStore } from '@/stores/app';
 
 type StudentPageItem = {
@@ -42,6 +40,8 @@ const navItems = [
   { label: '共享网盘', to: '/student/drive', icon: markRaw(FolderOpen) },
   { label: '我的档案', to: '/student/profile', icon: markRaw(UserRound) },
 ];
+
+const navGroups = computed(() => [{ title: '', items: navItems }]);
 
 const studentPageItems: StudentPageItem[] = [
   { label: '学习首页', icon: markRaw(House), matches: [(path) => path === '/student/home'] },
@@ -80,21 +80,13 @@ const studentPageItems: StudentPageItem[] = [
     icon: markRaw(Trophy),
     matches: [(path) => path === '/student/quiz/rankings'],
   },
-  {
-    label: '随堂测验',
-    icon: markRaw(BrainCircuit),
-    matches: [(path) => path === '/student/quiz'],
-  },
+  { label: '随堂测验', icon: markRaw(BrainCircuit), matches: [(path) => path === '/student/quiz'] },
   {
     label: '打字排行榜',
     icon: markRaw(Trophy),
     matches: [(path) => path === '/student/typing/rankings'],
   },
-  {
-    label: '打字训练',
-    icon: markRaw(Keyboard),
-    matches: [(path) => path === '/student/typing'],
-  },
+  { label: '打字训练', icon: markRaw(Keyboard), matches: [(path) => path === '/student/typing'] },
   {
     label: '课程资源',
     icon: markRaw(BookOpenText),
@@ -124,42 +116,17 @@ const currentPage = computed(() => {
 </script>
 
 <template>
-  <div class="app-layout student-layout">
-    <AppShellHeader
-      :title="appStore.title"
-      kicker="成长与任务总览"
-      :current-page-icon="currentPage.icon"
-      :current-page-label="currentPage.label"
-    >
-      <template #actions>
-        <SessionActionMenu />
-      </template>
-    </AppShellHeader>
-    <div class="layout-shell">
-      <aside class="side-nav">
-        <RouterLink v-for="item in navItems" :key="item.to" :to="item.to" class="nav-link">
-          <span class="nav-link__content">
-            <AppIcon :icon="item.icon" class="nav-link__icon" />
-            <span>{{ item.label }}</span>
-          </span>
-        </RouterLink>
-      </aside>
-      <main class="page-content">
-        <RouterView />
-      </main>
-    </div>
-    <FloatingAiCompanion />
-  </div>
+  <SoybeanShell
+    :brand="appStore.title"
+    :current-page-icon="currentPage.icon"
+    :current-page-label="currentPage.label"
+    :nav-groups="navGroups"
+    kicker="成长与任务总览"
+    variant="student"
+  >
+    <template #actions>
+      <SessionActionMenu />
+    </template>
+  </SoybeanShell>
+  <FloatingAiCompanion />
 </template>
-
-<style scoped>
-.nav-link__content {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.nav-link__icon {
-  opacity: 0.86;
-}
-</style>

@@ -6,7 +6,7 @@ from app.api.deps.auth import get_current_user
 from app.api.deps.db import get_db
 from app.core.security import create_access_token, decode_access_token, verify_password
 from app.models import User
-from app.schemas.auth import LoginPayload, LoginRequest, UserSummary
+from app.schemas.auth import LoginPayload, LoginRequest, MePayload, UserSummary
 from app.schemas.common import ApiResponse
 from app.services.attendance import ensure_student_login_attendance
 from app.services.staff_access import build_staff_roles, is_admin_staff
@@ -35,12 +35,12 @@ def build_login_payload(user: User) -> LoginPayload:
     )
 
 
-@router.post("/student/login", response_model=ApiResponse)
+@router.post("/student/login", response_model=ApiResponse[LoginPayload])
 def student_login(
     payload: LoginRequest,
     request: Request,
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ApiResponse[LoginPayload]:
     user = db.scalar(
         select(User).where(User.username == payload.username, User.user_type == "student")
     )
@@ -59,8 +59,8 @@ def student_login(
     return ApiResponse(data=build_login_payload(user))
 
 
-@router.post("/staff/login", response_model=ApiResponse)
-def staff_login(payload: LoginRequest, db: Session = Depends(get_db)) -> ApiResponse:
+@router.post("/staff/login", response_model=ApiResponse[LoginPayload])
+def staff_login(payload: LoginRequest, db: Session = Depends(get_db)) -> ApiResponse[LoginPayload]:
     user = db.scalar(
         select(User).where(User.username == payload.username, User.user_type == "staff")
     )
@@ -77,12 +77,12 @@ def staff_login(payload: LoginRequest, db: Session = Depends(get_db)) -> ApiResp
     return ApiResponse(data=build_login_payload(user))
 
 
-@router.get("/me", response_model=ApiResponse)
+@router.get("/me", response_model=ApiResponse[MePayload])
 def current_user(
     request: Request,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ApiResponse:
+) -> ApiResponse[MePayload]:
     raw_token = request.headers.get("authorization", "")
     token = raw_token.split(" ", 1)[1].strip() if raw_token.lower().startswith("bearer ") else ""
     token_data = decode_access_token(token) if token else None
@@ -93,13 +93,13 @@ def current_user(
         roles.append("admin")
     system_settings = read_system_settings(db)
     return ApiResponse(
-        data={
-            "id": str(user.id),
-            "username": user.username,
-            "display_name": user.display_name,
-            "roles": roles,
-            "theme": system_settings.get("theme_code", "mango-splash"),
-            "platform_name": system_settings.get("platform_name", "OW³教学评AI平台"),
-            "expires_at": token_data["expires_at"].isoformat() if token_data else None,
-        }
+        data=MePayload(
+            id=str(user.id),
+            username=user.username,
+            display_name=user.display_name,
+            roles=roles,
+            theme=system_settings.get("theme_code", "emblem"),
+            platform_name=system_settings.get("platform_name", "OW³教学评AI平台"),
+            expires_at=token_data["expires_at"].isoformat() if token_data else None,
+        )
     )

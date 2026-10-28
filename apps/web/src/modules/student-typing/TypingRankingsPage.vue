@@ -1,138 +1,132 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">打字排行榜</p>
-        <h2>打字速度与准确率榜单</h2>
-        <p class="hero-copy">
-          支持班级、年级、全校三个范围，默认按今日最佳速度排序，速度相同则比较准确率和完成时间。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-select v-model="scope" class="scope-select" @change="loadRankings">
-          <el-option label="班级榜" value="class" />
-          <el-option label="年级榜" value="grade" />
-          <el-option label="全校榜" value="school" />
-        </el-select>
-        <el-button :loading="isLoading" type="primary" @click="loadRankings">刷新榜单</el-button>
-        <el-button plain @click="router.push('/student/typing')">返回打字首页</el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
+    <SaPageHeader
+      description="支持班级、年级、全校三个范围，默认按今日最佳速度排序，速度相同则比较准确率和完成时间。"
+      eyebrow="打字排行榜"
+      title="打字速度与准确率榜单"
+    >
+      <template #actions>
+        <n-select
+          v-model:value="scope"
+          :options="scopeOptions"
+          class="scope-select"
+          @update:value="loadRankings"
+        />
+        <n-button :loading="isLoading" type="primary" @click="loadRankings">刷新榜单</n-button>
+        <n-button secondary @click="router.push('/student/typing')">返回打字首页</n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <template v-if="ranking">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">榜单范围</p>
-              <p class="metric-value ranking-metric-text">{{ ranking.label }}</p>
-              <p class="metric-note">生成时间 {{ formatDateTime(ranking.generated_at) }}</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">上榜人数</p>
-              <p class="metric-value">{{ ranking.items.length }}</p>
-              <p class="metric-note">取当日最佳成绩进入榜单</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">待参与</p>
-              <p class="metric-value">{{ ranking.pending_students.length }}</p>
-              <p class="metric-note">仅班级榜显示未参与名单</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">最高速度</p>
-              <p class="metric-value">{{ ranking.items[0]?.speed_cpm ?? '--' }}</p>
-              <p class="metric-note">单位 CPM</p>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
+
+    <template v-else-if="ranking">
+      <div class="metric-grid">
+        <article class="metric-tile">
+          <p class="metric-label">榜单范围</p>
+          <p class="metric-value ranking-metric-text">{{ ranking.label }}</p>
+          <p class="metric-note">生成时间 {{ formatDateTime(ranking.generated_at) }}</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">上榜人数</p>
+          <p class="metric-value">{{ ranking.items.length }}</p>
+          <p class="metric-note">取当日最佳成绩进入榜单</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">待参与</p>
+          <p class="metric-value">{{ ranking.pending_students.length }}</p>
+          <p class="metric-note">仅班级榜显示未参与名单</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">最高速度</p>
+          <p class="metric-value">{{ ranking.items[0]?.speed_cpm ?? '--' }}</p>
+          <p class="metric-note">单位 CPM</p>
+        </article>
+      </div>
+
+      <SaPanel>
+        <template #header>
+          <div class="chart-head">
+            <div>
+              <strong>成绩分布（前 {{ topTypingItems.length }} 名）</strong>
+              <p class="section-note">柱为速度（CPM），折线为准确率，便于对比速度与稳定性的平衡。</p>
+            </div>
+          </div>
+        </template>
+        <n-empty v-if="!ranking.items.length" description="当前范围内还没有打字成绩。" />
+        <AppChart v-else :height="300" :option="typingRankOption" />
+      </SaPanel>
+
+      <div class="split-grid">
+        <SaPanel description="速度优先，准确率次之。" title="完整排行榜">
+          <SaDataTable
+            :data="ranking.items"
+            empty-text="当前范围内还没有打字成绩"
+            row-key="student_no"
+            stripe
+          >
+            <SaTableColumn label="排名" min-width="80">
+              <template #default="{ row }">
+                <n-tag :type="rankTagType(row.rank)" round>#{{ row.rank }}</n-tag>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="学生" min-width="140" prop="student_name" />
+            <SaTableColumn label="学号" min-width="120" prop="student_no" />
+            <SaTableColumn label="班级" min-width="100" prop="class_name" />
+            <SaTableColumn label="速度" min-width="100" prop="speed_cpm" />
+            <SaTableColumn label="准确率" min-width="100">
+              <template #default="{ row }">
+                {{ row.accuracy_percent }}%
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="练习内容" min-width="200" prop="typing_set_title" />
+            <SaTableColumn label="时间" min-width="180">
+              <template #default="{ row }">
+                {{ formatDateTime(row.played_at) }}
+              </template>
+            </SaTableColumn>
+          </SaDataTable>
+        </SaPanel>
+
+        <SaPanel description="仅在班级榜中显示。" title="未参与学生">
+          <n-empty
+            v-if="!ranking.pending_students.length"
+            description="当前范围内没有待参与名单"
+          />
+
+          <div v-else class="pending-list">
+            <article
+              v-for="item in ranking.pending_students"
+              :key="item.student_no"
+              class="pending-item"
+            >
+              <strong>{{ item.student_name }}</strong>
+              <span>{{ item.student_no }}</span>
             </article>
           </div>
-
-          <el-row :gutter="16">
-            <el-col :lg="16" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>完整排行榜</h3>
-                      <p class="section-note">速度优先，准确率次之。</p>
-                    </div>
-                  </div>
-                </template>
-
-                <el-empty v-if="!ranking.items.length" description="当前范围内还没有打字成绩" />
-
-                <el-table v-else :data="ranking.items" stripe>
-                  <el-table-column label="排名" min-width="80">
-                    <template #default="{ row }">
-                      <el-tag :type="rankTagType(row.rank)" round>#{{ row.rank }}</el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="学生" min-width="140" prop="student_name" />
-                  <el-table-column label="学号" min-width="120" prop="student_no" />
-                  <el-table-column label="班级" min-width="100" prop="class_name" />
-                  <el-table-column label="速度" min-width="100" prop="speed_cpm" />
-                  <el-table-column label="准确率" min-width="100">
-                    <template #default="{ row }">
-                      {{ row.accuracy_percent }}%
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="练习内容" min-width="200" prop="typing_set_title" />
-                  <el-table-column label="时间" min-width="180">
-                    <template #default="{ row }">
-                      {{ formatDateTime(row.played_at) }}
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="8" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>未参与学生</h3>
-                      <p class="section-note">仅在班级榜中显示。</p>
-                    </div>
-                  </div>
-                </template>
-
-                <el-empty
-                  v-if="!ranking.pending_students.length"
-                  description="当前范围内没有待参与名单"
-                />
-
-                <div v-else class="pending-list">
-                  <article
-                    v-for="item in ranking.pending_students"
-                    :key="item.student_no"
-                    class="pending-item"
-                  >
-                    <strong>{{ item.student_name }}</strong>
-                    <span>{{ item.student_no }}</span>
-                  </article>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </template>
-      </template>
-    </el-skeleton>
+        </SaPanel>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { NAlert, NButton, NEmpty, NSelect, NSkeleton, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type RankingPayload = {
   scope: string;
@@ -156,11 +150,55 @@ type RankingPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 
 const scope = ref<'class' | 'grade' | 'school'>('class');
 const isLoading = ref(true);
 const errorMessage = ref('');
 const ranking = ref<RankingPayload | null>(null);
+
+const topTypingItems = computed(() => (ranking.value?.items || []).slice(0, 12));
+
+const typingRankOption = computed(() => {
+  const items = topTypingItems.value;
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(items.map((item) => item.student_name), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 60, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: [
+      axisY({ name: 'CPM', nameTextStyle: { color: tokens.value.muted } }),
+      axisY({ name: '准确率%', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
+    ],
+    series: [
+      {
+        name: '速度',
+        type: 'bar',
+        barMaxWidth: 30,
+        itemStyle: { borderRadius: [6, 6, 0, 0], color: palette.value[0] },
+        data: items.map((item) => item.speed_cpm),
+      },
+      {
+        name: '准确率',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        lineStyle: { color: palette.value[1] },
+        itemStyle: { color: palette.value[1] },
+        data: items.map((item) => item.accuracy_percent),
+      },
+    ],
+  });
+});
+
+const scopeOptions = [
+  { label: '班级榜', value: 'class' },
+  { label: '年级榜', value: 'grade' },
+  { label: '全校榜', value: 'school' },
+];
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -209,20 +247,26 @@ onMounted(loadRankings);
   width: 150px;
 }
 
-.section-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
+.chart-head strong {
+  color: var(--ls-ink);
+  font-size: 15px;
 }
 
-.section-head h3 {
-  margin: 0 0 4px;
+.section-note {
+  margin: 4px 0 0;
+  color: var(--ls-muted);
+  font-size: 13px;
 }
 
 .ranking-metric-text {
   font-size: clamp(24px, 2vw, 34px);
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
 }
 
 .pending-list {
@@ -234,7 +278,7 @@ onMounted(loadRankings);
   padding: 12px 14px;
   border-radius: 14px;
   border: 1px solid var(--ls-border);
-  background: rgba(255, 250, 238, 0.95);
+  background: rgba(255, 179, 71, 0.12);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -244,5 +288,11 @@ onMounted(loadRankings);
 .pending-item span {
   color: var(--ls-muted);
   font-size: 13px;
+}
+
+@media (max-width: 1200px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

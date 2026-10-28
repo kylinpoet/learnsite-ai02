@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import csv
 import json
@@ -7,12 +7,10 @@ import time
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.deps.auth import require_admin
@@ -20,18 +18,31 @@ from app.api.deps.db import get_db
 from app.core.security import hash_password
 from app.models import (
     AIProvider,
+    AttendanceRecord,
     ClassSeatAssignment,
     ComputerRoom,
     ComputerSeat,
     CurriculumBook,
     CurriculumLesson,
     CurriculumUnit,
+    PeerReviewVote,
+    QuizAttempt,
+    QuizAttemptAnswer,
     SchoolClass,
     StaffProfile,
+    StudentClassTransferRequest,
     StudentGroup,
+    StudentGroupMember,
+    StudentLessonPlanProgress,
     StudentProfile,
+    Submission,
+    SubmissionFile,
     SystemSetting,
+    TaskDataSubmission,
+    TaskDiscussionPost,
+    TaskReadRecord,
     TeacherClassAssignment,
+    TypingRecord,
     User,
 )
 from app.schemas.common import ApiResponse
@@ -42,6 +53,7 @@ from app.services.assistant_settings import (
     write_assistant_prompt_settings,
     write_assistant_runtime_settings,
 )
+from app.services import ai_provider_client
 from app.services.system_settings import (
     DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS,
     normalize_student_profile_edit_permissions,
@@ -108,7 +120,7 @@ class SystemSettingsPayload(BaseModel):
     platform_name: str = Field(default="OW³教学评AI平台", min_length=1, max_length=160)
     school_name: str = Field(min_length=1, max_length=120)
     active_grade_nos: list[int] = Field(min_length=1)
-    theme_code: str = Field(default="mango-splash", min_length=1, max_length=30)
+    theme_code: str = Field(default="emblem", min_length=1, max_length=30)
     student_register_enabled: bool = False
     assistant_enabled: bool = True
     remote_proxy_url: str = Field(default="", max_length=255)
@@ -207,6 +219,22 @@ class AdminSeatListPayload(BaseModel):
     row_count: int = Field(ge=1, le=ROOM_GRID_MAX)
     col_count: int = Field(ge=1, le=ROOM_GRID_MAX)
     seats: list[AdminSeatPayload] = Field(default_factory=list)
+
+
+ADMIN_STUDENT_BATCH_ACTIONS = ("activate", "deactivate", "reset_password", "delete", "force_delete")
+
+
+class AdminStudentBatchActionPayload(BaseModel):
+    action: str = Field(min_length=1, max_length=40)
+    student_user_ids: list[int] = Field(min_length=1, max_length=500)
+    password: str | None = Field(default=None, min_length=6, max_length=50)
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def normalize_blank_password(cls, value: str | None) -> str | None:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 class AdminAIProviderPayload(BaseModel):
@@ -430,6 +458,16 @@ def build_import_seat_payload(room: ComputerRoom, rows: list[list[object]]) -> A
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入文件中没有找到有效的座位数据行")
 
     merged_seats = sorted(merged_seats_by_position.values(), key=lambda item: (item.row_no, item.col_no, item.id or 0))
+    expected_seat_count = imported_max_row * imported_max_col
+    if len(merged_seats) < expected_seat_count:
+        missing_count = expected_seat_count - len(merged_seats)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"座位数据不完整（缺少 {missing_count} 个座位），"
+                f"合并后需铺满 {imported_max_row}×{imported_max_col} 网格"
+            ),
+        )
     return AdminSeatListPayload(row_count=imported_max_row, col_count=imported_max_col, seats=merged_seats)
 
 
@@ -926,18 +964,6 @@ def build_ai_provider_request_headers(api_key: str | None) -> dict[str, str]:
     return build_remote_request_headers(api_key)
 
 
-def build_remote_request_opener(proxy_url: str | None) -> tuple[object, str]:
-    normalized_proxy = (proxy_url or "").strip()
-    if normalized_proxy:
-        return (
-            urllib_request.build_opener(
-                urllib_request.ProxyHandler({"http": normalized_proxy, "https": normalized_proxy})
-            ),
-            "configured_proxy",
-        )
-    return urllib_request.build_opener(urllib_request.ProxyHandler({})), "no_proxy"
-
-
 def summarize_ai_provider_http_error(status_code: int, provider_message: str) -> str:
     lowered = provider_message.lower()
     if status_code == 401:
@@ -1011,9 +1037,8 @@ def fetch_ai_provider_models(
     if not urls:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先填写有效的 Base URL")
 
-    headers = build_ai_provider_request_headers(api_key)
     request_started_at = time.perf_counter()
-    opener, request_mode = build_remote_request_opener(remote_proxy_url)
+    request_mode = "configured_proxy" if (remote_proxy_url or "").strip() else "no_proxy"
     logger.warning(
         "[AI_PROVIDER_DISCOVERY] start provider_type=%s base_url=%s has_api_key=%s mode=%s candidates=%s",
         provider_type,
@@ -1026,72 +1051,65 @@ def fetch_ai_provider_models(
     errors: list[str] = []
     for url in urls:
         attempt_started_at = time.perf_counter()
-        request = urllib_request.Request(url, headers=headers, method="GET")
         try:
-            with opener.open(request, timeout=15) as response:
-                raw_text = response.read().decode("utf-8", errors="ignore")
-                raw_payload = json.loads(raw_text)
-                models = parse_ai_provider_models_payload(raw_payload)
-                response_status = getattr(response, "status", "unknown")
+            models, error_message, status_code, resolved_base = ai_provider_client.list_models(
+                url,
+                api_key,
+                proxy_url=remote_proxy_url,
+            )
             elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
+            if error_message:
+                # HTTP / 网络错误：归类为与旧实现一致的友好文案
+                if status_code is not None:
+                    details = error_message.strip() or str(status_code)
+                    logger.warning(
+                        "[AI_PROVIDER_DISCOVERY] http_error url=%s mode=%s status=%s elapsed_ms=%s error=%s",
+                        url,
+                        request_mode,
+                        status_code,
+                        elapsed_ms,
+                        details,
+                    )
+                    errors.append(f"{url} -> HTTP {status_code}: {details}")
+                else:
+                    logger.warning(
+                        "[AI_PROVIDER_DISCOVERY] url_error url=%s mode=%s elapsed_ms=%s error=%s",
+                        url,
+                        request_mode,
+                        elapsed_ms,
+                        error_message,
+                    )
+                    errors.append(f"{url} -> {error_message}")
+                continue
+
+            if not models:
+                message = "模型服务返回成功，但未解析到可用模型"
+                elapsed_total_ms = int((time.perf_counter() - request_started_at) * 1000)
+                logger.warning(
+                    "[AI_PROVIDER_DISCOVERY] payload_error url=%s mode=%s elapsed_ms=%s total_elapsed_ms=%s error=%s",
+                    url,
+                    request_mode,
+                    elapsed_ms,
+                    elapsed_total_ms,
+                    message,
+                )
+                errors.append(f"{url} -> {message}")
+                continue
+
             total_elapsed_ms = int((time.perf_counter() - request_started_at) * 1000)
             logger.warning(
-                "[AI_PROVIDER_DISCOVERY] success url=%s mode=%s status=%s elapsed_ms=%s total_elapsed_ms=%s model_count=%s",
+                "[AI_PROVIDER_DISCOVERY] success url=%s mode=%s status=200 elapsed_ms=%s total_elapsed_ms=%s model_count=%s",
                 url,
                 request_mode,
-                response_status,
                 elapsed_ms,
                 total_elapsed_ms,
                 len(models),
             )
             return models, url
-        except urllib_error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="ignore")
-            details = body.strip() or str(exc.reason or "").strip() or str(exc).strip()
-            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
-            logger.warning(
-                "[AI_PROVIDER_DISCOVERY] http_error url=%s mode=%s status=%s elapsed_ms=%s error=%s",
-                url,
-                request_mode,
-                exc.code,
-                elapsed_ms,
-                details,
-            )
-            errors.append(f"{url} -> HTTP {exc.code}: {details}")
-        except urllib_error.URLError as exc:
+        except Exception as exc:  # noqa: BLE001 - 兜底与旧实现一致：单候选失败继续尝试下一个
             elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
             logger.warning(
                 "[AI_PROVIDER_DISCOVERY] url_error url=%s mode=%s elapsed_ms=%s error=%s",
-                url,
-                request_mode,
-                elapsed_ms,
-                str(exc),
-            )
-            errors.append(f"{url} -> {str(exc)}")
-        except TimeoutError as exc:
-            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
-            logger.warning(
-                "[AI_PROVIDER_DISCOVERY] timeout_error url=%s mode=%s elapsed_ms=%s error=%s",
-                url,
-                request_mode,
-                elapsed_ms,
-                str(exc),
-            )
-            errors.append(f"{url} -> {str(exc)}")
-        except json.JSONDecodeError as exc:
-            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
-            logger.warning(
-                "[AI_PROVIDER_DISCOVERY] json_decode_error url=%s mode=%s elapsed_ms=%s error=%s",
-                url,
-                request_mode,
-                elapsed_ms,
-                str(exc),
-            )
-            errors.append(f"{url} -> {str(exc)}")
-        except ValueError as exc:
-            elapsed_ms = int((time.perf_counter() - attempt_started_at) * 1000)
-            logger.warning(
-                "[AI_PROVIDER_DISCOVERY] payload_error url=%s mode=%s elapsed_ms=%s error=%s",
                 url,
                 request_mode,
                 elapsed_ms,
@@ -1201,6 +1219,40 @@ def serialize_teacher(user: User, *, active_class_ids: set[int]) -> dict:
             if assignment.class_id in active_class_ids
         ),
     }
+
+
+def serialize_student(user: User) -> dict:
+    profile = user.student_profile
+    school_class = profile.school_class if profile is not None else None
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "student_no": profile.student_no if profile is not None else "",
+        "grade_no": profile.grade_no if profile is not None else None,
+        "class_id": profile.class_id if profile is not None else None,
+        "class_name": school_class.class_name if school_class is not None else "",
+        "is_active": user.is_active,
+    }
+
+
+def admin_students_payload(db: Session) -> list[dict]:
+    students = db.scalars(
+        select(User)
+        .where(User.user_type == "student")
+        .options(selectinload(User.student_profile).selectinload(StudentProfile.school_class))
+        .order_by(User.id.asc())
+    ).all()
+    return [
+        serialize_student(item)
+        for item in sorted(
+            students,
+            key=lambda item: (
+                item.student_profile.student_no if item.student_profile is not None else item.username,
+                item.id,
+            ),
+        )
+    ]
 
 
 def serialize_room(room: ComputerRoom) -> dict:
@@ -1389,6 +1441,7 @@ def bootstrap_payload(db: Session) -> dict:
             for item in archived_classes
         ],
         "teachers": [serialize_teacher(item, active_class_ids=active_class_id_set) for item in teachers],
+        "students": admin_students_payload(db),
         "rooms": [serialize_room(item) for item in rooms],
         "curriculum_books": serialize_curriculum_snapshot(db),
         "stats": {
@@ -1683,7 +1736,7 @@ def list_theme_presets(db: Session = Depends(get_db)) -> ApiResponse:
     system_settings = read_system_settings(db)
     return ApiResponse(
         data={
-            "current_theme_code": system_settings.get("theme_code", "mango-splash"),
+            "current_theme_code": system_settings.get("theme_code", "emblem"),
             "presets": theme_presets_payload(),
         }
     )
@@ -2231,6 +2284,230 @@ async def import_students(
         data={
             **bootstrap_payload(db),
             "import_result": preview,
+        },
+    )
+
+
+STUDENT_IMPORT_TEMPLATE_HEADERS = ("姓名", "学号", "账号", "班级", "性别", "初始密码")
+STUDENT_IMPORT_TEMPLATE_SAMPLE_ROWS = (
+    ("张三", "90201", "90201", "902班", "男", "abc123"),
+    ("李四", "90301", "90301", "903班", "女", "abc123"),
+)
+
+
+@router.get("/admin/students/import-template")
+def download_student_import_template(
+    _: User = Depends(require_admin),
+) -> Response:
+    try:
+        from openpyxl import Workbook
+    except ModuleNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="后端缺少 openpyxl，暂时无法生成学生导入模板",
+        ) from exc
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "学生导入"
+    sheet.append(list(STUDENT_IMPORT_TEMPLATE_HEADERS))
+    for sample_row in STUDENT_IMPORT_TEMPLATE_SAMPLE_ROWS:
+        sheet.append(list(sample_row))
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="students-import-template.xlsx"'},
+    )
+
+
+def normalize_student_reset_password(password: str | None, student_no: str) -> str:
+    if password:
+        return password
+    fallback = student_no[-6:]
+    if len(fallback) >= 6:
+        return fallback
+    return f"{student_no}123456"[-6:]
+
+
+def student_has_learning_records(student_user_id: int, db: Session) -> bool:
+    exists_queries = (
+        select(Submission.id).where(Submission.student_id == student_user_id).limit(1),
+        select(QuizAttempt.id).where(QuizAttempt.student_user_id == student_user_id).limit(1),
+        select(StudentLessonPlanProgress.id).where(StudentLessonPlanProgress.student_id == student_user_id).limit(1),
+        select(TaskReadRecord.id).where(TaskReadRecord.student_id == student_user_id).limit(1),
+        select(TypingRecord.id).where(TypingRecord.student_user_id == student_user_id).limit(1),
+        select(TaskDiscussionPost.id).where(TaskDiscussionPost.author_user_id == student_user_id).limit(1),
+        select(PeerReviewVote.id).where(PeerReviewVote.reviewer_student_id == student_user_id).limit(1),
+    )
+    return any(db.scalar(query) is not None for query in exists_queries)
+
+
+def delete_student_with_related_data(user: User, profile: StudentProfile, db: Session) -> None:
+    student_user_id = user.id
+
+    submission_ids = db.scalars(
+        select(Submission.id).where(Submission.student_id == student_user_id)
+    ).all()
+    if submission_ids:
+        db.execute(delete(PeerReviewVote).where(PeerReviewVote.target_submission_id.in_(submission_ids)))
+        db.execute(delete(SubmissionFile).where(SubmissionFile.submission_id.in_(submission_ids)))
+    db.execute(delete(PeerReviewVote).where(PeerReviewVote.reviewer_student_id == student_user_id))
+
+    attempt_ids = db.scalars(
+        select(QuizAttempt.id).where(QuizAttempt.student_user_id == student_user_id)
+    ).all()
+    if attempt_ids:
+        db.execute(delete(QuizAttemptAnswer).where(QuizAttemptAnswer.attempt_id.in_(attempt_ids)))
+    db.execute(delete(QuizAttempt).where(QuizAttempt.student_user_id == student_user_id))
+
+    db.execute(delete(Submission).where(Submission.student_id == student_user_id))
+    db.execute(delete(StudentLessonPlanProgress).where(StudentLessonPlanProgress.student_id == student_user_id))
+    db.execute(delete(TaskReadRecord).where(TaskReadRecord.student_id == student_user_id))
+    db.execute(delete(TypingRecord).where(TypingRecord.student_user_id == student_user_id))
+
+    post_ids = db.scalars(
+        select(TaskDiscussionPost.id).where(TaskDiscussionPost.author_user_id == student_user_id)
+    ).all()
+    if post_ids:
+        db.execute(delete(TaskDiscussionPost).where(TaskDiscussionPost.parent_post_id.in_(post_ids)))
+    db.execute(delete(TaskDiscussionPost).where(TaskDiscussionPost.author_user_id == student_user_id))
+
+    db.execute(delete(AttendanceRecord).where(AttendanceRecord.student_id == student_user_id))
+    db.execute(delete(ClassSeatAssignment).where(ClassSeatAssignment.student_user_id == student_user_id))
+    db.execute(delete(StudentGroupMember).where(StudentGroupMember.student_user_id == student_user_id))
+    db.execute(
+        update(StudentGroup)
+        .where(StudentGroup.leader_user_id == student_user_id)
+        .values(leader_user_id=None)
+    )
+    db.execute(
+        delete(StudentClassTransferRequest).where(
+            StudentClassTransferRequest.student_user_id == student_user_id
+        )
+    )
+    db.execute(
+        update(TaskDataSubmission)
+        .where(TaskDataSubmission.submitted_by_user_id == student_user_id)
+        .values(submitted_by_user_id=None)
+    )
+
+    db.delete(profile)
+    db.delete(user)
+
+
+@router.post("/admin/students/batch-action", response_model=ApiResponse)
+def admin_students_batch_action(
+    payload: AdminStudentBatchActionPayload,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    if payload.action not in ADMIN_STUDENT_BATCH_ACTIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不支持的学生批量操作类型：{payload.action}",
+        )
+
+    student_user_ids = list(dict.fromkeys(payload.student_user_ids))
+    profiles = db.scalars(
+        select(StudentProfile)
+        .where(StudentProfile.user_id.in_(student_user_ids))
+        .options(
+            selectinload(StudentProfile.user),
+            selectinload(StudentProfile.school_class),
+        )
+    ).all()
+    profile_by_user_id = {item.user_id: item for item in profiles}
+    missing_ids = [item for item in student_user_ids if item not in profile_by_user_id]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"存在不存在的学生 ID：{missing_ids}",
+        )
+
+    processed_count = 0
+    affected_count = 0
+    skipped_count = 0
+    items: list[dict] = []
+
+    for student_user_id in student_user_ids:
+        profile = profile_by_user_id[student_user_id]
+        user = profile.user or db.get(User, student_user_id)
+
+        if payload.action in {"activate", "deactivate"}:
+            next_status = payload.action == "activate"
+            if user.is_active == next_status:
+                skipped_count += 1
+                items.append(
+                    {"student_id": student_user_id, "status": "skipped", "reason": "账号已处于目标状态"}
+                )
+                continue
+            user.is_active = next_status
+            processed_count += 1
+            affected_count += 1
+            items.append(
+                {"student_id": student_user_id, "status": "processed", "reason": "已更新账号状态"}
+            )
+            continue
+
+        if payload.action == "reset_password":
+            next_password = normalize_student_reset_password(payload.password, profile.student_no)
+            user.password_hash = hash_password(next_password)
+            # 管理端重置密码同时恢复账号可用（停用学生重置后需能登录）
+            if not user.is_active:
+                user.is_active = True
+            processed_count += 1
+            affected_count += 1
+            items.append(
+                {"student_id": student_user_id, "status": "processed", "reason": "已重置密码并恢复账号"}
+            )
+            continue
+
+        if payload.action == "delete" and student_has_learning_records(student_user_id, db):
+            skipped_count += 1
+            items.append(
+                {
+                    "student_id": student_user_id,
+                    "status": "skipped",
+                    "reason": "该学生存在学习记录，不能直接删除；如确需删除请使用强制删除",
+                }
+            )
+            continue
+
+        delete_student_with_related_data(user, profile, db)
+        processed_count += 1
+        affected_count += 1
+        items.append(
+            {"student_id": student_user_id, "status": "processed", "reason": "已删除学生账号"}
+        )
+
+    db.commit()
+
+    action_text = {
+        "activate": "恢复账号",
+        "deactivate": "停用账号",
+        "reset_password": "重置密码",
+        "delete": "删除账号",
+        "force_delete": "强制删除账号",
+    }[payload.action]
+
+    return ApiResponse(
+        message=(
+            f"批量{action_text}完成：处理 {processed_count} 人，"
+            f"生效 {affected_count} 人，跳过 {skipped_count} 人。"
+        ),
+        data={
+            **bootstrap_payload(db),
+            "batch_result": {
+                "action": payload.action,
+                "selected_count": len(student_user_ids),
+                "processed_count": processed_count,
+                "affected_count": affected_count,
+                "skipped_count": skipped_count,
+                "items": items,
+            },
         },
     )
 

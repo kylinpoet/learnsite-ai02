@@ -1,224 +1,224 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">常识测验</p>
-        <h2>课堂测验与即时反馈</h2>
-        <p class="hero-copy">
-          学生可以从这里直接开始本班测验，提交后立即看到分数、正确题数和当日班级排名预览。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadHome">刷新测验数据</el-button>
-        <el-button plain @click="router.push('/student/quiz/rankings')">查看今日排行榜</el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
+    <SaPageHeader
+      description="学生可以从这里直接开始本班测验，提交后立即看到分数、正确题数和当日班级排名预览。"
+      eyebrow="常识测验"
+      title="课堂测验与即时反馈"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadHome">刷新测验数据</n-button>
+        <n-button secondary @click="router.push('/student/quiz/rankings')">查看今日排行榜</n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <template v-if="homeData">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">平均分</p>
-              <p class="metric-value">{{ displayNumber(homeData.overview.average_score) }}</p>
-              <p class="metric-note">已提交测验的平均成绩</p>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
+
+    <template v-else-if="homeData">
+      <div class="metric-grid">
+        <article class="metric-tile">
+          <p class="metric-label">平均分</p>
+          <p class="metric-value">{{ displayNumber(homeData.overview.average_score) }}</p>
+          <p class="metric-note">已提交测验的平均成绩</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">最佳成绩</p>
+          <p class="metric-value">{{ displayNumber(homeData.overview.best_score) }}</p>
+          <p class="metric-note">当前账号历史最高分</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已测验次数</p>
+          <p class="metric-value">{{ homeData.overview.attempt_count }}</p>
+          <p class="metric-note">仅统计已提交记录</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">今日排名</p>
+          <p class="metric-value">
+            {{ homeData.overview.today_rank ? `#${homeData.overview.today_rank}` : '--' }}
+          </p>
+          <p class="metric-note">今日已有 {{ homeData.overview.today_participants }} 名同学参与</p>
+        </article>
+      </div>
+
+      <div class="quiz-charts">
+        <SaPanel>
+          <template #header>
+            <div class="chart-head">
+              <div>
+                <strong>我的成绩趋势</strong>
+                <p class="section-note">按提交时间回看最近几次测验的得分与正确率。</p>
+              </div>
+            </div>
+          </template>
+          <n-empty v-if="!scoredAttempts.length" description="还没有可绘制的测验成绩。" />
+          <AppChart v-else :height="260" :option="attemptTrendOption" />
+        </SaPanel>
+
+        <SaPanel>
+          <template #header>
+            <div class="chart-head">
+              <div>
+                <strong>今日班级参与</strong>
+                <p class="section-note">{{ homeData.ranking_preview.class_name || '当前班级' }} 的参与与未参与比例。</p>
+              </div>
+            </div>
+          </template>
+          <n-empty
+            v-if="!homeData.ranking_preview.items.length && !homeData.ranking_preview.pending_students.length"
+            description="今日暂无可统计的参与数据。"
+          />
+          <AppChart v-else :height="260" :option="classParticipationOption" />
+        </SaPanel>
+      </div>
+
+      <div class="split-grid">
+        <SaPanel description="直接从当前班级的已发布测验中选择开始。" title="可开始的课堂测验">
+          <template #actions>
+            <n-tag round type="info">共 {{ homeData.available_quizzes.length }} 份</n-tag>
+          </template>
+
+          <n-empty
+            v-if="!homeData.available_quizzes.length"
+            description="当前班级还没有可开始的测验"
+          />
+
+          <div v-else class="quiz-card-list">
+            <article
+              v-for="quiz in homeData.available_quizzes"
+              :key="quiz.id"
+              class="quiz-card"
+            >
+              <div class="quiz-card__top">
+                <div>
+                  <h4>{{ quiz.title }}</h4>
+                  <p class="quiz-card__desc">
+                    {{ quiz.description || '教师暂未填写测验说明。' }}
+                  </p>
+                </div>
+                <n-tag round>{{ quiz.question_count }} 题</n-tag>
+              </div>
+
+              <div class="chip-row">
+                <n-tag
+                  v-if="quiz.last_score !== null"
+                  round
+                  type="success"
+                >
+                  上次成绩 {{ quiz.last_score }}
+                </n-tag>
+                <n-tag
+                  v-if="quiz.last_submitted_at"
+                  round
+                  type="info"
+                >
+                  上次提交 {{ formatDateTime(quiz.last_submitted_at) }}
+                </n-tag>
+              </div>
+
+              <div class="quiz-card__footer">
+                <span class="section-note">开始后会生成一次新的答题记录。</span>
+                <n-button
+                  :loading="startingQuizId === quiz.id"
+                  type="primary"
+                  @click="startQuiz(quiz.id)"
+                >
+                  开始测验
+                </n-button>
+              </div>
             </article>
-            <article class="metric-tile">
-              <p class="metric-label">最佳成绩</p>
-              <p class="metric-value">{{ displayNumber(homeData.overview.best_score) }}</p>
-              <p class="metric-note">当前账号历史最高分</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已测验次数</p>
-              <p class="metric-value">{{ homeData.overview.attempt_count }}</p>
-              <p class="metric-note">仅统计已提交记录</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">今日排名</p>
-              <p class="metric-value">
-                {{ homeData.overview.today_rank ? `#${homeData.overview.today_rank}` : '--' }}
-              </p>
-              <p class="metric-note">今日已有 {{ homeData.overview.today_participants }} 名同学参与</p>
+          </div>
+        </SaPanel>
+
+        <SaPanel
+          :description="homeData.ranking_preview.class_name || '当前班级'"
+          title="今日排行榜预览"
+        >
+          <template #actions>
+            <n-button text type="primary" @click="router.push('/student/quiz/rankings')">
+              完整榜单
+            </n-button>
+          </template>
+
+          <n-empty
+            v-if="!homeData.ranking_preview.items.length"
+            description="今天还没有同学提交测验"
+          />
+
+          <div v-else class="ranking-preview-list">
+            <article
+              v-for="item in homeData.ranking_preview.items"
+              :key="`${item.student_no}-${item.submitted_at}`"
+              class="ranking-preview-item"
+            >
+              <div>
+                <p class="ranking-preview-item__name">
+                  #{{ item.rank }} {{ item.student_name }}
+                </p>
+                <p class="section-note">
+                  {{ item.quiz_title }} · {{ formatDateTime(item.submitted_at) }}
+                </p>
+              </div>
+              <strong>{{ item.score }}</strong>
             </article>
           </div>
 
-          <el-row :gutter="16">
-            <el-col :lg="16" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>可开始的课堂测验</h3>
-                      <p class="section-note">直接从当前班级的已发布测验中选择开始。</p>
-                    </div>
-                    <el-tag round type="info">共 {{ homeData.available_quizzes.length }} 份</el-tag>
-                  </div>
-                </template>
-
-                <el-empty
-                  v-if="!homeData.available_quizzes.length"
-                  description="当前班级还没有可开始的测验"
-                />
-
-                <div v-else class="quiz-card-list">
-                  <article
-                    v-for="quiz in homeData.available_quizzes"
-                    :key="quiz.id"
-                    class="quiz-card"
-                  >
-                    <div class="quiz-card__top">
-                      <div>
-                        <h4>{{ quiz.title }}</h4>
-                        <p class="quiz-card__desc">
-                          {{ quiz.description || '教师暂未填写测验说明。' }}
-                        </p>
-                      </div>
-                      <el-tag round>{{ quiz.question_count }} 题</el-tag>
-                    </div>
-
-                    <div class="chip-row">
-                      <el-tag
-                        v-if="quiz.last_score !== null"
-                        round
-                        type="success"
-                      >
-                        上次成绩 {{ quiz.last_score }}
-                      </el-tag>
-                      <el-tag
-                        v-if="quiz.last_submitted_at"
-                        round
-                        type="info"
-                      >
-                        上次提交 {{ formatDateTime(quiz.last_submitted_at) }}
-                      </el-tag>
-                    </div>
-
-                    <div class="quiz-card__footer">
-                      <span class="section-note">开始后会生成一次新的答题记录。</span>
-                      <el-button
-                        :loading="startingQuizId === quiz.id"
-                        type="primary"
-                        @click="startQuiz(quiz.id)"
-                      >
-                        开始测验
-                      </el-button>
-                    </div>
-                  </article>
-                </div>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="8" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>今日排行榜预览</h3>
-                      <p class="section-note">{{ homeData.ranking_preview.class_name || '当前班级' }}</p>
-                    </div>
-                    <el-button link type="primary" @click="router.push('/student/quiz/rankings')">
-                      完整榜单
-                    </el-button>
-                  </div>
-                </template>
-
-                <el-empty
-                  v-if="!homeData.ranking_preview.items.length"
-                  description="今天还没有同学提交测验"
-                />
-
-                <div v-else class="ranking-preview-list">
-                  <article
-                    v-for="item in homeData.ranking_preview.items"
-                    :key="`${item.student_no}-${item.submitted_at}`"
-                    class="ranking-preview-item"
-                  >
-                    <div>
-                      <p class="ranking-preview-item__name">
-                        #{{ item.rank }} {{ item.student_name }}
-                      </p>
-                      <p class="section-note">
-                        {{ item.quiz_title }} · {{ formatDateTime(item.submitted_at) }}
-                      </p>
-                    </div>
-                    <strong>{{ item.score }}</strong>
-                  </article>
-                </div>
-
-                <div class="pending-box">
-                  <p class="pending-box__title">今日未测验</p>
-                  <el-empty
-                    v-if="!homeData.ranking_preview.pending_students.length"
-                    description="本班学生都已参与"
-                  />
-                  <div v-else class="chip-row">
-                    <el-tag
-                      v-for="item in homeData.ranking_preview.pending_students"
-                      :key="item.student_no"
-                      round
-                      type="warning"
-                    >
-                      {{ item.student_name }}
-                    </el-tag>
-                  </div>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="section-head">
-                <div>
-                  <h3>最近测验记录</h3>
-                  <p class="section-note">保留最近 5 次已提交记录，方便学生回看成绩。</p>
-                </div>
-              </div>
-            </template>
-
-            <el-empty
-              v-if="!homeData.recent_attempts.length"
-              description="你还没有提交过测验"
+          <div class="pending-box">
+            <p class="pending-box__title">今日未测验</p>
+            <n-empty
+              v-if="!homeData.ranking_preview.pending_students.length"
+              description="本班学生都已参与"
             />
+            <div v-else class="chip-row">
+              <n-tag
+                v-for="item in homeData.ranking_preview.pending_students"
+                :key="item.student_no"
+                round
+                type="warning"
+              >
+                {{ item.student_name }}
+              </n-tag>
+            </div>
+          </div>
+        </SaPanel>
+      </div>
 
-            <el-table v-else :data="homeData.recent_attempts" stripe>
-              <el-table-column label="测验名称" min-width="220" prop="quiz_title" />
-              <el-table-column label="成绩" min-width="100">
-                <template #default="{ row }">
-                  {{ displayNumber(row.score) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="正确 / 总题" min-width="120">
-                <template #default="{ row }">
-                  {{ row.correct_count }} / {{ row.total_count }}
-                </template>
-              </el-table-column>
-              <el-table-column label="提交时间" min-width="180">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.submitted_at) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="状态" min-width="100" prop="status" />
-            </el-table>
-          </el-card>
-        </template>
-      </template>
-    </el-skeleton>
+      <SaPanel description="保留最近 5 次已提交记录，方便学生回看成绩。" title="最近测验记录">
+        <SaDataTable
+          :data="homeData.recent_attempts"
+          empty-text="你还没有提交过测验"
+          row-key="id"
+          stripe
+        >
+          <SaTableColumn label="测验名称" min-width="220" prop="quiz_title" />
+          <SaTableColumn label="成绩" min-width="100">
+            <template #default="{ row }">
+              {{ displayNumber(row.score) }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="正确 / 总题" min-width="120">
+            <template #default="{ row }">
+              {{ row.correct_count }} / {{ row.total_count }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="提交时间" min-width="180">
+            <template #default="{ row }">
+              {{ formatDateTime(row.submitted_at) }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="状态" min-width="100" prop="status" />
+        </SaDataTable>
+      </SaPanel>
+    </template>
 
-    <el-dialog
-      v-model="attemptDialogVisible"
-      :close-on-click-modal="false"
-      destroy-on-close
-      top="4vh"
-      width="min(960px, 92vw)"
+    <n-modal
+      v-model:show="attemptDialogVisible"
+      :mask-closable="false"
+      :style="{ width: 'min(960px, 92vw)' }"
+      display-directive="if"
+      preset="card"
     >
       <template #header>
         <div class="attempt-dialog__header">
@@ -230,15 +230,15 @@
             </p>
           </div>
           <div class="chip-row">
-            <el-tag round>{{ attemptQuestions.length }} 题</el-tag>
-            <el-tag v-if="!resultSummary" round type="success">已作答 {{ answeredCount }}</el-tag>
-            <el-tag v-else round type="warning">今日排名 {{ resultSummary.today_rank || '--' }}</el-tag>
+            <n-tag round>{{ attemptQuestions.length }} 题</n-tag>
+            <n-tag v-if="!resultSummary" round type="success">已作答 {{ answeredCount }}</n-tag>
+            <n-tag v-else round type="warning">今日排名 {{ resultSummary.today_rank || '--' }}</n-tag>
           </div>
         </div>
       </template>
 
       <div v-if="!resultSummary" class="attempt-dialog__body">
-        <el-alert
+        <n-alert
           v-if="attemptErrorMessage"
           :closable="false"
           :title="attemptErrorMessage"
@@ -247,7 +247,7 @@
 
         <div class="attempt-progress">
           <span>答题进度</span>
-          <el-progress :percentage="progressPercent" :stroke-width="10" />
+          <n-progress :percentage="progressPercent" :stroke-width="10" />
         </div>
 
         <div class="question-list">
@@ -261,20 +261,19 @@
                 <p class="question-card__index">第 {{ index + 1 }} 题</p>
                 <h4>{{ question.content }}</h4>
               </div>
-              <el-tag round>{{ question.difficulty }}</el-tag>
+              <n-tag round>{{ question.difficulty }}</n-tag>
             </div>
 
-            <el-radio-group v-model="selectedAnswers[question.id]" class="option-list">
-              <el-radio
+            <n-radio-group v-model:value="selectedAnswers[question.id]" class="option-list">
+              <n-radio
                 v-for="option in question.options"
                 :key="option.key"
-                :label="option.key"
-                border
+                :value="option.key"
                 class="option-item"
               >
                 {{ option.key }}. {{ option.text }}
-              </el-radio>
-            </el-radio-group>
+              </n-radio>
+            </n-radio-group>
           </article>
         </div>
       </div>
@@ -310,9 +309,9 @@
                 <p class="question-card__index">第 {{ index + 1 }} 题</p>
                 <h4>{{ answer.content }}</h4>
               </div>
-              <el-tag :type="answer.is_correct ? 'success' : 'danger'" round>
+              <n-tag :type="answer.is_correct ? 'success' : 'error'" round>
                 {{ answer.is_correct ? '回答正确' : '需要订正' }}
-              </el-tag>
+              </n-tag>
             </div>
 
             <div class="result-answer-grid">
@@ -335,17 +334,17 @@
 
       <template #footer>
         <div class="attempt-dialog__footer">
-          <el-button @click="closeAttemptDialog">
+          <n-button @click="closeAttemptDialog">
             {{ resultSummary ? '关闭' : '取消' }}
-          </el-button>
-          <el-button
+          </n-button>
+          <n-button
             v-if="resultSummary"
-            plain
+            secondary
             @click="restartCurrentQuiz"
           >
             再测一次
-          </el-button>
-          <el-button
+          </n-button>
+          <n-button
             v-else
             :disabled="!attemptMeta"
             :loading="submitLoading"
@@ -353,20 +352,28 @@
             @click="submitCurrentAttempt"
           >
             提交测验
-          </el-button>
+          </n-button>
         </div>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NEmpty, NModal, NProgress, NRadio, NRadioGroup, NSkeleton, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { ElMessage } from '@/ui/feedback';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type RankingPreviewItem = {
   rank: number;
@@ -456,6 +463,7 @@ type QuizSubmitPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -480,6 +488,91 @@ const progressPercent = computed(() => {
     return 0;
   }
   return Math.round((answeredCount.value / attemptQuestions.value.length) * 100);
+});
+
+const scoredAttempts = computed(() =>
+  (homeData.value?.recent_attempts || [])
+    .filter((item) => item.score !== null)
+    .slice(0, 8)
+    .reverse(),
+);
+
+const attemptTrendOption = computed(() => {
+  const attempts = scoredAttempts.value;
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(attempts.map((_, index) => `第${index + 1}次`), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, interval: 0 },
+    }),
+    yAxis: [
+      axisY({ name: '得分', nameTextStyle: { color: tokens.value.muted }, max: 100 }),
+      axisY({ name: '正确率%', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
+    ],
+    series: [
+      {
+        name: '得分',
+        type: 'line',
+        smooth: true,
+        symbolSize: 8,
+        lineStyle: { color: palette.value[0], width: 3 },
+        itemStyle: { color: palette.value[0] },
+        areaStyle: { opacity: 0.12, color: palette.value[0] },
+        data: attempts.map((item) => item.score ?? 0),
+      },
+      {
+        name: '正确率',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        lineStyle: { color: palette.value[1], type: 'dashed' },
+        itemStyle: { color: palette.value[1] },
+        data: attempts.map((item) =>
+          item.total_count ? Math.round((item.correct_count / item.total_count) * 100) : 0,
+        ),
+      },
+    ],
+  });
+});
+
+const classParticipationOption = computed(() => {
+  const participated = homeData.value?.ranking_preview.items.length ?? 0;
+  const pending = homeData.value?.ranking_preview.pending_students.length ?? 0;
+  const total = participated + pending;
+
+  return base({
+    tooltip: tooltip('item'),
+    legend: legend({ bottom: 0, top: 'auto' }),
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '74%'],
+        center: ['50%', '45%'],
+        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
+        label: { show: false },
+        data: [
+          { value: participated, name: '已参与', itemStyle: { color: palette.value[0] } },
+          { value: pending, name: '未参与', itemStyle: { color: tokens.value.warning } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '38%',
+        style: { text: `${total}`, fill: tokens.value.ink, fontSize: 26, fontWeight: 700 },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '50%',
+        style: { text: '本班学生', fill: tokens.value.muted, fontSize: 12 },
+      },
+    ],
+  });
 });
 
 function displayNumber(value: number | null) {
@@ -600,16 +693,20 @@ onMounted(loadHome);
 </script>
 
 <style scoped>
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
+.quiz-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 16px;
 }
 
-.section-head h3 {
-  margin: 0 0 4px;
+.quiz-charts :deep(.sa-panel__body) {
+  display: grid;
+  gap: 12px;
+}
+
+.chart-head strong {
+  color: var(--ls-ink);
+  font-size: 15px;
 }
 
 .quiz-card-list {
@@ -621,7 +718,7 @@ onMounted(loadHome);
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 248, 255, 0.94));
+  background: var(--ls-panel);
   display: grid;
   gap: 14px;
 }
@@ -651,6 +748,13 @@ onMounted(loadHome);
   flex-wrap: wrap;
 }
 
+.split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .ranking-preview-list {
   display: grid;
   gap: 10px;
@@ -659,8 +763,8 @@ onMounted(loadHome);
 .ranking-preview-item {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(223, 230, 245, 0.95);
+  background: var(--ls-elevated);
+  border: 1px solid var(--ls-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -717,19 +821,19 @@ onMounted(loadHome);
   border: 1px solid var(--ls-border);
   border-radius: 18px;
   padding: 18px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--ls-card);
   display: grid;
   gap: 16px;
 }
 
 .question-card-correct {
   border-color: rgba(78, 189, 139, 0.35);
-  background: rgba(240, 252, 246, 0.96);
+  background: rgba(40, 185, 126, 0.12);
 }
 
 .question-card-wrong {
   border-color: rgba(235, 96, 96, 0.24);
-  background: rgba(255, 248, 248, 0.96);
+  background: rgba(235, 96, 96, 0.12);
 }
 
 .question-card__head {
@@ -762,6 +866,17 @@ onMounted(loadHome);
   align-items: flex-start;
   padding: 12px 14px;
   white-space: normal;
+  border: 1px solid var(--ls-border);
+  border-radius: 12px;
+  background: var(--ls-elevated);
+}
+
+.option-item:hover {
+  border-color: var(--ls-primary);
+}
+
+.option-item :deep(.n-radio__label) {
+  white-space: normal;
 }
 
 .result-metrics {
@@ -777,7 +892,7 @@ onMounted(loadHome);
 .result-answer-grid__item {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(247, 249, 255, 0.95);
+  background: var(--ls-panel-soft);
   display: grid;
   gap: 4px;
 }
@@ -798,6 +913,16 @@ onMounted(loadHome);
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 1200px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quiz-charts {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

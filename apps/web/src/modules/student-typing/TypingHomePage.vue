@@ -1,214 +1,187 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">打字训练</p>
-        <h2>课堂打字练习与速度反馈</h2>
-        <p class="hero-copy">
-          在这里完成英文、中文与拼音练习，系统会将成绩实时同步到排行榜。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadHome">刷新练习数据</el-button>
-        <el-button plain @click="router.push('/student/typing/rankings')">查看排行榜</el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
+    <SaPageHeader
+      description="在这里完成英文、中文与拼音练习，系统会将成绩实时同步到排行榜。"
+      eyebrow="打字训练"
+      title="课堂打字练习与速度反馈"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadHome">刷新练习数据</n-button>
+        <n-button secondary @click="router.push('/student/typing/rankings')">查看排行榜</n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <template v-if="homeData">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">平均速度</p>
-              <p class="metric-value">{{ displayNumber(homeData.overview.average_speed) }}</p>
-              <p class="metric-note">单位 CPM，按历史练习成绩计算</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">最佳速度</p>
-              <p class="metric-value">{{ displayNumber(homeData.overview.best_speed) }}</p>
-              <p class="metric-note">当前账号历史最高速度</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">最佳准确率</p>
-              <p class="metric-value">
-                {{ homeData.overview.best_accuracy === null ? '--' : `${homeData.overview.best_accuracy}%` }}
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
+
+    <template v-else-if="homeData">
+      <div class="metric-grid">
+        <article class="metric-tile">
+          <p class="metric-label">平均速度</p>
+          <p class="metric-value">{{ displayNumber(homeData.overview.average_speed) }}</p>
+          <p class="metric-note">单位 CPM，按历史练习成绩计算</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">最佳速度</p>
+          <p class="metric-value">{{ displayNumber(homeData.overview.best_speed) }}</p>
+          <p class="metric-note">当前账号历史最高速度</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">最佳准确率</p>
+          <p class="metric-value">
+            {{ homeData.overview.best_accuracy === null ? '--' : `${homeData.overview.best_accuracy}%` }}
+          </p>
+          <p class="metric-note">按字符匹配结果估算</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">今日排名</p>
+          <p class="metric-value">
+            {{ homeData.overview.today_rank ? `#${homeData.overview.today_rank}` : '--' }}
+          </p>
+          <p class="metric-note">今日已有 {{ homeData.overview.today_participants }} 名同学参与</p>
+        </article>
+      </div>
+
+      <div class="split-grid">
+        <SaPanel description="点击任意练习即可进入打字窗口并记录成绩。" title="练习内容">
+          <template #actions>
+            <n-tag round type="info">共 {{ homeData.typing_sets.length }} 套</n-tag>
+          </template>
+
+          <n-empty v-if="!homeData.typing_sets.length" description="当前还没有可练习内容" />
+
+          <div v-else class="typing-set-list">
+            <article
+              v-for="item in homeData.typing_sets"
+              :key="item.id"
+              class="typing-set-card"
+            >
+              <div class="typing-set-card__top">
+                <div>
+                  <h4>{{ item.title }}</h4>
+                  <p class="typing-set-card__desc">
+                    {{ item.description || '教师暂未填写练习说明。' }}
+                  </p>
+                </div>
+                <n-tag round>{{ modeLabel(item.typing_mode) }}</n-tag>
+              </div>
+
+              <div class="chip-row">
+                <n-tag round type="warning">{{ item.difficulty }}</n-tag>
+                <n-tag round>{{ item.content_length }} 字</n-tag>
+                <n-tag v-if="item.last_speed !== null" round type="success">
+                  上次速度 {{ item.last_speed }}
+                </n-tag>
+                <n-tag v-if="item.last_accuracy !== null" round type="info">
+                  上次准确率 {{ item.last_accuracy }}%
+                </n-tag>
+              </div>
+
+              <p class="typing-set-card__content">
+                {{ contentPreview(item.content) }}
               </p>
-              <p class="metric-note">按字符匹配结果估算</p>
+
+              <div class="typing-set-card__footer">
+                <span class="section-note">
+                  {{ item.last_played_at ? `上次练习 ${formatDateTime(item.last_played_at)}` : '还没有练习记录' }}
+                </span>
+                <n-button type="primary" @click="openPractice(item)">开始练习</n-button>
+              </div>
             </article>
-            <article class="metric-tile">
-              <p class="metric-label">今日排名</p>
-              <p class="metric-value">
-                {{ homeData.overview.today_rank ? `#${homeData.overview.today_rank}` : '--' }}
-              </p>
-              <p class="metric-note">今日已有 {{ homeData.overview.today_participants }} 名同学参与</p>
+          </div>
+        </SaPanel>
+
+        <SaPanel
+          :description="homeData.ranking_preview.label"
+          title="班级榜预览"
+        >
+          <template #actions>
+            <n-button text type="primary" @click="router.push('/student/typing/rankings')">
+              完整榜单
+            </n-button>
+          </template>
+
+          <n-empty
+            v-if="!homeData.ranking_preview.items.length"
+            description="今天还没有打字成绩"
+          />
+
+          <div v-else class="ranking-preview-list">
+            <article
+              v-for="item in homeData.ranking_preview.items"
+              :key="`${item.student_no}-${item.played_at}`"
+              class="ranking-preview-item"
+            >
+              <div>
+                <p class="ranking-preview-item__name">#{{ item.rank }} {{ item.student_name }}</p>
+                <p class="section-note">
+                  {{ item.typing_set_title }} · {{ item.accuracy_percent }}%
+                </p>
+              </div>
+              <strong>{{ item.speed_cpm }}</strong>
             </article>
           </div>
 
-          <el-row :gutter="16">
-            <el-col :lg="16" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>练习内容</h3>
-                      <p class="section-note">点击任意练习即可进入打字窗口并记录成绩。</p>
-                    </div>
-                    <el-tag round type="info">共 {{ homeData.typing_sets.length }} 套</el-tag>
-                  </div>
-                </template>
+          <div class="pending-box">
+            <p class="pending-box__title">今日未练习</p>
+            <n-empty
+              v-if="!homeData.ranking_preview.pending_students.length"
+              description="本班学生都已参与"
+            />
+            <div v-else class="chip-row">
+              <n-tag
+                v-for="item in homeData.ranking_preview.pending_students"
+                :key="item.student_no"
+                round
+                type="warning"
+              >
+                {{ item.student_name }}
+              </n-tag>
+            </div>
+          </div>
+        </SaPanel>
+      </div>
 
-                <el-empty v-if="!homeData.typing_sets.length" description="当前还没有可练习内容" />
-
-                <div v-else class="typing-set-list">
-                  <article
-                    v-for="item in homeData.typing_sets"
-                    :key="item.id"
-                    class="typing-set-card"
-                  >
-                    <div class="typing-set-card__top">
-                      <div>
-                        <h4>{{ item.title }}</h4>
-                        <p class="typing-set-card__desc">
-                          {{ item.description || '教师暂未填写练习说明。' }}
-                        </p>
-                      </div>
-                      <el-tag round>{{ modeLabel(item.typing_mode) }}</el-tag>
-                    </div>
-
-                    <div class="chip-row">
-                      <el-tag round type="warning">{{ item.difficulty }}</el-tag>
-                      <el-tag round>{{ item.content_length }} 字</el-tag>
-                      <el-tag v-if="item.last_speed !== null" round type="success">
-                        上次速度 {{ item.last_speed }}
-                      </el-tag>
-                      <el-tag v-if="item.last_accuracy !== null" round type="info">
-                        上次准确率 {{ item.last_accuracy }}%
-                      </el-tag>
-                    </div>
-
-                    <p class="typing-set-card__content">
-                      {{ contentPreview(item.content) }}
-                    </p>
-
-                    <div class="typing-set-card__footer">
-                      <span class="section-note">
-                        {{ item.last_played_at ? `上次练习 ${formatDateTime(item.last_played_at)}` : '还没有练习记录' }}
-                      </span>
-                      <el-button type="primary" @click="openPractice(item)">开始练习</el-button>
-                    </div>
-                  </article>
-                </div>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="8" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>班级榜预览</h3>
-                      <p class="section-note">{{ homeData.ranking_preview.label }}</p>
-                    </div>
-                    <el-button link type="primary" @click="router.push('/student/typing/rankings')">
-                      完整榜单
-                    </el-button>
-                  </div>
-                </template>
-
-                <el-empty
-                  v-if="!homeData.ranking_preview.items.length"
-                  description="今天还没有打字成绩"
-                />
-
-                <div v-else class="ranking-preview-list">
-                  <article
-                    v-for="item in homeData.ranking_preview.items"
-                    :key="`${item.student_no}-${item.played_at}`"
-                    class="ranking-preview-item"
-                  >
-                    <div>
-                      <p class="ranking-preview-item__name">#{{ item.rank }} {{ item.student_name }}</p>
-                      <p class="section-note">
-                        {{ item.typing_set_title }} · {{ item.accuracy_percent }}%
-                      </p>
-                    </div>
-                    <strong>{{ item.speed_cpm }}</strong>
-                  </article>
-                </div>
-
-                <div class="pending-box">
-                  <p class="pending-box__title">今日未练习</p>
-                  <el-empty
-                    v-if="!homeData.ranking_preview.pending_students.length"
-                    description="本班学生都已参与"
-                  />
-                  <div v-else class="chip-row">
-                    <el-tag
-                      v-for="item in homeData.ranking_preview.pending_students"
-                      :key="item.student_no"
-                      round
-                      type="warning"
-                    >
-                      {{ item.student_name }}
-                    </el-tag>
-                  </div>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="section-head">
-                <div>
-                  <h3>最近练习记录</h3>
-                  <p class="section-note">保留最近 5 次成绩，便于学生回看进步情况。</p>
-                </div>
-              </div>
+      <SaPanel description="保留最近 5 次成绩，便于学生回看进步情况。" title="最近练习记录">
+        <SaDataTable
+          :data="homeData.recent_records"
+          empty-text="你还没有练习记录"
+          row-key="id"
+          stripe
+        >
+          <SaTableColumn label="练习名称" min-width="220" prop="typing_set_title" />
+          <SaTableColumn label="速度" min-width="100" prop="speed_cpm" />
+          <SaTableColumn label="准确率" min-width="100">
+            <template #default="{ row }">
+              {{ row.accuracy_percent }}%
             </template>
+          </SaTableColumn>
+          <SaTableColumn label="时长" min-width="100">
+            <template #default="{ row }">
+              {{ row.duration_sec }} 秒
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="字数" min-width="100" prop="typed_chars" />
+          <SaTableColumn label="练习时间" min-width="180">
+            <template #default="{ row }">
+              {{ formatDateTime(row.played_at) }}
+            </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
+    </template>
 
-            <el-empty v-if="!homeData.recent_records.length" description="你还没有练习记录" />
-
-            <el-table v-else :data="homeData.recent_records" stripe>
-              <el-table-column label="练习名称" min-width="220" prop="typing_set_title" />
-              <el-table-column label="速度" min-width="100" prop="speed_cpm" />
-              <el-table-column label="准确率" min-width="100">
-                <template #default="{ row }">
-                  {{ row.accuracy_percent }}%
-                </template>
-              </el-table-column>
-              <el-table-column label="时长" min-width="100">
-                <template #default="{ row }">
-                  {{ row.duration_sec }} 秒
-                </template>
-              </el-table-column>
-              <el-table-column label="字数" min-width="100" prop="typed_chars" />
-              <el-table-column label="练习时间" min-width="180">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.played_at) }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-        </template>
-      </template>
-    </el-skeleton>
-
-    <el-dialog
-      v-model="practiceDialogVisible"
-      :close-on-click-modal="false"
-      destroy-on-close
-      top="4vh"
-      width="min(1100px, 94vw)"
-      @closed="stopPracticeTimer"
+    <n-modal
+      v-model:show="practiceDialogVisible"
+      :content-style="{ maxHeight: 'calc(92vh - 180px)', overflow: 'auto' }"
+      :mask-closable="false"
+      :style="{ width: 'min(1100px, 94vw)' }"
+      display-directive="if"
+      preset="card"
+      @after-leave="stopPracticeTimer"
     >
       <template #header>
         <div class="section-head">
@@ -220,9 +193,9 @@
             </p>
           </div>
           <div class="chip-row">
-            <el-tag round>{{ activePracticeSet ? modeLabel(activePracticeSet.typing_mode) : '--' }}</el-tag>
-            <el-tag round type="warning">{{ activePracticeSet?.difficulty || '--' }}</el-tag>
-            <el-tag round type="success">计时 {{ elapsedSec }} 秒</el-tag>
+            <n-tag round>{{ activePracticeSet ? modeLabel(activePracticeSet.typing_mode) : '--' }}</n-tag>
+            <n-tag round type="warning">{{ activePracticeSet?.difficulty || '--' }}</n-tag>
+            <n-tag round type="success">计时 {{ elapsedSec }} 秒</n-tag>
           </div>
         </div>
       </template>
@@ -231,7 +204,7 @@
         <div class="practice-panel">
           <div class="panel-head">
             <h4>原文内容</h4>
-            <el-tag round>{{ activePracticeSet?.content_length || 0 }} 字</el-tag>
+            <n-tag round>{{ activePracticeSet?.content_length || 0 }} 字</n-tag>
           </div>
           <div class="practice-source">
             {{ activePracticeSet?.content || '' }}
@@ -242,16 +215,16 @@
           <div class="panel-head">
             <h4>输入区</h4>
             <div class="chip-row">
-              <el-tag round>当前速度 {{ liveSpeedCpm }}</el-tag>
-              <el-tag round type="info">准确率 {{ liveAccuracyPercent }}%</el-tag>
+              <n-tag round>当前速度 {{ liveSpeedCpm }}</n-tag>
+              <n-tag round type="info">准确率 {{ liveAccuracyPercent }}%</n-tag>
             </div>
           </div>
 
-          <el-input
-            v-model="typedText"
+          <n-input
+            v-model:value="typedText"
             :autosize="{ minRows: 12, maxRows: 18 }"
+            :resizable="false"
             placeholder="请在这里开始输入原文内容"
-            resize="none"
             type="textarea"
           />
 
@@ -294,16 +267,10 @@
           </article>
         </div>
 
-        <el-card class="soft-card">
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>最新榜单预览</h3>
-                <p class="section-note">{{ practiceRankingPreview?.label || '当前班级' }}</p>
-              </div>
-            </div>
-          </template>
-
+        <SaPanel
+          :description="practiceRankingPreview?.label || '当前班级'"
+          title="最新榜单预览"
+        >
           <div v-if="practiceRankingPreview?.items.length" class="ranking-preview-list">
             <article
               v-for="item in practiceRankingPreview.items"
@@ -319,16 +286,16 @@
               <strong>{{ item.speed_cpm }}</strong>
             </article>
           </div>
-        </el-card>
+        </SaPanel>
       </div>
 
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="closePracticeDialog">
+          <n-button @click="closePracticeDialog">
             {{ practiceResult ? '关闭' : '取消' }}
-          </el-button>
-          <el-button v-if="practiceResult" plain @click="restartPractice">再练一次</el-button>
-          <el-button
+          </n-button>
+          <n-button v-if="practiceResult" secondary @click="restartPractice">再练一次</n-button>
+          <n-button
             v-else
             :disabled="!activePracticeSet || !typedText.length"
             :loading="submittingPractice"
@@ -336,19 +303,24 @@
             @click="submitPractice"
           >
             提交成绩
-          </el-button>
+          </n-button>
         </div>
       </template>
-    </el-dialog>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NInput, NModal, NSkeleton, NTag } from 'naive-ui';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '@/ui/feedback';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type RankingItem = {
@@ -618,7 +590,7 @@ onBeforeUnmount(stopPracticeTimer);
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94));
+  background: var(--ls-panel);
 }
 
 .typing-set-card__top {
@@ -642,7 +614,7 @@ onBeforeUnmount(stopPracticeTimer);
 .typing-set-card__content {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(248, 250, 255, 0.95);
+  background: var(--ls-panel-soft);
   color: var(--ls-text);
 }
 
@@ -654,6 +626,13 @@ onBeforeUnmount(stopPracticeTimer);
   flex-wrap: wrap;
 }
 
+.split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .ranking-preview-list {
   display: grid;
   gap: 10px;
@@ -662,8 +641,8 @@ onBeforeUnmount(stopPracticeTimer);
 .ranking-preview-item {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(223, 230, 245, 0.95);
+  background: var(--ls-elevated);
+  border: 1px solid var(--ls-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -698,7 +677,7 @@ onBeforeUnmount(stopPracticeTimer);
   padding: 16px;
   border-radius: 18px;
   border: 1px solid var(--ls-border);
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--ls-card);
 }
 
 .panel-head {
@@ -716,7 +695,7 @@ onBeforeUnmount(stopPracticeTimer);
 .practice-source {
   padding: 16px;
   border-radius: 16px;
-  background: rgba(248, 250, 255, 0.96);
+  background: var(--ls-panel-soft);
   line-height: 1.9;
   white-space: pre-wrap;
   word-break: break-word;
@@ -732,6 +711,12 @@ onBeforeUnmount(stopPracticeTimer);
   justify-content: flex-end;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+@media (max-width: 1200px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 960px) {

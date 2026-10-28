@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.security import hash_password
 from app.db.session import SessionLocal, engine
+from app.models.encrypted import looks_encrypted
 from app.models import (
     AIProvider,
     AttendanceRecord,
@@ -1247,10 +1248,76 @@ def seed_fresh_demo_data(session) -> None:
     ensure_seed_submission_storage(session)
 
 
+def migrate_ai_provider_api_keys(session) -> None:
+    """Encrypt plaintext ai_providers.api_key rows written before encryption-at-rest.
+
+    Raw values are read via SQL text so the ORM type decorator does not decrypt
+    them first; the re-write goes through the ORM column type so the value is
+    encrypted exactly once (an ORM attribute assignment of an equal value would
+    be a no-op and never re-encrypt).
+    """
+    raw_rows = session.execute(text("SELECT id, api_key FROM ai_providers")).all()
+    changed = False
+    for provider_id, raw_key in raw_rows:
+        if not raw_key or looks_encrypted(str(raw_key)):
+            continue
+        session.execute(
+            AIProvider.__table__.update()
+            .where(AIProvider.id == provider_id)
+            .values(api_key=str(raw_key))
+        )
+        changed = True
+    if changed:
+        session.commit()
+        session.expire_all()
+
+
+_ALEMBIC_HEAD_CACHE: str | None = None
+
+
+def resolve_alembic_head() -> str | None:
+    """从 alembic 脚本目录解析当前 head 版本（进程内缓存，避免每次初始化重复扫描）。"""
+    global _ALEMBIC_HEAD_CACHE
+    if _ALEMBIC_HEAD_CACHE is not None:
+        return _ALEMBIC_HEAD_CACHE
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+    except ImportError:
+        return None
+
+    ini_path = Path(__file__).resolve().parents[2] / "alembic.ini"
+    if not ini_path.exists():
+        return None
+    script = ScriptDirectory.from_config(Config(str(ini_path)))
+    _ALEMBIC_HEAD_CACHE = script.get_current_head()
+    return _ALEMBIC_HEAD_CACHE
+
+def ensure_alembic_stamp() -> None:
+    """首次接入 Alembic：为 create_all 建出的库打上 head 标记。
+
+    幂等且轻量：库中已有 alembic_version（alembic upgrade/stamp 管理过）则不动；
+    全新库/老库由 create_all + 手写迁移建表后补 stamp，后续 schema 变更走 alembic 迁移。
+    """
+    head = resolve_alembic_head()
+    if not head:
+        return
+    with engine.begin() as conn:
+        if inspect(conn).has_table("alembic_version"):
+            return
+        conn.execute(text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)"))
+        conn.execute(text("CREATE INDEX alembic_version_idx ON alembic_version (version_num)"))
+        conn.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:head)"),
+            {"head": head},
+        )
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_runtime_schema()
+    ensure_alembic_stamp()
 
     with SessionLocal() as session:
         ensure_system_setting_defaults(session)
         session.commit()
+        migrate_ai_provider_api_keys(session)

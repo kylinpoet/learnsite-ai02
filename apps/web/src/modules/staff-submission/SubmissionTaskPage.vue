@@ -1,560 +1,509 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">任务评分</p>
-        <h2>{{ taskData?.task.title || `任务 ${route.params.taskId}` }}</h2>
-        <p class="hero-copy">
-          {{ taskData?.task.course.title || '正在加载课程信息' }}
-          <span v-if="taskData">
-            · {{ taskData.task.course.unit_title }} · {{ taskData.task.course.lesson_title }}
-          </span>
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button plain @click="router.push('/staff/submissions')">返回作品总览</el-button>
-        <el-button :loading="isLoading" type="primary" @click="loadTaskDetail">刷新</el-button>
-      </el-space>
-    </section>
+    <SaPageHeader compact eyebrow="任务评分">
+      <template #title>
+        {{ taskData?.task.title || `任务 ${route.params.taskId}` }}
+      </template>
+      <p class="hero-copy">
+        {{ taskData?.task.course.title || '正在加载课程信息' }}
+        <span v-if="taskData">
+          · {{ taskData.task.course.unit_title }} · {{ taskData.task.course.lesson_title }}
+        </span>
+      </p>
+      <template #actions>
+        <n-button secondary @click="router.push('/staff/submissions')">返回作品总览</n-button>
+        <n-button :loading="isLoading" type="primary" @click="loadTaskDetail()">刷新</n-button>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-    <el-alert
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert
       v-if="focusHintMessage"
       :closable="false"
       :title="focusHintMessage"
       :type="focusAlertType"
     />
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <div v-if="taskData" class="page-stack">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">提交总数</p>
-              <p class="metric-value">{{ taskData.summary.submission_count }}</p>
-              <p class="metric-note">本任务已收到的学生作品数量。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已评阅</p>
-              <p class="metric-value">{{ taskData.summary.reviewed_count }}</p>
-              <p class="metric-note">已经填写分数或教师评语的作品数量。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">待评阅</p>
-              <p class="metric-value">{{ taskData.summary.pending_count }}</p>
-              <p class="metric-note">教师未评阅前，学生仍可重新提交修改。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">平均分</p>
-              <p class="metric-value">{{ taskData.summary.average_score ?? '--' }}</p>
-              <p class="metric-note">仅统计已录入分数的作品。</p>
-            </article>
-          </div>
+    <div v-else-if="taskData" class="page-stack">
+      <div class="ls-row">
+        <article class="metric-tile">
+          <p class="metric-label">提交总数</p>
+          <p class="metric-value">{{ taskData.summary.submission_count }}</p>
+          <p class="metric-note">本任务已收到的学生作品数量。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已评阅</p>
+          <p class="metric-value">{{ taskData.summary.reviewed_count }}</p>
+          <p class="metric-note">已经填写分数或教师评语的作品数量。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">待评阅</p>
+          <p class="metric-value">{{ taskData.summary.pending_count }}</p>
+          <p class="metric-note">教师未评阅前，学生仍可重新提交修改。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">平均分</p>
+          <p class="metric-value">{{ taskData.summary.average_score ?? '--' }}</p>
+          <p class="metric-note">仅统计已录入分数的作品。</p>
+        </article>
+      </div>
 
-          <RecommendedWorksShowcase
-            :items="taskData.recommended_showcase.items"
-            :token="authStore.token || ''"
-            description="本任务下被评为 G 级的作品会自动进入这里，教师也可以直接查看推荐展示效果。"
-            empty-description="当前任务还没有推荐作品"
-            title="教师端推荐作品展示"
-          />
-
-          <el-row :gutter="16">
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="toolbar-row">
-                    <div class="info-row">
-                      <span>学生提交列表</span>
-                      <el-tag round type="info">
-                        最近提交 {{ formatDateTime(taskData.summary.latest_submitted_at) }}
-                      </el-tag>
-                    </div>
-                    <div class="filter-row">
-                      <span class="filter-label">仅看未评阅作品</span>
-                      <el-switch v-model="onlyPendingSubmissions" />
-                      <el-select
-                        v-model="selectedClassName"
-                        class="filter-select"
-                        clearable
-                        placeholder="筛选班级"
-                      >
-                        <el-option
-                          v-for="option in classOptions"
-                          :key="option"
-                          :label="option"
-                          :value="option"
-                        />
-                      </el-select>
-                      <el-button
-                        v-if="selectedClassName || !onlyPendingSubmissions"
-                        text
-                        @click="resetFilters"
-                      >
-                        恢复默认
-                      </el-button>
-                      <el-tag round type="success">
-                        当前显示 {{ filteredItems.length }} / {{ taskData.items.length }}
-                      </el-tag>
-                    </div>
-                  </div>
-                </template>
-
-                <el-empty
-                  v-if="!taskData.items.length"
-                  description="这个任务还没有学生提交作品。"
+      <div class="content-split">
+        <SaPanel>
+          <template #header>
+            <div class="toolbar-row">
+              <div class="info-row">
+                <span>学生提交列表</span>
+                <n-tag round type="info">
+                  最近提交 {{ formatDateTime(taskData.summary.latest_submitted_at) }}
+                </n-tag>
+              </div>
+              <div class="filter-row">
+                <span class="filter-label">仅看未评阅作品</span>
+                <n-switch v-model:value="onlyPendingSubmissions" />
+                <n-select
+                  v-model:value="selectedClassName"
+                  :options="classOptions.map((option) => ({ label: option, value: option }))"
+                  class="filter-select"
+                  clearable
+                  placeholder="筛选班级"
                 />
+                <n-button v-if="selectedClassName || !onlyPendingSubmissions" text @click="resetFilters">
+                  恢复默认
+                </n-button>
+                <n-tag round type="success">
+                  当前显示 {{ filteredItems.length }} / {{ taskData.items.length }}
+                </n-tag>
+              </div>
+            </div>
+          </template>
 
-                <template v-else>
-                  <el-empty
-                    v-if="!filteredItems.length"
-                    description="当前筛选条件下没有作品。"
-                  />
+          <n-empty v-if="!taskData.items.length" description="这个任务还没有学生提交作品。" />
 
-                  <template v-else>
-                    <section class="batch-panel">
-                      <div class="batch-header">
-                        <div>
-                          <p class="batch-title">批量操作</p>
-                          <p class="batch-note">
-                            已选择 {{ selectedSubmissionCount }} 份作品。适合课堂统一批改，也支持将所选附件一次性打包为 ZIP 下载。
-                          </p>
-                        </div>
-                        <el-space wrap>
-                          <el-button
-                            :disabled="selectedSubmissionCount === 0"
-                            :loading="isBatchDownloading"
-                            plain
-                            type="success"
-                            @click="downloadBatchFiles"
-                          >
-                            打包下载附件
-                          </el-button>
-                          <el-button :disabled="selectedSubmissionCount === 0" text @click="clearBatchSelection">
-                            清空选择
-                          </el-button>
-                        </el-space>
-                      </div>
+          <n-empty v-else-if="!filteredItems.length" description="当前筛选条件下没有作品。" />
 
-                      <section v-loading="isTemplateLoading" class="template-panel">
-                        <div class="template-panel-header">
-                          <div>
-                            <p class="template-panel-title">批量评分模板</p>
-                            <p class="template-panel-note">
-                              常用分数和评语会按教师账号云端同步，也支持按分组管理和手动排序。
-                            </p>
-                          </div>
-                          <el-button text @click="openTemplateManager('batch')">管理模板</el-button>
-                        </div>
-
-                        <div class="template-toolbar">
-                          <el-select
-                            v-model="selectedBatchTemplateId"
-                            class="template-select"
-                            clearable
-                            filterable
-                            placeholder="选择批量评分模板"
-                          >
-                            <el-option-group
-                              v-for="group in groupedReviewTemplates"
-                              :key="`batch-group-${group.key || 'ungrouped'}`"
-                              :label="group.label"
-                            >
-                              <el-option
-                                v-for="template in group.templates"
-                                :key="template.id"
-                                :label="template.title"
-                                :value="template.id"
-                              >
-                                <div class="template-option">
-                                  <span>{{ template.title }}</span>
-                                  <span class="template-option-score">
-                                    #{{ template.sort_order }}
-                                    {{ template.score === null ? ' · 仅评语' : ` · 建议等级 ${formatScoreText(template.score)}` }}
-                                  </span>
-                                </div>
-                              </el-option>
-                            </el-option-group>
-                          </el-select>
-                          <el-button :disabled="!selectedBatchTemplateId" type="primary" plain @click="applySelectedTemplate('batch', 'replace')">
-                            套用模板
-                          </el-button>
-                          <el-button :disabled="!selectedBatchTemplateId" plain @click="applySelectedTemplate('batch', 'insert')">
-                            仅插入评语
-                          </el-button>
-                          <el-button plain @click="saveCurrentAsTemplate('batch')">保存当前为模板</el-button>
-                        </div>
-
-                        <div v-if="quickTemplateGroups.length" class="template-group-stack">
-                          <div
-                            v-for="group in quickTemplateGroups"
-                            :key="`batch-quick-${group.key || 'ungrouped'}`"
-                            class="quick-comment-row"
-                          >
-                            <span class="filter-label">{{ group.label }}</span>
-                            <el-button
-                              v-for="template in group.templates"
-                              :key="`batch-${template.id}`"
-                              link
-                              type="primary"
-                              @click="applyTemplate(template.id, 'batch', 'insert')"
-                            >
-                              {{ template.title }}
-                            </el-button>
-                          </div>
-                        </div>
-
-                        <p v-else class="template-empty-note">
-                          还没有评分模板，可先填写一次评分内容，再点“保存当前为模板”。
-                        </p>
-                      </section>
-
-                      <el-form class="batch-form" label-position="top">
-                        <el-row :gutter="12">
-                          <el-col :md="8" :sm="24">
-                            <el-form-item label="统一等级评分">
-                              <div class="grade-editor">
-                                <div class="grade-chip-grid">
-                                  <el-button
-                                    v-for="option in scoreGradeOptions"
-                                    :key="`batch-grade-${option.grade}`"
-                                    :plain="batchReviewScore !== option.score"
-                                    :type="batchReviewScore === option.score ? 'primary' : undefined"
-                                    @click="setTargetScore('batch', option.score)"
-                                  >
-                                    {{ option.grade }} · {{ option.score }}
-                                  </el-button>
-                                </div>
-                                <div class="grade-editor-footer">
-                                  <el-tag round type="success">{{ formatScoreHelperText(batchReviewScore) }}</el-tag>
-                                  <el-button text @click="setTargetScore('batch', null)">清空分数</el-button>
-                                </div>
-                              </div>
-                            </el-form-item>
-                          </el-col>
-                          <el-col :md="16" :sm="24">
-                            <el-form-item label="统一评语">
-                              <el-input
-                                v-model="batchTeacherComment"
-                                :autosize="{ minRows: 2, maxRows: 4 }"
-                                maxlength="1000"
-                                placeholder="例如：整体完成度较高，再补充一个更贴近生活的应用案例。"
-                                show-word-limit
-                                type="textarea"
-                              />
-                            </el-form-item>
-                          </el-col>
-                        </el-row>
-                      </el-form>
-
-                      <div class="batch-actions">
-                        <el-button
-                          :disabled="selectedSubmissionCount === 0"
-                          :loading="isBatchSaving"
-                          type="primary"
-                          @click="saveBatchReview"
-                        >
-                          批量保存评分
-                        </el-button>
-                      </div>
-                    </section>
-
-                    <el-table
-                      ref="tableRef"
-                      :data="filteredItems"
-                      :row-class-name="rowClassName"
-                      highlight-current-row
-                      row-key="submission_id"
-                      stripe
-                      @current-change="handleCurrentChange"
-                      @row-click="handleRowClick"
-                      @selection-change="handleSelectionChange"
-                    >
-                      <el-table-column type="selection" width="48" />
-                      <el-table-column label="学生" min-width="160">
-                        <template #default="{ row }">
-                          <div>
-                            <strong>{{ row.student_name }}</strong>
-                            <p class="table-note">{{ row.student_no }} · {{ row.class_name }}</p>
-                          </div>
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="状态" min-width="110">
-                        <template #default="{ row }">
-                          <el-space wrap>
-                            <el-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</el-tag>
-                            <el-tag v-if="row.is_recommended" round type="success">鎺ㄨ崘</el-tag>
-                          </el-space>
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="得分" min-width="90">
-                        <template #default="{ row }">
-                          {{ formatScoreText(row.score) }}
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="附件" min-width="90" prop="file_count" />
-                      <el-table-column label="最近提交" min-width="170">
-                        <template #default="{ row }">
-                          {{ formatDateTime(row.updated_at) }}
-                        </template>
-                      </el-table-column>
-                      <el-table-column label="操作" fixed="right" min-width="100">
-                        <template #default="{ row }">
-                          <el-button link type="primary" @click.stop="openGradingWorkspace(row.submission_id)">
-                            进入评分
-                          </el-button>
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                  </template>
-                </template>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="template-panel-header">
-                    <span>单个评分面板</span>
-                    <el-button v-if="selectedSubmission" text @click="openGradingWorkspace()">
-                      大窗口评分
-                    </el-button>
-                  </div>
-                </template>
-
-                <el-empty v-if="!selectedSubmission" description="请选择一条学生作品。" />
-
-                <div v-else class="page-stack">
-                  <div class="student-card">
-                    <div class="info-row">
-                      <strong>{{ selectedSubmission.student_name }}</strong>
-                      <el-space wrap>
-                        <el-tag :type="statusTagType(selectedSubmission.status)" round>
-                          {{ statusLabel(selectedSubmission.status) }}
-                        </el-tag>
-                        <el-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</el-tag>
-                      </el-space>
-                    </div>
-                    <p class="section-note">
-                      {{ selectedSubmission.student_no }} · {{ selectedSubmission.class_name }}
-                    </p>
-                    <p class="section-note">
-                      提交时间：{{ formatDateTime(selectedSubmission.submitted_at) }}
-                    </p>
-                  </div>
-
-                  <div class="content-block">
-                    <h3>作品说明</h3>
-                    <RichTextContent
-                      :html="selectedSubmission.submission_note"
-                      empty-text="学生没有填写作品说明。"
-                    />
-                  </div>
-
-                  <div class="content-block">
-                    <h3>附件清单</h3>
-                    <el-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
-                    <div v-else class="stack-list">
-                      <article
-                        v-for="file in selectedSubmission.files"
-                        :key="file.id"
-                        :class="['file-item', { 'file-item-active': gradingPreviewFileId === file.id }]"
-                        @click="loadGradingPreview(file)"
-                      >
-                        <div class="file-main">
-                          <p class="file-name">{{ file.name }}</p>
-                          <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</p>
-                        </div>
-                        <div class="file-actions">
-                          <el-tag round type="info">{{ file.role }}</el-tag>
-                          <el-button
-                            v-if="isFilePreviewable(file)"
-                            :loading="isGradingPreviewLoading && gradingPreviewFileId === file.id"
-                            link
-                            type="primary"
-                            @click.stop="loadGradingPreview(file)"
-                          >
-                            面板预览
-                          </el-button>
-                          <el-button
-                            :loading="downloadLoadingFileId === file.id"
-                            link
-                            type="success"
-                            @click.stop="downloadFile(file)"
-                          >
-                            下载
-                          </el-button>
-                        </div>
-                      </article>
-                    </div>
-                    <div
-                      v-if="selectedSubmission.files.length"
-                      v-loading="isGradingPreviewLoading"
-                      class="grading-preview-stage single-grading-preview-stage"
-                    >
-                      <iframe
-                        v-if="!isGradingPreviewLoading && gradingPreviewKind === 'pdf' && gradingPreviewUrl"
-                        :src="gradingPreviewUrl"
-                        class="preview-frame"
-                        title="单个评分面板附件预览"
-                      />
-                      <img
-                        v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'image' && gradingPreviewUrl"
-                        :src="gradingPreviewUrl"
-                        alt="单个评分面板附件预览"
-                        class="preview-image"
-                      />
-                      <pre
-                        v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'text'"
-                        class="preview-text"
-                      >{{ gradingPreviewText }}</pre>
-                      <div v-else-if="gradingPreviewFile" class="grading-preview-fallback">
-                        <p>当前附件暂不支持直接展示，请直接下载查看。</p>
-                        <el-button type="success" @click="downloadFile(gradingPreviewFile)">
-                          下载当前附件
-                        </el-button>
-                      </div>
-                      <el-empty
-                        v-else-if="!isGradingPreviewLoading"
-                        description="请选择一个附件进行查看"
-                      />
-                    </div>
-                  </div>
-
-                  <section v-loading="isTemplateLoading" class="template-panel">
-                    <div class="template-panel-header">
-                      <div>
-                        <p class="template-panel-title">单份评分模板</p>
-                        <p class="template-panel-note">
-                          模板会按分组显示；套用模板会同步带入推荐等级分和评语，快捷插入只会追加评语内容。
-                        </p>
-                      </div>
-                      <el-button text @click="openTemplateManager('single')">管理模板</el-button>
-                    </div>
-
-                    <div class="template-toolbar">
-                      <el-select
-                        v-model="selectedSingleTemplateId"
-                        class="template-select"
-                        clearable
-                        filterable
-                        placeholder="选择单份评分模板"
-                      >
-                        <el-option-group
-                          v-for="group in groupedReviewTemplates"
-                          :key="`single-group-${group.key || 'ungrouped'}`"
-                          :label="group.label"
-                        >
-                          <el-option
-                            v-for="template in group.templates"
-                            :key="template.id"
-                            :label="template.title"
-                            :value="template.id"
-                          >
-                            <div class="template-option">
-                              <span>{{ template.title }}</span>
-                              <span class="template-option-score">
-                                #{{ template.sort_order }}
-                                {{ template.score === null ? ' · 仅评语' : ` · 建议等级 ${formatScoreText(template.score)}` }}
-                              </span>
-                            </div>
-                          </el-option>
-                        </el-option-group>
-                      </el-select>
-                      <el-button :disabled="!selectedSingleTemplateId" type="primary" plain @click="applySelectedTemplate('single', 'replace')">
-                        套用模板
-                      </el-button>
-                      <el-button :disabled="!selectedSingleTemplateId" plain @click="applySelectedTemplate('single', 'insert')">
-                        仅插入评语
-                      </el-button>
-                      <el-button plain @click="saveCurrentAsTemplate('single')">保存当前为模板</el-button>
-                    </div>
-
-                    <div v-if="quickTemplateGroups.length" class="template-group-stack">
-                      <div
-                        v-for="group in quickTemplateGroups"
-                        :key="`single-quick-${group.key || 'ungrouped'}`"
-                        class="quick-comment-row"
-                      >
-                        <span class="filter-label">{{ group.label }}</span>
-                        <el-button
-                          v-for="template in group.templates"
-                          :key="`single-${template.id}`"
-                          link
-                          type="primary"
-                          @click="applyTemplate(template.id, 'single', 'insert')"
-                        >
-                          {{ template.title }}
-                        </el-button>
-                      </div>
-                    </div>
-
-                    <p v-else class="template-empty-note">
-                      还没有评分模板，可先填写一次评分内容，再点“保存当前为模板”。
-                    </p>
-                  </section>
-
-                  <el-form label-position="top">
-                    <el-form-item label="教师等级评分">
-                      <div class="grade-editor">
-                        <div class="grade-chip-grid">
-                          <el-button
-                            v-for="option in scoreGradeOptions"
-                            :key="`single-grade-${option.grade}`"
-                            :disabled="isSaving"
-                            :plain="reviewScore !== option.score"
-                            :type="reviewScore === option.score ? 'primary' : undefined"
-                            @click="handleSingleScoreSelect(option.score)"
-                          >
-                            {{ option.grade }} · {{ option.score }}
-                          </el-button>
-                        </div>
-                        <div class="grade-editor-footer">
-                          <el-tag round type="success">{{ formatScoreHelperText(reviewScore) }}</el-tag>
-                          <el-button :disabled="isSaving" text @click="setTargetScore('single', null)">清空分数</el-button>
-                        </div>
-                      </div>
-                    </el-form-item>
-                    <el-form-item label="教师评语">
-                      <el-input
-                        v-model="teacherComment"
-                        :autosize="{ minRows: 4, maxRows: 8 }"
-                        maxlength="1000"
-                        placeholder="写下本次作品的优点、修改建议或课堂反馈。"
-                        show-word-limit
-                        type="textarea"
-                      />
-                    </el-form-item>
-                  </el-form>
-
-                  <p class="section-note">点击上方等级会立即保存并自动切换到下一位学生；只修改评语时请使用下方保存按钮。</p>
-
-                  <el-button
-                    :loading="isSaving"
-                    class="save-button"
-                    type="primary"
-                    @click="saveReview"
-                  >
-                    {{ reviewSubmitButtonText }}
-                  </el-button>
+          <template v-else>
+            <section class="batch-panel">
+              <div class="batch-header">
+                <div>
+                  <p class="batch-title">批量操作</p>
+                  <p class="batch-note">
+                    已选择 {{ selectedSubmissionCount }} 份作品。适合课堂统一批改，也支持将所选附件一次性打包为 ZIP 下载。
+                  </p>
                 </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </div>
-      </template>
-    </el-skeleton>
+                <n-space :wrap="true">
+                  <n-button
+                    :disabled="selectedSubmissionCount === 0"
+                    :loading="isBatchDownloading"
+                    secondary
+                    type="success"
+                    @click="downloadBatchFiles"
+                  >
+                    打包下载附件
+                  </n-button>
+                  <n-button :disabled="selectedSubmissionCount === 0" text @click="clearBatchSelection">
+                    清空选择
+                  </n-button>
+                </n-space>
+              </div>
 
-    <el-dialog
-      v-model="gradingDialogVisible"
-      destroy-on-close
-      fullscreen
+              <n-spin :show="isTemplateLoading">
+                <section class="template-panel">
+                  <div class="template-panel-header">
+                    <div>
+                      <p class="template-panel-title">批量评分模板</p>
+                      <p class="template-panel-note">
+                        常用分数和评语会按教师账号云端同步，也支持按分组管理和手动排序。
+                      </p>
+                    </div>
+                    <n-button text @click="openTemplateManager('batch')">管理模板</n-button>
+                  </div>
+
+                  <div class="template-toolbar">
+                    <n-select
+                      v-model:value="selectedBatchTemplateId"
+                      :options="reviewTemplateSelectOptions"
+                      class="template-select"
+                      clearable
+                      filterable
+                      placeholder="选择批量评分模板"
+                    />
+                    <n-button
+                      :disabled="!selectedBatchTemplateId"
+                      secondary
+                      type="primary"
+                      @click="applySelectedTemplate('batch', 'replace')"
+                    >
+                      套用模板
+                    </n-button>
+                    <n-button
+                      :disabled="!selectedBatchTemplateId"
+                      secondary
+                      @click="applySelectedTemplate('batch', 'insert')"
+                    >
+                      仅插入评语
+                    </n-button>
+                    <n-button secondary @click="saveCurrentAsTemplate('batch')">保存当前为模板</n-button>
+                  </div>
+
+                  <div v-if="quickTemplateGroups.length" class="template-group-stack">
+                    <div
+                      v-for="group in quickTemplateGroups"
+                      :key="`batch-quick-${group.key || 'ungrouped'}`"
+                      class="quick-comment-row"
+                    >
+                      <span class="filter-label">{{ group.label }}</span>
+                      <n-button
+                        v-for="template in group.templates"
+                        :key="`batch-${template.id}`"
+                        text
+                        type="primary"
+                        @click="applyTemplate(template.id, 'batch', 'insert')"
+                      >
+                        {{ template.title }}
+                      </n-button>
+                    </div>
+                  </div>
+
+                  <p v-else class="template-empty-note">
+                    还没有评分模板，可先填写一次评分内容，再点“保存当前为模板”。
+                  </p>
+                </section>
+              </n-spin>
+
+              <n-form class="batch-form" label-placement="top">
+                <div class="batch-form-grid">
+                  <n-form-item label="统一等级评分">
+                    <div class="grade-editor">
+                      <div class="grade-chip-grid">
+                        <n-button
+                          v-for="option in scoreGradeOptions"
+                          :key="`batch-grade-${option.grade}`"
+                          :secondary="batchReviewScore !== option.score"
+                          :type="batchReviewScore === option.score ? 'primary' : 'default'"
+                          @click="setTargetScore('batch', option.score)"
+                        >
+                          {{ option.grade }} · {{ option.score }}
+                        </n-button>
+                      </div>
+                      <div class="grade-editor-footer">
+                        <n-tag round type="success">{{ formatScoreHelperText(batchReviewScore) }}</n-tag>
+                        <n-button text @click="setTargetScore('batch', null)">清空分数</n-button>
+                      </div>
+                    </div>
+                  </n-form-item>
+                  <n-form-item label="统一评语">
+                    <n-input
+                      v-model:value="batchTeacherComment"
+                      :autosize="{ minRows: 2, maxRows: 4 }"
+                      :maxlength="1000"
+                      placeholder="例如：整体完成度较高，再补充一个更贴近生活的应用案例。"
+                      show-count
+                      type="textarea"
+                    />
+                  </n-form-item>
+                </div>
+              </n-form>
+
+              <div class="batch-actions">
+                <n-button
+                  :disabled="selectedSubmissionCount === 0"
+                  :loading="isBatchSaving"
+                  type="primary"
+                  @click="saveBatchReview"
+                >
+                  批量保存评分
+                </n-button>
+              </div>
+            </section>
+
+            <SaDataTable
+              v-model:checked-row-keys="selectedSubmissionIds"
+              :data="filteredItems"
+              :row-class-name="rowClassName"
+              :scroll-x="768"
+              row-key="submission_id"
+              stripe
+              @row-click="handleRowClick"
+              @selection-change="handleSelectionChange"
+            >
+              <SaTableColumn type="selection" width="48" />
+              <SaTableColumn label="学生" min-width="160">
+                <template #default="{ row }">
+                  <div>
+                    <strong>{{ row.student_name }}</strong>
+                    <p class="table-note">{{ row.student_no }} · {{ row.class_name }}</p>
+                  </div>
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="状态" min-width="110">
+                <template #default="{ row }">
+                  <n-space :wrap="true">
+                    <n-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</n-tag>
+                    <n-tag v-if="row.is_recommended" round type="success">鎺ㄨ崘</n-tag>
+                  </n-space>
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="得分" min-width="90">
+                <template #default="{ row }">
+                  {{ formatScoreText(row.score) }}
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="附件" min-width="90" prop="file_count" />
+              <SaTableColumn label="最近提交" min-width="170">
+                <template #default="{ row }">
+                  {{ formatDateTime(row.updated_at) }}
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="操作" fixed="right" min-width="100">
+                <template #default="{ row }">
+                  <n-button text type="primary" @click.stop="openGradingWorkspace(row.submission_id)">
+                    进入评分
+                  </n-button>
+                </template>
+              </SaTableColumn>
+            </SaDataTable>
+          </template>
+        </SaPanel>
+
+        <SaPanel>
+          <template #header>
+            <div class="template-panel-header">
+              <span>单个评分面板</span>
+              <n-button v-if="selectedSubmission" text @click="openGradingWorkspace()">
+                大窗口评分
+              </n-button>
+            </div>
+          </template>
+
+          <n-empty v-if="!selectedSubmission" description="请选择一条学生作品。" />
+
+          <div v-else class="page-stack">
+            <div class="student-card">
+              <div class="info-row">
+                <strong>{{ selectedSubmission.student_name }}</strong>
+                <n-space :wrap="true">
+                  <n-tag :type="statusTagType(selectedSubmission.status)" round>
+                    {{ statusLabel(selectedSubmission.status) }}
+                  </n-tag>
+                  <n-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</n-tag>
+                </n-space>
+              </div>
+              <p class="section-note">
+                {{ selectedSubmission.student_no }} · {{ selectedSubmission.class_name }}
+              </p>
+              <p class="section-note">
+                提交时间：{{ formatDateTime(selectedSubmission.submitted_at) }}
+              </p>
+            </div>
+
+            <div class="content-block">
+              <h3>作品说明</h3>
+              <RichTextContent
+                :html="selectedSubmission.submission_note"
+                empty-text="学生没有填写作品说明。"
+              />
+            </div>
+
+            <div class="content-block">
+              <h3>附件清单</h3>
+              <n-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
+              <div v-else class="stack-list">
+                <article
+                  v-for="file in selectedSubmission.files"
+                  :key="file.id"
+                  :class="['file-item', { 'file-item-active': gradingPreviewFileId === file.id }]"
+                  @click="loadGradingPreview(file)"
+                >
+                  <div class="file-main">
+                    <p class="file-name">{{ file.name }}</p>
+                    <p class="file-meta">{{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB</p>
+                  </div>
+                  <div class="file-actions">
+                    <n-tag round type="info">{{ file.role }}</n-tag>
+                    <n-button
+                      v-if="isFilePreviewable(file)"
+                      :loading="isGradingPreviewLoading && gradingPreviewFileId === file.id"
+                      text
+                      type="primary"
+                      @click.stop="loadGradingPreview(file)"
+                    >
+                      面板预览
+                    </n-button>
+                    <n-button
+                      :loading="downloadLoadingFileId === file.id"
+                      text
+                      type="success"
+                      @click.stop="downloadFile(file)"
+                    >
+                      下载
+                    </n-button>
+                  </div>
+                </article>
+              </div>
+              <n-spin v-if="selectedSubmission.files.length" :show="isGradingPreviewLoading">
+                <div class="grading-preview-stage single-grading-preview-stage">
+                  <iframe
+                    v-if="!isGradingPreviewLoading && gradingPreviewKind === 'pdf' && gradingPreviewUrl"
+                    :src="gradingPreviewUrl"
+                    class="preview-frame"
+                    title="单个评分面板附件预览"
+                  />
+                  <img
+                    v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'image' && gradingPreviewUrl"
+                    :src="gradingPreviewUrl"
+                    alt="单个评分面板附件预览"
+                    class="preview-image"
+                  />
+                  <pre
+                    v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'text'"
+                    class="preview-text"
+                  >{{ gradingPreviewText }}</pre>
+                  <div v-else-if="gradingPreviewFile" class="grading-preview-fallback">
+                    <p>当前附件暂不支持直接展示，请直接下载查看。</p>
+                    <n-button type="success" @click="downloadFile(gradingPreviewFile)">
+                      下载当前附件
+                    </n-button>
+                  </div>
+                  <n-empty
+                    v-else-if="!isGradingPreviewLoading"
+                    description="请选择一个附件进行查看"
+                  />
+                </div>
+              </n-spin>
+            </div>
+
+            <n-spin :show="isTemplateLoading">
+              <section class="template-panel">
+                <div class="template-panel-header">
+                  <div>
+                    <p class="template-panel-title">单份评分模板</p>
+                    <p class="template-panel-note">
+                      模板会按分组显示；套用模板会同步带入推荐等级分和评语，快捷插入只会追加评语内容。
+                    </p>
+                  </div>
+                  <n-button text @click="openTemplateManager('single')">管理模板</n-button>
+                </div>
+
+                <div class="template-toolbar">
+                  <n-select
+                    v-model:value="selectedSingleTemplateId"
+                    :options="reviewTemplateSelectOptions"
+                    class="template-select"
+                    clearable
+                    filterable
+                    placeholder="选择单份评分模板"
+                  />
+                  <n-button
+                    :disabled="!selectedSingleTemplateId"
+                    secondary
+                    type="primary"
+                    @click="applySelectedTemplate('single', 'replace')"
+                  >
+                    套用模板
+                  </n-button>
+                  <n-button
+                    :disabled="!selectedSingleTemplateId"
+                    secondary
+                    @click="applySelectedTemplate('single', 'insert')"
+                  >
+                    仅插入评语
+                  </n-button>
+                  <n-button secondary @click="saveCurrentAsTemplate('single')">保存当前为模板</n-button>
+                </div>
+
+                <div v-if="quickTemplateGroups.length" class="template-group-stack">
+                  <div
+                    v-for="group in quickTemplateGroups"
+                    :key="`single-quick-${group.key || 'ungrouped'}`"
+                    class="quick-comment-row"
+                  >
+                    <span class="filter-label">{{ group.label }}</span>
+                    <n-button
+                      v-for="template in group.templates"
+                      :key="`single-${template.id}`"
+                      text
+                      type="primary"
+                      @click="applyTemplate(template.id, 'single', 'insert')"
+                    >
+                      {{ template.title }}
+                    </n-button>
+                  </div>
+                </div>
+
+                <p v-else class="template-empty-note">
+                  还没有评分模板，可先填写一次评分内容，再点“保存当前为模板”。
+                </p>
+              </section>
+            </n-spin>
+
+            <n-form label-placement="top">
+              <n-form-item label="教师等级评分">
+                <div class="grade-editor">
+                  <div class="grade-chip-grid">
+                    <n-button
+                      v-for="option in scoreGradeOptions"
+                      :key="`single-grade-${option.grade}`"
+                      :disabled="isSaving"
+                      :secondary="reviewScore !== option.score"
+                      :type="reviewScore === option.score ? 'primary' : 'default'"
+                      @click="handleSingleScoreSelect(option.score)"
+                    >
+                      {{ option.grade }} · {{ option.score }}
+                    </n-button>
+                  </div>
+                  <div class="grade-editor-footer">
+                    <n-tag round type="success">{{ formatScoreHelperText(reviewScore) }}</n-tag>
+                    <n-button :disabled="isSaving" text @click="setTargetScore('single', null)">
+                      清空分数
+                    </n-button>
+                  </div>
+                </div>
+              </n-form-item>
+              <n-form-item label="教师评语">
+                <n-input
+                  v-model:value="teacherComment"
+                  :autosize="{ minRows: 4, maxRows: 8 }"
+                  :maxlength="1000"
+                  placeholder="写下本次作品的优点、修改建议或课堂反馈。"
+                  show-count
+                  type="textarea"
+                />
+              </n-form-item>
+            </n-form>
+
+            <p class="section-note">点击上方等级会立即保存并自动切换到下一位学生；只修改评语时请使用下方保存按钮。</p>
+
+            <n-button
+              :loading="isSaving"
+              block
+              class="save-button"
+              type="primary"
+              @click="saveReview"
+            >
+              {{ reviewSubmitButtonText }}
+            </n-button>
+          </div>
+        </SaPanel>
+      </div>
+
+      <RecommendedWorksShowcase
+        :items="taskData.recommended_showcase.items"
+        :token="authStore.token || ''"
+        description="本任务下被评为 G 级的作品会自动进入这里，教师也可以直接查看推荐展示效果。"
+        empty-description="当前任务还没有推荐作品"
+        title="教师端推荐作品展示"
+      />
+    </div>
+
+    <n-modal
+      v-model:show="gradingDialogVisible"
+      preset="card"
+      style="width: 96vw; max-width: 1480px"
     >
       <template #header>
         <div class="grading-dialog-header">
@@ -568,17 +517,17 @@
               }}
             </p>
           </div>
-          <el-space wrap>
-            <el-tag v-if="selectedSubmissionProgressText" round type="info">
+          <n-space :wrap="true">
+            <n-tag v-if="selectedSubmissionProgressText" round type="info">
               当前进度 {{ selectedSubmissionProgressText }}
-            </el-tag>
-            <el-button :disabled="!hasPreviousSubmission" plain @click="moveToRelativeSubmission('previous')">
+            </n-tag>
+            <n-button :disabled="!hasPreviousSubmission" secondary @click="moveToRelativeSubmission('previous')">
               上一份
-            </el-button>
-            <el-button :disabled="!hasNextSubmission" plain @click="moveToRelativeSubmission('next')">
+            </n-button>
+            <n-button :disabled="!hasNextSubmission" secondary @click="moveToRelativeSubmission('next')">
               下一份
-            </el-button>
-          </el-space>
+            </n-button>
+          </n-space>
         </div>
       </template>
 
@@ -587,12 +536,12 @@
           <div class="student-card">
             <div class="info-row">
               <strong>{{ selectedSubmission.student_name }}</strong>
-              <el-space wrap>
-                <el-tag :type="statusTagType(selectedSubmission.status)" round>
+              <n-space :wrap="true">
+                <n-tag :type="statusTagType(selectedSubmission.status)" round>
                   {{ statusLabel(selectedSubmission.status) }}
-                </el-tag>
-                <el-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</el-tag>
-              </el-space>
+                </n-tag>
+                <n-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</n-tag>
+              </n-space>
             </div>
             <p class="section-note">
               {{ selectedSubmission.student_no }} · {{ selectedSubmission.class_name }}
@@ -614,12 +563,12 @@
           <div class="content-block">
             <div class="template-panel-header">
               <h3>附件内容</h3>
-              <el-tag round type="success">
+              <n-tag round type="success">
                 共 {{ selectedSubmission.files.length }} 个附件
-              </el-tag>
+              </n-tag>
             </div>
 
-            <el-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
+            <n-empty v-if="!selectedSubmission.files.length" description="暂无附件" />
 
             <template v-else>
               <div class="grading-file-list">
@@ -641,349 +590,360 @@
                 </button>
               </div>
 
-              <div v-loading="isGradingPreviewLoading" class="grading-preview-stage">
-                <iframe
-                  v-if="!isGradingPreviewLoading && gradingPreviewKind === 'pdf' && gradingPreviewUrl"
-                  :src="gradingPreviewUrl"
-                  class="preview-frame"
-                  title="评分工作台附件预览"
-                />
-                <img
-                  v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'image' && gradingPreviewUrl"
-                  :src="gradingPreviewUrl"
-                  alt="评分工作台附件预览"
-                  class="preview-image"
-                />
-                <pre
-                  v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'text'"
-                  class="preview-text"
-                >{{ gradingPreviewText }}</pre>
-                <div v-else-if="gradingPreviewFile" class="grading-preview-fallback">
-                  <p>当前附件暂不支持直接展示，请直接下载查看。</p>
-                  <el-button type="success" @click="downloadFile(gradingPreviewFile)">
-                    下载当前附件
-                  </el-button>
+              <n-spin :show="isGradingPreviewLoading">
+                <div class="grading-preview-stage">
+                  <iframe
+                    v-if="!isGradingPreviewLoading && gradingPreviewKind === 'pdf' && gradingPreviewUrl"
+                    :src="gradingPreviewUrl"
+                    class="preview-frame"
+                    title="评分工作台附件预览"
+                  />
+                  <img
+                    v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'image' && gradingPreviewUrl"
+                    :src="gradingPreviewUrl"
+                    alt="评分工作台附件预览"
+                    class="preview-image"
+                  />
+                  <pre
+                    v-else-if="!isGradingPreviewLoading && gradingPreviewKind === 'text'"
+                    class="preview-text"
+                  >{{ gradingPreviewText }}</pre>
+                  <div v-else-if="gradingPreviewFile" class="grading-preview-fallback">
+                    <p>当前附件暂不支持直接展示，请直接下载查看。</p>
+                    <n-button type="success" @click="downloadFile(gradingPreviewFile)">
+                      下载当前附件
+                    </n-button>
+                  </div>
+                  <n-empty
+                    v-else-if="!isGradingPreviewLoading"
+                    description="请选择一个附件进行查看"
+                  />
                 </div>
-                <el-empty
-                  v-else-if="!isGradingPreviewLoading"
-                  description="请选择一个附件进行查看"
-                />
-              </div>
+              </n-spin>
             </template>
           </div>
         </section>
 
         <aside class="grading-sidebar">
-          <section v-loading="isTemplateLoading" class="template-panel">
-            <div class="template-panel-header">
-              <div>
-                <p class="template-panel-title">单份评分模板</p>
-                <p class="template-panel-note">
-                  套用模板会同步带入推荐等级和评语，快捷插入只会追加评语内容。
-                </p>
+          <n-spin :show="isTemplateLoading">
+            <section class="template-panel">
+              <div class="template-panel-header">
+                <div>
+                  <p class="template-panel-title">单份评分模板</p>
+                  <p class="template-panel-note">
+                    套用模板会同步带入推荐等级和评语，快捷插入只会追加评语内容。
+                  </p>
+                </div>
+                <n-button text @click="openTemplateManager('single')">管理模板</n-button>
               </div>
-              <el-button text @click="openTemplateManager('single')">管理模板</el-button>
-            </div>
 
-            <div class="template-toolbar">
-              <el-select
-                v-model="selectedSingleTemplateId"
-                class="template-select"
-                clearable
-                filterable
-                placeholder="选择单份评分模板"
-              >
-                <el-option-group
-                  v-for="group in groupedReviewTemplates"
-                  :key="`dialog-single-group-${group.key || 'ungrouped'}`"
-                  :label="group.label"
+              <div class="template-toolbar">
+                <n-select
+                  v-model:value="selectedSingleTemplateId"
+                  :options="reviewTemplateSelectOptions"
+                  class="template-select"
+                  clearable
+                  filterable
+                  placeholder="选择单份评分模板"
+                />
+                <n-button
+                  :disabled="!selectedSingleTemplateId"
+                  secondary
+                  type="primary"
+                  @click="applySelectedTemplate('single', 'replace')"
                 >
-                  <el-option
-                    v-for="template in group.templates"
-                    :key="template.id"
-                    :label="template.title"
-                    :value="template.id"
-                  >
-                    <div class="template-option">
-                      <span>{{ template.title }}</span>
-                      <span class="template-option-score">
-                        #{{ template.sort_order }}
-                        {{ template.score === null ? ' · 仅评语' : ` · 建议等级 ${formatScoreText(template.score)}` }}
-                      </span>
-                    </div>
-                  </el-option>
-                </el-option-group>
-              </el-select>
-              <el-button :disabled="!selectedSingleTemplateId" type="primary" plain @click="applySelectedTemplate('single', 'replace')">
-                套用模板
-              </el-button>
-              <el-button :disabled="!selectedSingleTemplateId" plain @click="applySelectedTemplate('single', 'insert')">
-                仅插入评语
-              </el-button>
-            </div>
-          </section>
+                  套用模板
+                </n-button>
+                <n-button
+                  :disabled="!selectedSingleTemplateId"
+                  secondary
+                  @click="applySelectedTemplate('single', 'insert')"
+                >
+                  仅插入评语
+                </n-button>
+              </div>
+            </section>
+          </n-spin>
 
-          <el-form label-position="top">
-            <el-form-item label="教师等级评分">
+          <n-form label-placement="top">
+            <n-form-item label="教师等级评分">
               <div class="grade-editor">
                 <div class="grade-chip-grid">
-                  <el-button
+                  <n-button
                     v-for="option in scoreGradeOptions"
                     :key="`dialog-grade-${option.grade}`"
                     :disabled="isSaving"
-                    :plain="reviewScore !== option.score"
-                    :type="reviewScore === option.score ? 'primary' : undefined"
+                    :secondary="reviewScore !== option.score"
+                    :type="reviewScore === option.score ? 'primary' : 'default'"
                     @click="handleSingleScoreSelect(option.score)"
                   >
                     {{ option.grade }} · {{ option.score }}
-                  </el-button>
+                  </n-button>
                 </div>
                 <div class="grade-editor-footer">
-                  <el-tag round type="success">{{ formatScoreHelperText(reviewScore) }}</el-tag>
-                  <el-button :disabled="isSaving" text @click="setTargetScore('single', null)">清空分数</el-button>
+                  <n-tag round type="success">{{ formatScoreHelperText(reviewScore) }}</n-tag>
+                  <n-button :disabled="isSaving" text @click="setTargetScore('single', null)">
+                    清空分数
+                  </n-button>
                 </div>
               </div>
-            </el-form-item>
-            <el-form-item label="教师评语">
-              <el-input
-                v-model="teacherComment"
+            </n-form-item>
+            <n-form-item label="教师评语">
+              <n-input
+                v-model:value="teacherComment"
                 :autosize="{ minRows: 10, maxRows: 16 }"
-                maxlength="1000"
+                :maxlength="1000"
                 placeholder="写下本次作品的优点、修改建议或课堂反馈。"
-                show-word-limit
+                show-count
                 type="textarea"
               />
-            </el-form-item>
-          </el-form>
+            </n-form-item>
+          </n-form>
 
           <p class="section-note">点击上方等级会立即保存并自动切换到下一位学生；只修改评语时请使用下方保存按钮。</p>
 
           <div class="grading-sidebar-actions">
-            <el-button :disabled="!hasPreviousSubmission" plain @click="moveToRelativeSubmission('previous')">
+            <n-button :disabled="!hasPreviousSubmission" secondary @click="moveToRelativeSubmission('previous')">
               上一份
-            </el-button>
-            <el-button
+            </n-button>
+            <n-button
               :loading="isSaving"
               type="primary"
               @click="saveReview"
             >
               {{ reviewSubmitButtonText }}
-            </el-button>
+            </n-button>
           </div>
         </aside>
       </div>
-    </el-dialog>
+    </n-modal>
 
-    <el-dialog
-      v-model="templateDialogVisible"
+    <n-modal
+      v-model:show="templateDialogVisible"
+      preset="card"
+      style="width: min(980px, 94vw)"
       title="评分模板管理"
-      destroy-on-close
-      width="min(980px, 94vw)"
     >
-      <div v-loading="isTemplateLoading" class="template-manager-shell">
-        <section class="template-manager-list">
-          <div class="template-manager-header">
-            <div>
-              <p class="template-manager-title">我的评分模板</p>
-              <p class="template-manager-note">
-                模板按教师账号云端同步。你可以按分组整理，并在组内调整显示顺序。
-              </p>
-            </div>
-            <el-space wrap>
-              <el-button plain @click="startCreateTemplate('blank')">新建空白模板</el-button>
-              <el-button type="primary" plain @click="startCreateTemplate(templateDialogTarget)">
-                从当前评分生成
-              </el-button>
-            </el-space>
-          </div>
-
-          <el-empty
-            v-if="!reviewTemplates.length"
-            description="还没有评分模板，可从当前评分内容生成第一条模板。"
-          />
-
-          <div v-else class="template-card-list">
-            <section
-              v-for="group in groupedReviewTemplates"
-              :key="`manager-group-${group.key || 'ungrouped'}`"
-              class="template-group-section"
-            >
-              <div class="template-group-header">
-                <div>
-                  <p class="template-group-title">{{ group.label }}</p>
-                  <p class="template-group-note">共 {{ group.templates.length }} 个模板</p>
-                </div>
+      <n-spin :show="isTemplateLoading">
+        <div class="template-manager-shell">
+          <section class="template-manager-list">
+            <div class="template-manager-header">
+              <div>
+                <p class="template-manager-title">我的评分模板</p>
+                <p class="template-manager-note">
+                  模板按教师账号云端同步。你可以按分组整理，并在组内调整显示顺序。
+                </p>
               </div>
-
-              <article
-                v-for="template in group.templates"
-                :key="template.id"
-                :class="['template-card', { 'template-card-active': editingTemplateId === template.id }]"
-              >
-                <div class="template-card-header">
-                  <div>
-                    <p class="template-card-title">{{ template.title }}</p>
-                    <div class="template-meta-row">
-                      <el-tag round type="info">{{ group.label }}</el-tag>
-                      <el-tag round type="success">排序 {{ template.sort_order }}</el-tag>
-                      <p class="template-card-score">
-                        {{ template.score === null ? '仅评语模板' : `建议等级：${formatScoreText(template.score)}` }}
-                      </p>
-                    </div>
-                  </div>
-                  <el-space wrap>
-                    <el-button
-                      :disabled="!canMoveTemplate(template.id, 'up') || isTemplateSaving"
-                      :loading="movingTemplateId === template.id && isTemplateSaving"
-                      link
-                      @click="moveTemplate(template.id, 'up')"
-                    >
-                      上移
-                    </el-button>
-                    <el-button
-                      :disabled="!canMoveTemplate(template.id, 'down') || isTemplateSaving"
-                      :loading="movingTemplateId === template.id && isTemplateSaving"
-                      link
-                      @click="moveTemplate(template.id, 'down')"
-                    >
-                      下移
-                    </el-button>
-                    <el-button link type="primary" @click="applyTemplate(template.id, 'single', 'replace')">
-                      套用到单份
-                    </el-button>
-                    <el-button link type="success" @click="applyTemplate(template.id, 'batch', 'replace')">
-                      套用到批量
-                    </el-button>
-                    <el-button link @click="startEditTemplate(template.id)">编辑</el-button>
-                    <el-button link type="danger" @click="deleteTemplate(template.id)">删除</el-button>
-                  </el-space>
-                </div>
-                <p class="template-card-comment">{{ template.comment || '该模板只设置推荐等级分。' }}</p>
-              </article>
-            </section>
-          </div>
-        </section>
-
-        <section class="template-editor-panel">
-          <div class="template-panel-header">
-            <div>
-              <p class="template-panel-title">{{ editingTemplateId ? '编辑模板' : '新建模板' }}</p>
-              <p class="template-panel-note">{{ templateEditorHint }}</p>
+              <n-space :wrap="true">
+                <n-button secondary @click="startCreateTemplate('blank')">新建空白模板</n-button>
+                <n-button secondary type="primary" @click="startCreateTemplate(templateDialogTarget)">
+                  从当前评分生成
+                </n-button>
+              </n-space>
             </div>
-            <el-button
-              v-if="
-                editingTemplateId ||
-                templateForm.title ||
-                templateForm.group_name ||
-                templateForm.comment ||
-                templateForm.score !== null ||
-                templateForm.sort_order !== null
-              "
-              text
-              @click="resetTemplateEditor"
-            >
-              清空
-            </el-button>
-          </div>
 
-          <el-form label-position="top">
-            <el-form-item label="模板名称">
-              <el-input
-                v-model="templateForm.title"
-                maxlength="30"
-                placeholder="例如：课堂展示完成度高"
-                show-word-limit
-              />
-            </el-form-item>
-            <el-form-item label="模板分组">
-              <el-select
-                v-model="templateForm.group_name"
-                allow-create
-                clearable
-                default-first-option
-                filterable
-                placeholder="例如：课堂表现 / 改进建议"
-                style="width: 100%"
+            <n-empty
+              v-if="!reviewTemplates.length"
+              description="还没有评分模板，可从当前评分内容生成第一条模板。"
+            />
+
+            <div v-else class="template-card-list">
+              <section
+                v-for="group in groupedReviewTemplates"
+                :key="`manager-group-${group.key || 'ungrouped'}`"
+                class="template-group-section"
               >
-                <el-option
-                  v-for="groupName in groupNameOptions"
-                  :key="groupName"
-                  :label="groupName"
-                  :value="groupName"
+                <div class="template-group-header">
+                  <div>
+                    <p class="template-group-title">{{ group.label }}</p>
+                    <p class="template-group-note">共 {{ group.templates.length }} 个模板</p>
+                  </div>
+                </div>
+
+                <article
+                  v-for="template in group.templates"
+                  :key="template.id"
+                  :class="['template-card', { 'template-card-active': editingTemplateId === template.id }]"
+                >
+                  <div class="template-card-header">
+                    <div>
+                      <p class="template-card-title">{{ template.title }}</p>
+                      <div class="template-meta-row">
+                        <n-tag round type="info">{{ group.label }}</n-tag>
+                        <n-tag round type="success">排序 {{ template.sort_order }}</n-tag>
+                        <p class="template-card-score">
+                          {{ template.score === null ? '仅评语模板' : `建议等级：${formatScoreText(template.score)}` }}
+                        </p>
+                      </div>
+                    </div>
+                    <n-space :wrap="true">
+                      <n-button
+                        :disabled="!canMoveTemplate(template.id, 'up') || isTemplateSaving"
+                        :loading="movingTemplateId === template.id && isTemplateSaving"
+                        text
+                        @click="moveTemplate(template.id, 'up')"
+                      >
+                        上移
+                      </n-button>
+                      <n-button
+                        :disabled="!canMoveTemplate(template.id, 'down') || isTemplateSaving"
+                        :loading="movingTemplateId === template.id && isTemplateSaving"
+                        text
+                        @click="moveTemplate(template.id, 'down')"
+                      >
+                        下移
+                      </n-button>
+                      <n-button text type="primary" @click="applyTemplate(template.id, 'single', 'replace')">
+                        套用到单份
+                      </n-button>
+                      <n-button text type="success" @click="applyTemplate(template.id, 'batch', 'replace')">
+                        套用到批量
+                      </n-button>
+                      <n-button text @click="startEditTemplate(template.id)">编辑</n-button>
+                      <n-button text type="error" @click="deleteTemplate(template.id)">删除</n-button>
+                    </n-space>
+                  </div>
+                  <p class="template-card-comment">{{ template.comment || '该模板只设置推荐等级分。' }}</p>
+                </article>
+              </section>
+            </div>
+          </section>
+
+          <section class="template-editor-panel">
+            <div class="template-panel-header">
+              <div>
+                <p class="template-panel-title">{{ editingTemplateId ? '编辑模板' : '新建模板' }}</p>
+                <p class="template-panel-note">{{ templateEditorHint }}</p>
+              </div>
+              <n-button
+                v-if="
+                  editingTemplateId ||
+                  templateForm.title ||
+                  templateForm.group_name ||
+                  templateForm.comment ||
+                  templateForm.score !== null ||
+                  templateForm.sort_order !== null
+                "
+                text
+                @click="resetTemplateEditor"
+              >
+                清空
+              </n-button>
+            </div>
+
+            <n-form label-placement="top">
+              <n-form-item label="模板名称">
+                <n-input
+                  v-model:value="templateForm.title"
+                  :maxlength="30"
+                  placeholder="例如：课堂展示完成度高"
+                  show-count
                 />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="排序值">
-              <el-input-number
-                v-model="templateForm.sort_order"
-                :max="9999"
-                :min="0"
-                controls-position="right"
-                placeholder="留空则自动排到组内末尾"
-                style="width: 100%"
-              />
-            </el-form-item>
-            <el-form-item label="推荐等级分">
-              <div class="grade-editor">
-                <div class="grade-chip-grid">
-                  <el-button
-                    v-for="option in scoreGradeOptions"
-                    :key="`template-grade-${option.grade}`"
-                    :plain="templateForm.score !== option.score"
-                    :type="templateForm.score === option.score ? 'primary' : undefined"
-                    @click="templateForm.score = option.score"
-                  >
-                    {{ option.grade }} · {{ option.score }}
-                  </el-button>
-                </div>
-                <div class="grade-editor-footer">
-                  <el-tag round type="success">{{ formatScoreHelperText(templateForm.score) }}</el-tag>
-                  <el-button text @click="templateForm.score = null">清空分数</el-button>
-                </div>
-                <el-input-number
-                  v-model="templateForm.score"
-                  :max="maxReviewScore"
+              </n-form-item>
+              <n-form-item label="模板分组">
+                <n-select
+                  v-model:value="templateForm.group_name"
+                  :options="groupNameOptions.map((groupName) => ({ label: groupName, value: groupName }))"
+                  clearable
+                  filterable
+                  placeholder="例如：课堂表现 / 改进建议"
+                  style="width: 100%"
+                  tag
+                />
+              </n-form-item>
+              <n-form-item label="排序值">
+                <n-input-number
+                  v-model:value="templateForm.sort_order"
+                  :max="9999"
                   :min="0"
-                  controls-position="right"
-                  placeholder="可留空，支持 0-120"
+                  button-placement="right"
+                  placeholder="留空则自动排到组内末尾"
                   style="width: 100%"
                 />
-              </div>
-            </el-form-item>
-            <el-form-item label="模板评语">
-              <el-input
-                v-model="templateForm.comment"
-                :autosize="{ minRows: 6, maxRows: 10 }"
-                maxlength="1000"
-                placeholder="写入可复用的教师评语，支持一键套用或快捷插入。"
-                show-word-limit
-                type="textarea"
-              />
-            </el-form-item>
-          </el-form>
+              </n-form-item>
+              <n-form-item label="推荐等级分">
+                <div class="grade-editor">
+                  <div class="grade-chip-grid">
+                    <n-button
+                      v-for="option in scoreGradeOptions"
+                      :key="`template-grade-${option.grade}`"
+                      :secondary="templateForm.score !== option.score"
+                      :type="templateForm.score === option.score ? 'primary' : 'default'"
+                      @click="templateForm.score = option.score"
+                    >
+                      {{ option.grade }} · {{ option.score }}
+                    </n-button>
+                  </div>
+                  <div class="grade-editor-footer">
+                    <n-tag round type="success">{{ formatScoreHelperText(templateForm.score) }}</n-tag>
+                    <n-button text @click="templateForm.score = null">清空分数</n-button>
+                  </div>
+                  <n-input-number
+                    v-model:value="templateForm.score"
+                    :max="maxReviewScore"
+                    :min="0"
+                    button-placement="right"
+                    placeholder="可留空，支持 0-120"
+                    style="width: 100%"
+                  />
+                </div>
+              </n-form-item>
+              <n-form-item label="模板评语">
+                <n-input
+                  v-model:value="templateForm.comment"
+                  :autosize="{ minRows: 6, maxRows: 10 }"
+                  :maxlength="1000"
+                  placeholder="写入可复用的教师评语，支持一键套用或快捷插入。"
+                  show-count
+                  type="textarea"
+                />
+              </n-form-item>
+            </n-form>
 
-          <div class="template-editor-actions">
-            <el-button plain @click="resetTemplateEditor">重置</el-button>
-            <el-button :loading="isTemplateSaving" type="primary" @click="saveTemplate">
-              {{ editingTemplateId ? '保存模板修改' : '保存为新模板' }}
-            </el-button>
-          </div>
-        </section>
-      </div>
-    </el-dialog>
+            <div class="template-editor-actions">
+              <n-button secondary @click="resetTemplateEditor">重置</n-button>
+              <n-button :loading="isTemplateSaving" type="primary" @click="saveTemplate">
+                {{ editingTemplateId ? '保存模板修改' : '保存为新模板' }}
+              </n-button>
+            </div>
+          </section>
+        </div>
+      </n-spin>
+    </n-modal>
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElMessage, ElMessageBox } from 'element-plus';
+import type { SelectOption } from 'naive-ui';
+import {
+  NAlert,
+  NButton,
+  NEmpty,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NModal,
+  NSelect,
+  NSkeleton,
+  NSpace,
+  NSpin,
+  NSwitch,
+  NTag,
+} from 'naive-ui';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiGetBlob, apiPost, apiPostBlob, apiPut } from '@/api/http';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage, ElMessageBox } from '@/ui/feedback';
 
 type TaskSubmissionFile = {
   id: number;
@@ -1062,10 +1022,6 @@ type BatchScoreResponse = {
   task_ids: number[];
 };
 
-type TableRef = {
-  clearSelection: () => void;
-};
-
 type PreviewKind = 'pdf' | 'image' | 'text' | 'unsupported';
 type ReviewTarget = 'single' | 'batch';
 type TemplateApplyMode = 'replace' | 'insert';
@@ -1132,7 +1088,6 @@ const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
 
-const tableRef = ref<TableRef | null>(null);
 const taskData = ref<TaskDetailPayload | null>(null);
 const selectedSubmissionId = ref<number | null>(null);
 const selectedSubmissionIds = ref<number[]>([]);
@@ -1265,6 +1220,19 @@ const quickTemplateGroups = computed(() =>
     }))
     .filter((group) => group.templates.length > 0)
 );
+const reviewTemplateSelectOptions = computed<SelectOption[]>(() =>
+  groupedReviewTemplates.value.map((group) => ({
+    type: 'group' as const,
+    key: group.key || 'ungrouped',
+    label: group.label,
+    children: group.templates.map((template) => ({
+      label: `${template.title} · #${template.sort_order}${
+        template.score === null ? ' · 仅评语' : ` · 建议等级 ${formatScoreText(template.score)}`
+      }`,
+      value: template.id,
+    })),
+  }))
+);
 const templateEditorHint = computed(() => {
   if (editingTemplateId.value) {
     return '修改模板后，单份评分和批量评分入口都会立即使用最新内容。';
@@ -1313,7 +1281,7 @@ function formatScoreHelperText(score: number | null) {
   return option ? `${option.label}，对应 ${score} 分` : `${score} 分`;
 }
 
-function rowClassName({ row }: { row: TaskSubmissionItem }) {
+function rowClassName(row: TaskSubmissionItem) {
   return row.submission_id === selectedSubmissionId.value ? 'current-row' : '';
 }
 
@@ -1888,7 +1856,6 @@ function resetFilters() {
 function clearBatchSelection() {
   selectedSubmissionIds.value = [];
   resetBatchEditor();
-  tableRef.value?.clearSelection();
 }
 
 function revokeGradingPreviewUrl() {
@@ -1991,12 +1958,6 @@ function openGradingWorkspace(submissionId: number | null = selectedSubmissionId
     return;
   }
   gradingDialogVisible.value = true;
-}
-
-function handleCurrentChange(row: TaskSubmissionItem | undefined) {
-  if (row) {
-    selectSubmission(row.submission_id);
-  }
 }
 
 function handleRowClick(row: TaskSubmissionItem) {
@@ -2348,6 +2309,7 @@ onBeforeUnmount(() => {
   gap: 16px;
   align-items: center;
   flex-wrap: wrap;
+  width: 100%;
 }
 
 .filter-row {
@@ -2359,6 +2321,23 @@ onBeforeUnmount(() => {
 
 .filter-select {
   width: 180px;
+}
+
+.content-split {
+  display: grid;
+  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.batch-form-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 8fr) minmax(0, 16fr);
+  gap: 12px;
+}
+
+.sa-table :deep(tr.current-row) > td {
+  background: rgba(67, 109, 185, 0.08);
 }
 
 .filter-label {
@@ -2379,7 +2358,7 @@ onBeforeUnmount(() => {
   border-radius: 20px;
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.1)),
-    rgba(255, 255, 255, 0.9);
+    var(--ls-card);
 }
 
 .batch-header {
@@ -2421,7 +2400,7 @@ onBeforeUnmount(() => {
   margin: 14px 0 18px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--ls-panel-soft);
   border: 1px solid rgba(67, 109, 185, 0.12);
 }
 
@@ -2438,6 +2417,10 @@ onBeforeUnmount(() => {
 .template-manager-header,
 .template-card-header {
   align-items: flex-start;
+}
+
+.template-panel-header {
+  width: 100%;
 }
 
 .template-panel-title,
@@ -2579,7 +2562,7 @@ onBeforeUnmount(() => {
   padding: 14px 16px;
   border-radius: 18px;
   border: 1px solid rgba(67, 109, 185, 0.12);
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--ls-card);
 }
 
 .template-card-active {
@@ -2589,7 +2572,7 @@ onBeforeUnmount(() => {
 
 .template-card-comment {
   margin-top: 10px;
-  color: #1f2a44;
+  color: var(--ls-text);
   line-height: 1.75;
   white-space: pre-wrap;
   word-break: break-word;
@@ -2608,7 +2591,7 @@ onBeforeUnmount(() => {
   border-radius: 20px;
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.1)),
-    rgba(255, 255, 255, 0.92);
+    var(--ls-card);
   border: 1px solid rgba(67, 109, 185, 0.12);
 }
 
@@ -2662,7 +2645,7 @@ onBeforeUnmount(() => {
   padding: 12px 14px;
   border: 1px solid rgba(67, 109, 185, 0.14);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--ls-card);
   text-align: left;
   cursor: pointer;
   transition:
@@ -2681,7 +2664,7 @@ onBeforeUnmount(() => {
   border-color: rgba(67, 109, 185, 0.42);
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
-    rgba(255, 255, 255, 0.98);
+    var(--ls-card);
 }
 
 .grading-file-name,
@@ -2691,7 +2674,7 @@ onBeforeUnmount(() => {
 
 .grading-file-name {
   font-weight: 700;
-  color: #1f2a44;
+  color: var(--ls-ink);
   word-break: break-word;
 }
 
@@ -2709,7 +2692,7 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(67, 109, 185, 0.14);
   background:
     radial-gradient(circle at top left, rgba(67, 109, 185, 0.08), transparent 45%),
-    rgba(255, 255, 255, 0.96);
+    var(--ls-card);
 }
 
 .grading-preview-fallback {
@@ -2733,7 +2716,7 @@ onBeforeUnmount(() => {
 .student-card {
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .content-block h3 {
@@ -2763,14 +2746,14 @@ onBeforeUnmount(() => {
 
 .file-item:hover {
   border-color: rgba(67, 109, 185, 0.22);
-  background: rgba(67, 109, 185, 0.05);
+  background: var(--ls-nav-hover-bg);
 }
 
 .file-item-active {
   border-color: rgba(67, 109, 185, 0.35);
   background:
     linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.08)),
-    rgba(255, 255, 255, 0.98);
+    var(--ls-card);
   box-shadow: 0 8px 22px rgba(67, 109, 185, 0.08);
 }
 
@@ -2829,8 +2812,8 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 16px;
   border-radius: 16px;
-  background: rgba(67, 109, 185, 0.08);
-  color: #1f2a44;
+  background: var(--ls-panel-soft);
+  color: var(--ls-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   line-height: 1.7;
   white-space: pre-wrap;
@@ -2854,6 +2837,11 @@ onBeforeUnmount(() => {
   .grading-sidebar-actions {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .content-split,
+  .batch-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .filter-select,
@@ -2881,11 +2869,11 @@ onBeforeUnmount(() => {
     justify-content: stretch;
   }
 
-  .batch-actions :deep(.el-button) {
+  .batch-actions :deep(.n-button) {
     width: 100%;
   }
 
-  .template-editor-actions :deep(.el-button) {
+  .template-editor-actions :deep(.n-button) {
     width: 100%;
   }
 

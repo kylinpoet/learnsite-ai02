@@ -1,141 +1,167 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">签到管理</p>
-        <h2>教师签到与出勤</h2>
-        <p class="hero-copy">
-          按班级和日期查看签到状态，支持导出全量、已签到和缺席名单。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadAttendance">刷新</el-button>
-        <el-button :disabled="!attendance?.selected_class_id" plain @click="downloadAttendance('all')">
+    <SaPageHeader
+      compact
+      description="按班级和日期查看签到状态，可导出全量、已签到与缺席名单。"
+      eyebrow="签到管理"
+      title="教师签到与出勤"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadAttendance">刷新</n-button>
+        <n-button :disabled="!attendance?.selected_class_id" secondary @click="downloadAttendance('all')">
           导出签到表
-        </el-button>
-        <el-button :disabled="!attendance?.selected_class_id" plain @click="downloadAttendance('absent')">
+        </n-button>
+        <n-button :disabled="!attendance?.selected_class_id" secondary @click="downloadAttendance('absent')">
           导出缺席名单
-        </el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="9" />
-        </el-card>
+        </n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <div v-if="attendance" class="page-stack">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">班级数</p>
-              <p class="metric-value">{{ attendance.summary.class_count }}</p>
-              <p class="metric-note">当前账号可访问班级</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">学生总数</p>
-              <p class="metric-value">{{ attendance.summary.student_count }}</p>
-              <p class="metric-note">按权限范围汇总</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已签到</p>
-              <p class="metric-value">{{ attendance.summary.present_count }}</p>
-              <p class="metric-note">当天签到记录</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">未签到</p>
-              <p class="metric-value">{{ attendance.summary.absent_count }}</p>
-              <p class="metric-note">当天缺席人数</p>
-            </article>
-          </div>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="filter-row">
-                  <el-select v-model="filters.classId" class="filter-select" placeholder="选择班级" @change="loadAttendance">
-                    <el-option
-                      v-for="item in attendance.classes"
-                      :key="item.id"
-                      :label="`${item.class_name} · 已到 ${item.present_count} / ${item.student_count}`"
-                      :value="item.id"
-                    />
-                  </el-select>
-                  <el-date-picker
-                    v-model="filters.attendanceDate"
-                    class="filter-select"
-                    format="YYYY-MM-DD"
-                    type="date"
-                    value-format="YYYY-MM-DD"
-                    @change="loadAttendance"
-                  />
-                  <el-select v-model="statusFilter" class="filter-select" placeholder="状态筛选">
-                    <el-option label="全部" value="all" />
-                    <el-option label="已签到" value="present" />
-                    <el-option label="未签到" value="absent" />
-                  </el-select>
-                </div>
-                <div class="chip-row">
-                  <el-tag v-if="attendance.selected_class" round>
-                    {{ attendance.selected_class.class_name }}
-                  </el-tag>
-                  <el-tag v-if="attendance.selected_class" round type="success">
-                    已签到 {{ attendance.selected_class.present_count }}
-                  </el-tag>
-                  <el-tag v-if="attendance.selected_class" round type="warning">
-                    未签到 {{ attendance.selected_class.absent_count }}
-                  </el-tag>
-                </div>
-              </div>
-            </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="9" animated />
+    </SaPanel>
 
-            <el-empty v-if="!attendance.records.length" description="当前日期没有签到数据" />
-
-            <el-table v-else :data="filteredRecords" stripe>
-              <el-table-column label="学号" min-width="110" prop="student_no" />
-              <el-table-column label="姓名" min-width="120" prop="display_name" />
-              <el-table-column label="账号" min-width="120" prop="username" />
-              <el-table-column label="状态" min-width="110">
-                <template #default="{ row }">
-                  <el-tag :type="row.status === 'present' ? 'success' : 'warning'" round>
-                    {{ row.status === 'present' ? '已签到' : '未签到' }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="签到时间" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.checked_in_at) }}</template>
-              </el-table-column>
-              <el-table-column label="签到来源" min-width="120">
-                <template #default="{ row }">{{ row.signin_source || '--' }}</template>
-              </el-table-column>
-              <el-table-column label="座位" min-width="100">
-                <template #default="{ row }">{{ row.seat_label || '--' }}</template>
-              </el-table-column>
-              <el-table-column label="机房" min-width="130">
-                <template #default="{ row }">{{ row.room_name || '--' }}</template>
-              </el-table-column>
-              <el-table-column label="登录 IP" min-width="140">
-                <template #default="{ row }">{{ row.client_ip || '--' }}</template>
-              </el-table-column>
-            </el-table>
-          </el-card>
+    <div v-else-if="attendance" class="page-stack">
+      <div class="attendance-head">
+        <div class="ls-row">
+          <article class="metric-tile">
+            <p class="metric-label">出勤率</p>
+            <p class="metric-value">{{ overallRate }}%</p>
+            <p class="metric-note">按当天全班签到人数计算</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">已签到</p>
+            <p class="metric-value">{{ attendance.summary.present_count }}</p>
+            <p class="metric-note">当天签到记录</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">未签到</p>
+            <p class="metric-value">{{ attendance.summary.absent_count }}</p>
+            <p class="metric-note">当天缺席人数</p>
+          </article>
+          <article class="metric-tile">
+            <p class="metric-label">学生总数</p>
+            <p class="metric-value">{{ attendance.summary.student_count }}</p>
+            <p class="metric-note">{{ attendance.summary.class_count }} 个班级汇总</p>
+          </article>
         </div>
-      </template>
-    </el-skeleton>
+        <div class="filter-row attendance-filters">
+          <n-select
+            v-model:value="filters.classId"
+            :options="classOptions"
+            class="filter-select"
+            placeholder="选择班级"
+            @update:value="loadAttendance"
+          />
+          <n-date-picker
+            v-model:formatted-value="filters.attendanceDate"
+            class="filter-select"
+            format="yyyy-MM-dd"
+            type="date"
+            value-format="yyyy-MM-dd"
+            @update:formatted-value="loadAttendance"
+          />
+          <n-select
+            v-model:value="statusFilter"
+            :options="statusOptions"
+            class="filter-select filter-select--status"
+            placeholder="状态筛选"
+          />
+        </div>
+      </div>
+
+      <div class="attendance-body-grid">
+        <SaPanel class="attendance-table-panel">
+          <template #header>
+            <div class="toolbar-row">
+              <div class="info-row">
+                <span>当班签到明细</span>
+                <n-tag v-if="attendance.selected_class" round>
+                  {{ attendance.selected_class.class_name }}
+                </n-tag>
+                <n-tag v-if="attendance.selected_class" round type="success">
+                  已签到 {{ attendance.selected_class.present_count }}
+                </n-tag>
+                <n-tag v-if="attendance.selected_class" round type="warning">
+                  未签到 {{ attendance.selected_class.absent_count }}
+                </n-tag>
+              </div>
+              <span class="section-note">当前显示 {{ filteredRecords.length }} 条</span>
+            </div>
+          </template>
+
+          <SaDataTable
+            :data="filteredRecords"
+            empty-text="当前日期没有签到数据"
+            row-key="user_id"
+            stripe
+          >
+            <SaTableColumn label="学号" min-width="110" prop="student_no" />
+            <SaTableColumn label="姓名" min-width="120" prop="display_name" />
+            <SaTableColumn label="账号" min-width="120" prop="username" />
+            <SaTableColumn label="状态" min-width="110">
+              <template #default="{ row }">
+                <n-tag :type="row.status === 'present' ? 'success' : 'warning'" round>
+                  {{ row.status === 'present' ? '已签到' : '未签到' }}
+                </n-tag>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="签到时间" min-width="170">
+              <template #default="{ row }">{{ formatDateTime(row.checked_in_at) }}</template>
+            </SaTableColumn>
+            <SaTableColumn label="签到来源" min-width="120">
+              <template #default="{ row }">{{ row.signin_source || '--' }}</template>
+            </SaTableColumn>
+            <SaTableColumn label="座位" min-width="100">
+              <template #default="{ row }">{{ row.seat_label || '--' }}</template>
+            </SaTableColumn>
+            <SaTableColumn label="机房" min-width="130">
+              <template #default="{ row }">{{ row.room_name || '--' }}</template>
+            </SaTableColumn>
+            <SaTableColumn label="登录 IP" min-width="140">
+              <template #default="{ row }">{{ row.client_ip || '--' }}</template>
+            </SaTableColumn>
+          </SaDataTable>
+        </SaPanel>
+
+        <div class="attendance-rail">
+          <SaPanel title="出勤率">
+            <template #actions>
+              <n-tag round :type="overallRate >= 90 ? 'success' : overallRate >= 60 ? 'warning' : 'error'">
+                {{ overallRate }}%
+              </n-tag>
+            </template>
+            <n-empty v-if="!attendance.summary.student_count" description="当天还没有可统计的签到数据。" />
+            <AppChart v-else :height="190" :option="attendanceDonutOption" />
+          </SaPanel>
+
+          <SaPanel title="各班出勤对比" description="柱高为该班学生总数，深色为已签到">
+            <n-empty v-if="!attendance.classes.length" description="暂无可对比的班级。" />
+            <AppChart v-else :height="210" :option="classAttendanceOption" />
+          </SaPanel>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NDatePicker, NEmpty, NSelect, NSkeleton, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { apiGet, apiGetBlob } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type AttendanceClassItem = {
   id: number;
@@ -184,6 +210,7 @@ type AttendancePayload = {
 
 const authStore = useAuthStore();
 const route = useRoute();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const attendance = ref<AttendancePayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -193,12 +220,104 @@ const filters = ref({
   attendanceDate: '',
 });
 
+const classOptions = computed(() =>
+  (attendance.value?.classes || []).map((item) => ({
+    label: `${item.class_name} · 已到 ${item.present_count} / ${item.student_count}`,
+    value: item.id,
+  })),
+);
+
+const statusOptions = [
+  { label: '全部', value: 'all' },
+  { label: '已签到', value: 'present' },
+  { label: '未签到', value: 'absent' },
+];
+
 const filteredRecords = computed(() => {
   const records = attendance.value?.records || [];
   if (statusFilter.value === 'all') {
     return records;
   }
   return records.filter((item) => item.status === statusFilter.value);
+});
+
+const overallRate = computed(() => {
+  const summary = attendance.value?.summary;
+  if (!summary?.student_count) {
+    return 0;
+  }
+  return Math.round((summary.present_count / summary.student_count) * 100);
+});
+
+const attendanceDonutOption = computed(() => {
+  const summary = attendance.value?.summary;
+  const present = summary?.present_count ?? 0;
+  const absent = summary?.absent_count ?? 0;
+  const rate = overallRate.value;
+
+  return base({
+    tooltip: tooltip('item'),
+    legend: legend({ bottom: 0, top: 'auto' }),
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '74%'],
+        center: ['50%', '44%'],
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
+        label: { show: false },
+        data: [
+          { value: present, name: '已签到', itemStyle: { color: palette.value[2] } },
+          { value: absent, name: '未签到', itemStyle: { color: tokens.value.border } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '38%',
+        style: { text: `${rate}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '50%',
+        style: { text: '出勤率', fill: tokens.value.muted, fontSize: 12 },
+      },
+    ],
+  });
+});
+
+const classAttendanceOption = computed(() => {
+  const classes = attendance.value?.classes || [];
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid(),
+    xAxis: axisX(classes.map((item) => item.class_name)),
+    yAxis: axisY(),
+    series: [
+      {
+        name: '已签到',
+        type: 'bar',
+        stack: 'attendance',
+        barMaxWidth: 34,
+        itemStyle: { color: palette.value[2], borderRadius: [0, 0, 0, 0] },
+        emphasis: { focus: 'series' },
+        data: classes.map((item) => item.present_count),
+      },
+      {
+        name: '未签到',
+        type: 'bar',
+        stack: 'attendance',
+        barMaxWidth: 34,
+        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
+        emphasis: { focus: 'series' },
+        data: classes.map((item) => item.absent_count),
+      },
+    ],
+  });
 });
 
 function formatDateTime(value: string | null) {
@@ -304,11 +423,50 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* 顶部：摘要条与筛选并排成一行，避免「四张指标卡 + 独立筛选面板」两层留白 */
+.attendance-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.attendance-filters {
+  flex-wrap: nowrap;
+}
+
+/* 主体：签到明细为 8 列主区，出勤图表收进 4 列上下文栏 */
+.attendance-body-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.attendance-rail {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.attendance-rail :deep(.sa-panel__body) {
+  padding: 12px;
+}
+
 .toolbar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -320,6 +478,41 @@ onMounted(() => {
 }
 
 .filter-select {
-  width: 220px;
+  width: 200px;
+}
+
+.filter-select--status {
+  width: 140px;
+}
+
+@media (max-width: 1439px) {
+  .attendance-body-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attendance-rail {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .attendance-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .attendance-filters {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .attendance-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .filter-select,
+  .filter-select--status {
+    width: 100%;
+  }
 }
 </style>

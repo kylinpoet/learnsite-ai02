@@ -1,22 +1,22 @@
 <template>
   <div>
-    <el-form-item :label="entryLabel">
-      <el-input v-model="entryPathValue" :placeholder="entryPlaceholder" />
-    </el-form-item>
+    <n-form-item :label="entryLabel">
+      <n-input v-model:value="entryPathValue" :placeholder="entryPlaceholder" />
+    </n-form-item>
     <p v-for="(note, index) in notes" :key="index" class="section-note">{{ note }}</p>
     <div class="asset-actions">
-      <el-button :disabled="!canUpload" plain @click="openTaskAssetPicker(task, slot, 'files')">
+      <n-button :disabled="!canUpload" secondary @click="openTaskAssetPicker(task, slot, 'files')">
         {{ filesButtonLabel }}
-      </el-button>
-      <el-button :disabled="!canUpload" plain @click="openTaskAssetPicker(task, slot, 'folder')">
+      </n-button>
+      <n-button :disabled="!canUpload" secondary @click="openTaskAssetPicker(task, slot, 'folder')">
         {{ folderButtonLabel }}
-      </el-button>
-      <el-button :loading="generationLoading" plain @click="openTaskHtmlPromptDialog(task, slot)">
+      </n-button>
+      <n-button :loading="generationLoading" secondary @click="openTaskHtmlPromptDialog(task, slot)">
         {{ generateButtonLabel }}
-      </el-button>
-      <el-button :disabled="!canUpload" plain @click="uploadTaskHtmlSource(task, slot)">
+      </n-button>
+      <n-button :disabled="!canUpload" secondary @click="uploadTaskHtmlSource(task, slot)">
         {{ saveSourceButtonLabel }}
-      </el-button>
+      </n-button>
       <input
         :id="taskAssetInputId(task, slot, 'files')"
         class="file-input"
@@ -40,18 +40,24 @@
           <strong>{{ sourceTitle }}</strong>
           <span class="section-note">{{ sourceNote }}</span>
         </div>
-        <el-input
-          v-model="htmlSourceValue"
+        <n-input
+          v-model:value="htmlSourceValue"
           class="slot-split-panel__editor"
           :autosize="{ minRows: 14, maxRows: 32 }"
           :placeholder="sourcePlaceholder"
           spellcheck="false"
           type="textarea"
         />
-        <el-table v-if="showAssetTable && assets.length" :data="assets" size="small" stripe>
-          <el-table-column :label="assetTablePathLabel" min-width="280" prop="path" />
-          <el-table-column :label="assetTableSizeLabel" min-width="90" prop="size_kb" />
-        </el-table>
+        <SaDataTable
+          v-if="showAssetTable && assets.length"
+          :data="assets"
+          row-key="path"
+          size="small"
+          stripe
+        >
+          <SaTableColumn :label="assetTablePathLabel" min-width="280" prop="path" />
+          <SaTableColumn :label="assetTableSizeLabel" min-width="90" prop="size_kb" />
+        </SaDataTable>
       </section>
       <section class="slot-split-panel slot-split-panel--preview">
         <div class="slot-split-panel__head">
@@ -83,14 +89,18 @@
           @load="handleTaskPreviewLoad(task, slot, $event)"
           @error="handleTaskPreviewError(task, slot)"
         ></iframe>
-        <el-empty v-else :description="emptyDescription" />
+        <n-empty v-else :description="emptyDescription" />
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NButton, NEmpty, NFormItem, NInput } from 'naive-ui';
 import { computed } from 'vue';
+
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 
 import TaskPreviewFeedbackPanel from './TaskPreviewFeedbackPanel.vue';
 import type {
@@ -210,7 +220,7 @@ const htmlSourceValue = computed({
   align-content: start;
 }
 
-.slot-split-panel__editor :deep(.el-textarea__inner) {
+.slot-split-panel__editor :deep(.n-input__textarea-el) {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   line-height: 1.55;
   white-space: pre;

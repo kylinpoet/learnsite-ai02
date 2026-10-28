@@ -1,193 +1,195 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">打字内容管理</p>
-        <h2>教师打字内容与成绩概览</h2>
-        <p class="hero-copy">
-          教师可在这里统一管理中文打字、拼音打字等练习内容，并查看每套内容的使用情况。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadBootstrap">刷新数据</el-button>
-        <el-button plain @click="resetForm">重置表单</el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="12" />
-        </el-card>
+    <SaPageHeader
+      compact
+      description="统一管理中文打字、拼音打字等练习内容，并查看每套内容的使用情况。"
+      eyebrow="打字内容管理"
+      title="教师打字内容与成绩概览"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadBootstrap">刷新数据</n-button>
+        <n-button secondary @click="resetForm">重置表单</n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <template v-if="bootstrap">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">班级数量</p>
-              <p class="metric-value">{{ bootstrap.classes.length }}</p>
-              <p class="metric-note">当前账号可见班级</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">内容套数</p>
-              <p class="metric-value">{{ bootstrap.sets.length }}</p>
-              <p class="metric-note">全部打字练习内容</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">启用中</p>
-              <p class="metric-value">{{ activeSetCount }}</p>
-              <p class="metric-note">学生端可见的内容数量</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">最高速度</p>
-              <p class="metric-value">{{ bestSpeedOverall }}</p>
-              <p class="metric-note">按已有成绩统计</p>
-            </article>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="12" animated />
+    </SaPanel>
+
+    <template v-else-if="bootstrap">
+      <div class="ls-row">
+        <article class="metric-tile">
+          <p class="metric-label">班级数量</p>
+          <p class="metric-value">{{ bootstrap.classes.length }}</p>
+          <p class="metric-note">当前账号可见班级</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">内容套数</p>
+          <p class="metric-value">{{ bootstrap.sets.length }}</p>
+          <p class="metric-note">全部打字练习内容</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">启用中</p>
+          <p class="metric-value">{{ activeSetCount }}</p>
+          <p class="metric-note">学生端可见的内容数量</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">最高速度</p>
+          <p class="metric-value">{{ bestSpeedOverall }}</p>
+          <p class="metric-note">按已有成绩统计</p>
+        </article>
+      </div>
+
+      <SaPanel>
+        <template #header>
+          <div class="section-head">
+            <div>
+              <h3>内容练习与成绩对比</h3>
+              <p class="section-note">柱为练习次数，折线为平均 / 最佳速度（CPM），快速定位热门与难点内容。</p>
+            </div>
+          </div>
+        </template>
+        <n-empty v-if="!bootstrap.sets.length" description="当前还没有打字练习内容。" />
+        <AppChart v-else :height="300" :option="setPerformanceOption" />
+      </SaPanel>
+
+      <div class="split-grid">
+        <SaPanel>
+          <template #header>
+            <div class="section-head">
+              <div>
+                <h3>新建打字内容</h3>
+                <p class="section-note">支持英文、中文和拼音三种模式。</p>
+              </div>
+            </div>
+          </template>
+
+          <n-form label-placement="top" @submit.prevent>
+            <n-form-item label="标题">
+              <n-input v-model:value="form.title" maxlength="120" placeholder="例如：拼音训练 · 人工智能应用" />
+            </n-form-item>
+
+            <div class="form-inline-grid">
+              <n-form-item label="练习模式">
+                <n-select v-model:value="form.typing_mode" :options="typingModeOptions" class="full-width" />
+              </n-form-item>
+              <n-form-item label="难度">
+                <n-select v-model:value="form.difficulty" :options="difficultyOptions" class="full-width" />
+              </n-form-item>
+            </div>
+
+            <n-form-item label="内容说明">
+              <n-input
+                v-model:value="form.description"
+                :rows="3"
+                maxlength="1000"
+                placeholder="说明练习主题或适用年级"
+                type="textarea"
+              />
+            </n-form-item>
+
+            <n-form-item label="练习正文">
+              <n-input
+                v-model:value="form.content"
+                :rows="10"
+                maxlength="10000"
+                placeholder="请输入学生实际要练习输入的正文内容"
+                type="textarea"
+              />
+            </n-form-item>
+
+            <n-form-item label="是否启用">
+              <n-switch v-model:value="form.is_active">
+                <template #checked>启用</template>
+                <template #unchecked>停用</template>
+              </n-switch>
+            </n-form-item>
+
+            <n-button :loading="submitting" type="primary" @click="submitSet">保存内容</n-button>
+          </n-form>
+        </SaPanel>
+
+        <SaPanel>
+          <template #header>
+            <div class="section-head">
+              <div>
+                <h3>内容列表</h3>
+                <p class="section-note">可按模式快速筛选查看。</p>
+              </div>
+              <n-radio-group v-model:value="activeMode" size="small">
+                <n-radio-button value="all">全部</n-radio-button>
+                <n-radio-button value="english">英文</n-radio-button>
+                <n-radio-button value="chinese">中文</n-radio-button>
+                <n-radio-button value="pinyin">拼音</n-radio-button>
+              </n-radio-group>
+            </div>
+          </template>
+
+          <div class="chip-row classroom-chip-row">
+            <n-tag v-for="item in bootstrap.classes" :key="item.id" round>
+              {{ item.class_name }} · {{ item.student_count }} 人
+            </n-tag>
           </div>
 
-          <el-row :gutter="16">
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>新建打字内容</h3>
-                      <p class="section-note">支持英文、中文和拼音三种模式。</p>
-                    </div>
-                  </div>
-                </template>
+          <n-empty v-if="!filteredSets.length" description="当前筛选条件下没有打字内容" />
 
-                <el-form label-position="top" @submit.prevent>
-                  <el-form-item label="标题">
-                    <el-input v-model="form.title" maxlength="120" placeholder="例如：拼音训练 · 人工智能应用" />
-                  </el-form-item>
-
-                  <div class="form-inline-grid">
-                    <el-form-item label="练习模式">
-                      <el-select v-model="form.typing_mode" class="full-width">
-                        <el-option label="英文" value="english" />
-                        <el-option label="中文" value="chinese" />
-                        <el-option label="拼音" value="pinyin" />
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item label="难度">
-                      <el-select v-model="form.difficulty" class="full-width">
-                        <el-option label="基础" value="基础" />
-                        <el-option label="提升" value="提升" />
-                        <el-option label="挑战" value="挑战" />
-                      </el-select>
-                    </el-form-item>
-                  </div>
-
-                  <el-form-item label="内容说明">
-                    <el-input
-                      v-model="form.description"
-                      :rows="3"
-                      maxlength="1000"
-                      placeholder="说明练习主题或适用年级"
-                      type="textarea"
-                    />
-                  </el-form-item>
-
-                  <el-form-item label="练习正文">
-                    <el-input
-                      v-model="form.content"
-                      :rows="10"
-                      maxlength="10000"
-                      placeholder="请输入学生实际要练习输入的正文内容"
-                      type="textarea"
-                    />
-                  </el-form-item>
-
-                  <el-form-item label="是否启用">
-                    <el-switch v-model="form.is_active" active-text="启用" inactive-text="停用" />
-                  </el-form-item>
-
-                  <el-button :loading="submitting" type="primary" @click="submitSet">保存内容</el-button>
-                </el-form>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>内容列表</h3>
-                      <p class="section-note">可按模式快速筛选查看。</p>
-                    </div>
-                    <el-radio-group v-model="activeMode" size="small">
-                      <el-radio-button label="all">全部</el-radio-button>
-                      <el-radio-button label="english">英文</el-radio-button>
-                      <el-radio-button label="chinese">中文</el-radio-button>
-                      <el-radio-button label="pinyin">拼音</el-radio-button>
-                    </el-radio-group>
-                  </div>
-                </template>
-
-                <div class="chip-row classroom-chip-row">
-                  <el-tag v-for="item in bootstrap.classes" :key="item.id" round>
-                    {{ item.class_name }} · {{ item.student_count }} 人
-                  </el-tag>
+          <div v-else class="set-list">
+            <article
+              v-for="item in filteredSets"
+              :key="item.id"
+              class="set-card"
+            >
+              <div class="set-card__top">
+                <div>
+                  <h4>{{ item.title }}</h4>
+                  <p class="set-card__meta">
+                    {{ item.owner_name }} · {{ modeLabel(item.typing_mode) }} · {{ item.difficulty }}
+                  </p>
                 </div>
-
-                <el-empty v-if="!filteredSets.length" description="当前筛选条件下没有打字内容" />
-
-                <div v-else class="set-list">
-                  <article
-                    v-for="item in filteredSets"
-                    :key="item.id"
-                    class="set-card"
-                  >
-                    <div class="set-card__top">
-                      <div>
-                        <h4>{{ item.title }}</h4>
-                        <p class="set-card__meta">
-                          {{ item.owner_name }} · {{ modeLabel(item.typing_mode) }} · {{ item.difficulty }}
-                        </p>
-                      </div>
-                      <div class="chip-row">
-                        <el-tag :type="item.is_active ? 'success' : 'info'" round>
-                          {{ item.is_active ? '已启用' : '未启用' }}
-                        </el-tag>
-                        <el-tag round>{{ item.record_count }} 次练习</el-tag>
-                      </div>
-                    </div>
-
-                    <p class="set-card__desc">{{ item.description || '暂无内容说明。' }}</p>
-                    <p class="set-card__preview">{{ previewContent(item.content) }}</p>
-
-                    <div class="chip-row">
-                      <el-tag round type="success">
-                        平均速度 {{ item.average_speed ?? '--' }}
-                      </el-tag>
-                      <el-tag round type="warning">
-                        最佳速度 {{ item.best_speed ?? '--' }}
-                      </el-tag>
-                      <el-tag round type="info">
-                        更新于 {{ formatDateTime(item.updated_at) }}
-                      </el-tag>
-                    </div>
-                  </article>
+                <div class="chip-row">
+                  <n-tag :type="item.is_active ? 'success' : 'info'" round>
+                    {{ item.is_active ? '已启用' : '未启用' }}
+                  </n-tag>
+                  <n-tag round>{{ item.record_count }} 次练习</n-tag>
                 </div>
-              </el-card>
-            </el-col>
-          </el-row>
-        </template>
-      </template>
-    </el-skeleton>
+              </div>
+
+              <p class="set-card__desc">{{ item.description || '暂无内容说明。' }}</p>
+              <p class="set-card__preview">{{ previewContent(item.content) }}</p>
+
+              <div class="chip-row">
+                <n-tag round type="success">
+                  平均速度 {{ item.average_speed ?? '--' }}
+                </n-tag>
+                <n-tag round type="warning">
+                  最佳速度 {{ item.best_speed ?? '--' }}
+                </n-tag>
+                <n-tag round type="info">
+                  更新于 {{ formatDateTime(item.updated_at) }}
+                </n-tag>
+              </div>
+            </article>
+          </div>
+        </SaPanel>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NRadioButton, NRadioGroup, NSelect, NSkeleton, NSwitch, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue';
+import { ElMessage } from '@/ui/feedback';
 
 import { apiGet, apiPost } from '@/api/http';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type StaffTypingBootstrap = {
   classes: Array<{
@@ -214,12 +216,25 @@ type StaffTypingBootstrap = {
 };
 
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 
 const isLoading = ref(true);
 const errorMessage = ref('');
 const submitting = ref(false);
 const activeMode = ref<'all' | 'english' | 'chinese' | 'pinyin'>('all');
 const bootstrap = ref<StaffTypingBootstrap | null>(null);
+
+const typingModeOptions = [
+  { label: '英文', value: 'english' },
+  { label: '中文', value: 'chinese' },
+  { label: '拼音', value: 'pinyin' },
+];
+
+const difficultyOptions = [
+  { label: '基础', value: '基础' },
+  { label: '提升', value: '提升' },
+  { label: '挑战', value: '挑战' },
+];
 
 const form = reactive({
   title: '',
@@ -245,6 +260,53 @@ const activeSetCount = computed(() =>
 const bestSpeedOverall = computed(() => {
   const max = Math.max(...(bootstrap.value?.sets || []).map((item) => item.best_speed || 0), 0);
   return max || '--';
+});
+
+const setPerformanceOption = computed(() => {
+  const sets = (bootstrap.value?.sets || []).slice(0, 12);
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(sets.map((item) => item.title), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: [
+      axisY({ name: '练习次数', nameTextStyle: { color: tokens.value.muted } }),
+      axisY({ name: 'CPM', nameTextStyle: { color: tokens.value.muted }, splitLine: { show: false } }),
+    ],
+    series: [
+      {
+        name: '练习次数',
+        type: 'bar',
+        barMaxWidth: 30,
+        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
+        data: sets.map((item) => item.record_count),
+      },
+      {
+        name: '平均速度',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        connectNulls: true,
+        lineStyle: { color: palette.value[1] },
+        itemStyle: { color: palette.value[1] },
+        data: sets.map((item) => item.average_speed),
+      },
+      {
+        name: '最佳速度',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        connectNulls: true,
+        lineStyle: { color: palette.value[2], type: 'dashed' },
+        itemStyle: { color: palette.value[2] },
+        data: sets.map((item) => item.best_speed),
+      },
+    ],
+  });
 });
 
 function modeLabel(mode: string) {
@@ -346,6 +408,24 @@ onMounted(loadBootstrap);
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+  width: 100%;
+}
+
+.split-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.full-width {
+  width: 100%;
+}
+
+@media (max-width: 1199px) {
+  .split-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .section-head h3 {
@@ -373,7 +453,7 @@ onMounted(loadBootstrap);
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--ls-card);
 }
 
 .set-card__top {
@@ -397,7 +477,7 @@ onMounted(loadBootstrap);
 .set-card__preview {
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(248, 250, 255, 0.95);
+  background: var(--ls-panel-soft);
   color: var(--ls-text);
   line-height: 1.8;
 }

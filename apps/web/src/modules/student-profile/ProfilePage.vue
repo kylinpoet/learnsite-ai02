@@ -1,21 +1,17 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">个人资料中心</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">
-          这里已经整合基础资料、签到记录、密码修改，以及姓名/性别/相片维护和转班申请。
-          班级变更采用“提交申请-教师/管理员审核”机制，学生不能直接改动学籍班级。
-        </p>
-      </div>
-      <div class="action-row">
-        <el-button :loading="isLoading" type="primary" @click="loadProfile">刷新资料</el-button>
-        <el-button plain @click="goToWorkCenter">查看我的作品</el-button>
-      </div>
-    </section>
+    <SaPageHeader
+      description="这里已经整合基础资料、签到记录、密码修改，以及姓名/性别/相片维护和转班申请。班级变更采用“提交申请-教师/管理员审核”机制，学生不能直接改动学籍班级。"
+      eyebrow="个人资料中心"
+      :title="pageTitle"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadProfile">刷新资料</n-button>
+        <n-button secondary @click="goToWorkCenter">查看我的作品</n-button>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
     <div v-if="profileData" class="metric-grid">
       <article class="mini-panel">
@@ -40,333 +36,347 @@
       </article>
     </div>
 
-    <el-card class="soft-card">
-      <el-skeleton :loading="isLoading" animated>
-        <template #template>
-          <el-skeleton :rows="10" />
-        </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-        <template #default>
-          <el-tabs v-model="activeSection" @tab-change="handleTabChange">
-            <el-tab-pane label="基础信息" name="overview">
-              <div v-if="profileData" class="profile-grid">
-                <el-card class="soft-card inner-card">
-                  <template #header>基础资料</template>
-                  <div class="avatar-row">
-                    <div class="avatar-shell">
-                      <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="头像预览" class="avatar-image" />
-                      <div v-else class="avatar-placeholder">暂无头像</div>
-                    </div>
-                    <div class="stack-list">
-                      <el-tag round :type="profileData.profile.photo_available ? 'success' : 'info'">
-                        {{ profileData.profile.photo_available ? '已上传头像' : '未上传头像' }}
-                      </el-tag>
-                      <el-space wrap>
-                        <el-button :disabled="!canEditPhoto" plain @click="switchToSection('photo')">上传相片</el-button>
-                        <el-button :disabled="!canEditName" plain @click="switchToSection('name')">修改姓名</el-button>
-                        <el-button :disabled="!canEditGender" plain @click="switchToSection('gender')">修改性别</el-button>
-                        <el-button :disabled="!canEditClass" plain @click="switchToSection('class-transfer')">修改班级</el-button>
-                      </el-space>
-                    </div>
-                  </div>
-
-                  <el-descriptions :column="1" border>
-                    <el-descriptions-item label="姓名">{{ profileData.profile.name }}</el-descriptions-item>
-                    <el-descriptions-item label="登录账号">{{ profileData.profile.username }}</el-descriptions-item>
-                    <el-descriptions-item label="学号">{{ profileData.profile.student_no }}</el-descriptions-item>
-                    <el-descriptions-item label="班级">{{ profileData.profile.class_name }}</el-descriptions-item>
-                    <el-descriptions-item label="年级">{{ profileData.profile.grade_no }} 年级</el-descriptions-item>
-                    <el-descriptions-item label="性别">{{ profileData.profile.gender }}</el-descriptions-item>
-                    <el-descriptions-item label="入学年份">{{ profileData.profile.entry_year }}</el-descriptions-item>
-                    <el-descriptions-item label="机房座位">{{ currentSeatText }}</el-descriptions-item>
-                  </el-descriptions>
-                </el-card>
-
-                <el-card class="soft-card inner-card">
-                  <template #header>常用入口</template>
-                  <div class="stack-list">
-                    <article class="tip-card">
-                      <h3>资料维护提示</h3>
-                      <p>姓名、性别、相片和班级修改权限由班级统一配置；如当前不可修改，请联系教师或管理员。</p>
-                    </article>
-                    <article class="tip-card">
-                      <h3>课堂相关</h3>
-                      <p>签到记录展示最近 20 条，异常可联系任课教师核对当日课堂会话。</p>
-                    </article>
-                    <article class="tip-card">
-                      <h3>快捷跳转</h3>
-                      <div class="action-group">
-                        <el-button plain @click="goToHome">返回学习中心</el-button>
-                        <el-button plain @click="goToWorkCenter">查看我的作品</el-button>
-                        <el-button plain @click="goToAttendanceTab">查看签到记录</el-button>
-                      </div>
-                    </article>
-                  </div>
-                </el-card>
+    <SaPanel v-else>
+      <n-tabs v-model:value="activeSection" @update:value="handleTabChange">
+        <n-tab-pane name="overview" tab="基础信息">
+          <div v-if="profileData" class="profile-grid">
+            <SaPanel panel-class="inner-card" title="基础资料">
+              <div class="avatar-row">
+                <div class="avatar-shell">
+                  <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="头像预览" class="avatar-image" />
+                  <div v-else class="avatar-placeholder">暂无头像</div>
+                </div>
+                <div class="stack-list">
+                  <n-tag round :type="profileData.profile.photo_available ? 'success' : 'info'">
+                    {{ profileData.profile.photo_available ? '已上传头像' : '未上传头像' }}
+                  </n-tag>
+                  <n-space :wrap="true">
+                    <n-button :disabled="!canEditPhoto" secondary @click="switchToSection('photo')">上传相片</n-button>
+                    <n-button :disabled="!canEditName" secondary @click="switchToSection('name')">修改姓名</n-button>
+                    <n-button :disabled="!canEditGender" secondary @click="switchToSection('gender')">修改性别</n-button>
+                    <n-button :disabled="!canEditClass" secondary @click="switchToSection('class-transfer')">修改班级</n-button>
+                  </n-space>
+                </div>
               </div>
-            </el-tab-pane>
 
-            <el-tab-pane :label="attendanceTabLabel" name="attendance">
-              <el-card class="soft-card inner-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>最近签到记录</span>
-                    <el-tag round type="success">{{ profileData?.attendance_records.length || 0 }} 条</el-tag>
+              <n-descriptions :column="1" bordered>
+                <n-descriptions-item label="姓名">{{ profileData.profile.name }}</n-descriptions-item>
+                <n-descriptions-item label="登录账号">{{ profileData.profile.username }}</n-descriptions-item>
+                <n-descriptions-item label="学号">{{ profileData.profile.student_no }}</n-descriptions-item>
+                <n-descriptions-item label="班级">{{ profileData.profile.class_name }}</n-descriptions-item>
+                <n-descriptions-item label="年级">{{ profileData.profile.grade_no }} 年级</n-descriptions-item>
+                <n-descriptions-item label="性别">{{ profileData.profile.gender }}</n-descriptions-item>
+                <n-descriptions-item label="入学年份">{{ profileData.profile.entry_year }}</n-descriptions-item>
+                <n-descriptions-item label="机房座位">{{ currentSeatText }}</n-descriptions-item>
+              </n-descriptions>
+            </SaPanel>
+
+            <SaPanel panel-class="inner-card" title="常用入口">
+              <div class="stack-list">
+                <article class="tip-card">
+                  <h3>资料维护提示</h3>
+                  <p>姓名、性别、相片和班级修改权限由班级统一配置；如当前不可修改，请联系教师或管理员。</p>
+                </article>
+                <article class="tip-card">
+                  <h3>课堂相关</h3>
+                  <p>签到记录展示最近 20 条，异常可联系任课教师核对当日课堂会话。</p>
+                </article>
+                <article class="tip-card">
+                  <h3>快捷跳转</h3>
+                  <div class="action-group">
+                    <n-button secondary @click="goToHome">返回学习中心</n-button>
+                    <n-button secondary @click="goToWorkCenter">查看我的作品</n-button>
+                    <n-button secondary @click="goToAttendanceTab">查看签到记录</n-button>
                   </div>
+                </article>
+              </div>
+            </SaPanel>
+          </div>
+        </n-tab-pane>
+
+        <n-tab-pane :tab="attendanceTabLabel" name="attendance">
+          <SaPanel panel-class="inner-card">
+            <template #header>
+              <div class="info-row">
+                <span>最近签到记录</span>
+                <n-tag round type="success">{{ profileData?.attendance_records.length || 0 }} 条</n-tag>
+              </div>
+            </template>
+
+            <SaDataTable
+              :data="profileData?.attendance_records || []"
+              empty-text="还没有签到记录"
+              row-key="id"
+              stripe
+            >
+              <SaTableColumn label="签到日期" min-width="120">
+                <template #default="{ row }">{{ formatDate(row.attendance_date) }}</template>
+              </SaTableColumn>
+              <SaTableColumn label="签到时间" min-width="160">
+                <template #default="{ row }">{{ formatDateTime(row.checked_in_at) }}</template>
+              </SaTableColumn>
+              <SaTableColumn label="位置" min-width="180">
+                <template #default="{ row }">
+                  {{ row.room_name || '未绑定机房' }} / {{ row.seat_label || '未识别座位' }}
                 </template>
+              </SaTableColumn>
+              <SaTableColumn label="来源" min-width="120" prop="signin_source" />
+              <SaTableColumn label="登录 IP" min-width="140">
+                <template #default="{ row }">{{ row.client_ip || '--' }}</template>
+              </SaTableColumn>
+            </SaDataTable>
+          </SaPanel>
+        </n-tab-pane>
 
-                <el-empty v-if="!profileData?.attendance_records.length" description="还没有签到记录" />
+        <n-tab-pane name="security" tab="密码修改">
+          <div class="profile-grid">
+            <SaPanel panel-class="inner-card" title="修改密码">
+              <n-form label-placement="top">
+                <n-form-item label="当前密码">
+                  <n-input v-model:value="passwordForm.current_password" show-password-on="click" type="password" />
+                </n-form-item>
+                <n-form-item label="新密码">
+                  <n-input v-model:value="passwordForm.new_password" show-password-on="click" type="password" />
+                </n-form-item>
+                <n-form-item label="确认新密码">
+                  <n-input v-model:value="passwordForm.confirm_password" show-password-on="click" type="password" />
+                </n-form-item>
+                <div class="action-group">
+                  <n-button :loading="isSavingPassword" type="primary" @click="submitPasswordChange">保存新密码</n-button>
+                  <n-button secondary @click="resetPasswordForm">清空</n-button>
+                </div>
+              </n-form>
+            </SaPanel>
 
-                <el-table v-else :data="profileData.attendance_records" stripe>
-                  <el-table-column label="签到日期" min-width="120">
-                    <template #default="{ row }">{{ formatDate(row.attendance_date) }}</template>
-                  </el-table-column>
-                  <el-table-column label="签到时间" min-width="160">
-                    <template #default="{ row }">{{ formatDateTime(row.checked_in_at) }}</template>
-                  </el-table-column>
-                  <el-table-column label="位置" min-width="180">
-                    <template #default="{ row }">
-                      {{ row.room_name || '未绑定机房' }} / {{ row.seat_label || '未识别座位' }}
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="来源" min-width="120" prop="signin_source" />
-                  <el-table-column label="登录 IP" min-width="140">
-                    <template #default="{ row }">{{ row.client_ip || '--' }}</template>
-                  </el-table-column>
-                </el-table>
-              </el-card>
-            </el-tab-pane>
-
-            <el-tab-pane label="密码修改" name="security">
-              <div class="profile-grid">
-                <el-card class="soft-card inner-card">
-                  <template #header>修改密码</template>
-                  <el-form label-position="top" @submit.prevent>
-                    <el-form-item label="当前密码">
-                      <el-input v-model="passwordForm.current_password" show-password />
-                    </el-form-item>
-                    <el-form-item label="新密码">
-                      <el-input v-model="passwordForm.new_password" show-password />
-                    </el-form-item>
-                    <el-form-item label="确认新密码">
-                      <el-input v-model="passwordForm.confirm_password" show-password />
-                    </el-form-item>
-                    <div class="action-group">
-                      <el-button :loading="isSavingPassword" type="primary" @click="submitPasswordChange">保存新密码</el-button>
-                      <el-button plain @click="resetPasswordForm">清空</el-button>
-                    </div>
-                  </el-form>
-                </el-card>
-
-                <el-card class="soft-card inner-card">
-                  <template #header>密码规则</template>
-                  <div class="stack-list">
-                    <article class="tip-card">
-                      <h3>建议做法</h3>
-                      <p>建议至少 6 位，并尽量包含字母和数字，避免与旧密码重复。</p>
-                    </article>
-                    <article class="tip-card">
-                      <h3>忘记密码</h3>
-                      <p>若无法登录，请联系教师或管理员在教师后台重置密码。</p>
-                    </article>
-                  </div>
-                </el-card>
+            <SaPanel panel-class="inner-card" title="密码规则">
+              <div class="stack-list">
+                <article class="tip-card">
+                  <h3>建议做法</h3>
+                  <p>建议至少 6 位，并尽量包含字母和数字，避免与旧密码重复。</p>
+                </article>
+                <article class="tip-card">
+                  <h3>忘记密码</h3>
+                  <p>若无法登录，请联系教师或管理员在教师后台重置密码。</p>
+                </article>
               </div>
-            </el-tab-pane>
+            </SaPanel>
+          </div>
+        </n-tab-pane>
 
-            <el-tab-pane label="修改姓名" name="name">
-              <el-card class="soft-card inner-card">
-                <template #header>姓名维护</template>
-                <el-form label-position="top" @submit.prevent>
-                  <el-form-item label="姓名">
-                    <el-input
-                      v-model="nameForm.name"
-                      :disabled="!canEditName"
-                      maxlength="50"
-                      placeholder="请输入真实姓名"
-                    />
-                  </el-form-item>
-                  <div class="action-group">
-                    <el-button :disabled="!canEditName" :loading="isSavingName" type="primary" @click="submitNameUpdate">保存姓名</el-button>
-                  </div>
-                  <p v-if="!canEditName" class="section-note">当前班级暂未开放姓名修改权限，请联系教师或管理员。</p>
-                </el-form>
-              </el-card>
-            </el-tab-pane>
-
-            <el-tab-pane label="修改性别" name="gender">
-              <el-card class="soft-card inner-card">
-                <template #header>性别维护</template>
-                <el-form label-position="top" @submit.prevent>
-                  <el-form-item label="性别">
-                    <el-radio-group v-model="genderForm.gender" :disabled="!canEditGender">
-                      <el-radio-button label="男">男</el-radio-button>
-                      <el-radio-button label="女">女</el-radio-button>
-                      <el-radio-button label="未知">未知</el-radio-button>
-                    </el-radio-group>
-                  </el-form-item>
-                  <div class="action-group">
-                    <el-button :disabled="!canEditGender" :loading="isSavingGender" type="primary" @click="submitGenderUpdate">保存性别</el-button>
-                  </div>
-                  <p v-if="!canEditGender" class="section-note">当前班级暂未开放性别修改权限，请联系教师或管理员。</p>
-                </el-form>
-              </el-card>
-            </el-tab-pane>
-
-            <el-tab-pane label="上传相片" name="photo">
-              <div class="profile-grid">
-                <el-card class="soft-card inner-card">
-                  <template #header>相片上传</template>
-                  <div class="stack-list">
-                    <div class="avatar-shell avatar-shell--large">
-                      <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="头像预览" class="avatar-image" />
-                      <div v-else class="avatar-placeholder">暂无头像</div>
-                    </div>
-                    <label class="upload-label">
-                      <span>选择图片（JPG/PNG/WEBP/GIF，≤2MB）</span>
-                      <input
-                        accept="image/*"
-                        class="upload-input"
-                        :disabled="!canEditPhoto"
-                        type="file"
-                        @change="handlePhotoFileChange"
-                      />
-                    </label>
-                    <p class="section-note">
-                      {{ selectedPhotoFileName || '尚未选择新图片' }}
-                    </p>
-                    <div class="action-group">
-                      <el-button :disabled="!canEditPhoto" :loading="isSavingPhoto" type="primary" @click="submitPhotoUpload">上传相片</el-button>
-                      <el-button :disabled="!canEditPhoto || !profileData?.profile.photo_available" plain type="danger" @click="deletePhoto">
-                        删除相片
-                      </el-button>
-                    </div>
-                    <p v-if="!canEditPhoto" class="section-note">当前班级暂未开放相片修改权限，请联系教师或管理员。</p>
-                  </div>
-                </el-card>
-
-                <el-card class="soft-card inner-card">
-                  <template #header>上传说明</template>
-                  <div class="stack-list">
-                    <article class="tip-card">
-                      <h3>建议图片</h3>
-                      <p>建议使用清晰正面头像，避免过暗、过曝或与本人不符的图片。</p>
-                    </article>
-                    <article class="tip-card">
-                      <h3>替换规则</h3>
-                      <p>每次上传都会覆盖旧相片，系统仅保留当前最新一张。</p>
-                    </article>
-                  </div>
-                </el-card>
+        <n-tab-pane name="name" tab="修改姓名">
+          <SaPanel panel-class="inner-card" title="姓名维护">
+            <n-form label-placement="top">
+              <n-form-item label="姓名">
+                <n-input
+                  v-model:value="nameForm.name"
+                  :disabled="!canEditName"
+                  :maxlength="50"
+                  placeholder="请输入真实姓名"
+                />
+              </n-form-item>
+              <div class="action-group">
+                <n-button :disabled="!canEditName" :loading="isSavingName" type="primary" @click="submitNameUpdate">保存姓名</n-button>
               </div>
-            </el-tab-pane>
+              <p v-if="!canEditName" class="section-note">当前班级暂未开放姓名修改权限，请联系教师或管理员。</p>
+            </n-form>
+          </SaPanel>
+        </n-tab-pane>
 
-            <el-tab-pane label="修改班级" name="class-transfer">
-              <div class="profile-grid">
-                <el-card class="soft-card inner-card">
-                  <template #header>转班申请</template>
-                  <el-form label-position="top" @submit.prevent>
-                    <el-form-item label="当前班级">
-                      <el-input :model-value="classTransferOptions.current_class_name || '--'" disabled />
-                    </el-form-item>
-                    <el-form-item label="目标班级">
-                      <el-select
-                        v-model="classTransferForm.target_class_id"
-                        :disabled="!canEditClass"
-                        class="full-width"
-                        filterable
-                        placeholder="请选择目标班级"
-                      >
-                        <el-option
-                          v-for="item in availableTransferClassOptions"
-                          :key="item.id"
-                          :label="item.class_name"
-                          :value="item.id"
-                        />
-                      </el-select>
-                    </el-form-item>
-                    <el-form-item label="申请说明（可选）">
-                      <el-input
-                        v-model="classTransferForm.reason"
-                        :disabled="!canEditClass"
-                        :rows="4"
-                        maxlength="300"
-                        show-word-limit
-                        type="textarea"
-                        placeholder="可填写转班原因，便于教师审核"
-                      />
-                    </el-form-item>
-                    <div class="action-group">
-                      <el-button
-                        :disabled="hasPendingClassTransfer || !canEditClass"
-                        :loading="isSavingClassTransfer"
-                        type="primary"
-                        @click="submitClassTransferRequest"
-                      >
-                        提交申请
-                      </el-button>
-                    </div>
-                    <p class="section-note">
-                      {{
-                        !canEditClass
-                          ? '当前班级暂未开放班级修改权限，请联系教师或管理员。'
-                          : hasPendingClassTransfer
-                            ? '你已有待审核申请，请先等待审核结果。'
-                            : '提交后需教师或管理员审核通过才会生效。'
-                      }}
-                    </p>
-                  </el-form>
-                </el-card>
+        <n-tab-pane name="gender" tab="修改性别">
+          <SaPanel panel-class="inner-card" title="性别维护">
+            <n-form label-placement="top">
+              <n-form-item label="性别">
+                <n-radio-group v-model:value="genderForm.gender" :disabled="!canEditGender">
+                  <n-radio-button value="男">男</n-radio-button>
+                  <n-radio-button value="女">女</n-radio-button>
+                  <n-radio-button value="未知">未知</n-radio-button>
+                </n-radio-group>
+              </n-form-item>
+              <div class="action-group">
+                <n-button :disabled="!canEditGender" :loading="isSavingGender" type="primary" @click="submitGenderUpdate">保存性别</n-button>
+              </div>
+              <p v-if="!canEditGender" class="section-note">当前班级暂未开放性别修改权限，请联系教师或管理员。</p>
+            </n-form>
+          </SaPanel>
+        </n-tab-pane>
 
-                <el-card class="soft-card inner-card">
-                  <template #header>
-                    <div class="info-row">
-                      <span>申请记录</span>
-                      <el-tag round>{{ classTransferRequests.length }} 条</el-tag>
-                    </div>
+        <n-tab-pane name="photo" tab="上传相片">
+          <div class="profile-grid">
+            <SaPanel panel-class="inner-card" title="相片上传">
+              <div class="stack-list">
+                <div class="avatar-shell avatar-shell--large">
+                  <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="头像预览" class="avatar-image" />
+                  <div v-else class="avatar-placeholder">暂无头像</div>
+                </div>
+                <label class="upload-label">
+                  <span>选择图片（JPG/PNG/WEBP/GIF，≤2MB）</span>
+                  <input
+                    accept="image/*"
+                    class="upload-input"
+                    :disabled="!canEditPhoto"
+                    type="file"
+                    @change="handlePhotoFileChange"
+                  />
+                </label>
+                <p class="section-note">
+                  {{ selectedPhotoFileName || '尚未选择新图片' }}
+                </p>
+                <div class="action-group">
+                  <n-button :disabled="!canEditPhoto" :loading="isSavingPhoto" type="primary" @click="submitPhotoUpload">上传相片</n-button>
+                  <n-button
+                    :disabled="!canEditPhoto || !profileData?.profile.photo_available"
+                    secondary
+                    type="error"
+                    @click="deletePhoto"
+                  >
+                    删除相片
+                  </n-button>
+                </div>
+                <p v-if="!canEditPhoto" class="section-note">当前班级暂未开放相片修改权限，请联系教师或管理员。</p>
+              </div>
+            </SaPanel>
+
+            <SaPanel panel-class="inner-card" title="上传说明">
+              <div class="stack-list">
+                <article class="tip-card">
+                  <h3>建议图片</h3>
+                  <p>建议使用清晰正面头像，避免过暗、过曝或与本人不符的图片。</p>
+                </article>
+                <article class="tip-card">
+                  <h3>替换规则</h3>
+                  <p>每次上传都会覆盖旧相片，系统仅保留当前最新一张。</p>
+                </article>
+              </div>
+            </SaPanel>
+          </div>
+        </n-tab-pane>
+
+        <n-tab-pane name="class-transfer" tab="修改班级">
+          <div class="profile-grid">
+            <SaPanel panel-class="inner-card" title="转班申请">
+              <n-form label-placement="top">
+                <n-form-item label="当前班级">
+                  <n-input :value="classTransferOptions.current_class_name || '--'" disabled />
+                </n-form-item>
+                <n-form-item label="目标班级">
+                  <n-select
+                    v-model:value="classTransferForm.target_class_id"
+                    :disabled="!canEditClass"
+                    :options="transferClassOptions"
+                    class="full-width"
+                    filterable
+                    placeholder="请选择目标班级"
+                  />
+                </n-form-item>
+                <n-form-item label="申请说明（可选）">
+                  <n-input
+                    v-model:value="classTransferForm.reason"
+                    :disabled="!canEditClass"
+                    :maxlength="300"
+                    :rows="4"
+                    placeholder="可填写转班原因，便于教师审核"
+                    show-count
+                    type="textarea"
+                  />
+                </n-form-item>
+                <div class="action-group">
+                  <n-button
+                    :disabled="hasPendingClassTransfer || !canEditClass"
+                    :loading="isSavingClassTransfer"
+                    type="primary"
+                    @click="submitClassTransferRequest"
+                  >
+                    提交申请
+                  </n-button>
+                </div>
+                <p class="section-note">
+                  {{
+                    !canEditClass
+                      ? '当前班级暂未开放班级修改权限，请联系教师或管理员。'
+                      : hasPendingClassTransfer
+                        ? '你已有待审核申请，请先等待审核结果。'
+                        : '提交后需教师或管理员审核通过才会生效。'
+                  }}
+                </p>
+              </n-form>
+            </SaPanel>
+
+            <SaPanel panel-class="inner-card">
+              <template #header>
+                <div class="info-row">
+                  <span>申请记录</span>
+                  <n-tag round>{{ classTransferRequests.length }} 条</n-tag>
+                </div>
+              </template>
+
+              <SaDataTable
+                :data="classTransferRequests"
+                empty-text="暂无转班申请记录"
+                row-key="id"
+                stripe
+              >
+                <SaTableColumn label="申请时间" min-width="160">
+                  <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+                </SaTableColumn>
+                <SaTableColumn label="当前班级" min-width="120">
+                  <template #default="{ row }">{{ row.current_class.class_name }}</template>
+                </SaTableColumn>
+                <SaTableColumn label="目标班级" min-width="120">
+                  <template #default="{ row }">{{ row.target_class.class_name }}</template>
+                </SaTableColumn>
+                <SaTableColumn label="状态" min-width="100">
+                  <template #default="{ row }">
+                    <n-tag round :type="classTransferStatusType(row.status)">
+                      {{ classTransferStatusLabel(row.status) }}
+                    </n-tag>
                   </template>
-
-                  <el-empty v-if="!classTransferRequests.length" description="暂无转班申请记录" />
-                  <el-table v-else :data="classTransferRequests" stripe>
-                    <el-table-column label="申请时间" min-width="160">
-                      <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
-                    </el-table-column>
-                    <el-table-column label="当前班级" min-width="120">
-                      <template #default="{ row }">{{ row.current_class.class_name }}</template>
-                    </el-table-column>
-                    <el-table-column label="目标班级" min-width="120">
-                      <template #default="{ row }">{{ row.target_class.class_name }}</template>
-                    </el-table-column>
-                    <el-table-column label="状态" min-width="100">
-                      <template #default="{ row }">
-                        <el-tag round :type="classTransferStatusType(row.status)">
-                          {{ classTransferStatusLabel(row.status) }}
-                        </el-tag>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="审核备注" min-width="180">
-                      <template #default="{ row }">{{ row.review_note || '--' }}</template>
-                    </el-table-column>
-                    <el-table-column label="审核人" min-width="120">
-                      <template #default="{ row }">{{ row.reviewed_by_name || '--' }}</template>
-                    </el-table-column>
-                  </el-table>
-                </el-card>
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </template>
-      </el-skeleton>
-    </el-card>
+                </SaTableColumn>
+                <SaTableColumn label="审核备注" min-width="180">
+                  <template #default="{ row }">{{ row.review_note || '--' }}</template>
+                </SaTableColumn>
+                <SaTableColumn label="审核人" min-width="120">
+                  <template #default="{ row }">{{ row.reviewed_by_name || '--' }}</template>
+                </SaTableColumn>
+              </SaDataTable>
+            </SaPanel>
+          </div>
+        </n-tab-pane>
+      </n-tabs>
+    </SaPanel>
   </div>
 </template>
 
 <script setup lang="ts">
+import {
+  NAlert,
+  NButton,
+  NDescriptions,
+  NDescriptionsItem,
+  NForm,
+  NFormItem,
+  NInput,
+  NRadioButton,
+  NRadioGroup,
+  NSelect,
+  NSkeleton,
+  NSpace,
+  NTabPane,
+  NTabs,
+  NTag,
+} from 'naive-ui';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '@/ui/feedback';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type ProfileEditPermissions = {
@@ -542,6 +552,12 @@ const availableTransferClassOptions = computed(() => {
   const currentClassId = profileData.value?.profile.class_id ?? 0;
   return classTransferOptions.value.classes.filter((item) => item.id !== currentClassId);
 });
+const transferClassOptions = computed(() =>
+  availableTransferClassOptions.value.map((item) => ({
+    label: item.class_name,
+    value: item.id,
+  })),
+);
 
 function formatDate(value: string | null) {
   if (!value) {
@@ -578,7 +594,7 @@ function classTransferStatusType(statusValue: string) {
     return 'success';
   }
   if (statusValue === 'rejected') {
-    return 'danger';
+    return 'error';
   }
   return 'info';
 }
@@ -902,7 +918,7 @@ onBeforeUnmount(() => {
   height: 90px;
   border-radius: 50%;
   border: 1px solid var(--ls-border);
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--ls-elevated);
   overflow: hidden;
   display: flex;
   align-items: center;
@@ -929,7 +945,7 @@ onBeforeUnmount(() => {
   padding: 16px 18px;
   border: 1px solid var(--ls-border);
   border-radius: 18px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(255, 255, 255, 0.8));
+  background: var(--ls-panel);
 }
 
 .tip-card h3,

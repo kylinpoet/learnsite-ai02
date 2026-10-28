@@ -1,0 +1,398 @@
+/* ===== 教师后台密度与栅格词法层 =====
+   目标：把「卡片多宽、留多少白」从每个页面手里收回到一处。
+   - 令牌：--ls-gap-* / --ls-radius-* / --ls-card-* / --ls-content-max
+   - 工具类：.ls-page（12 列栅格）、.ls-main（8 列）、.ls-rail（4 列）、.ls-row、.ls-stack、.ls-card
+   - 密度覆盖只在 .staff-layout 内生效，学生端与登录页不受影响。 */
+
+:root {
+  --ls-gap-xs: 6px;
+  --ls-gap-sm: 10px;
+  --ls-gap-md: 12px;
+  --ls-gap-lg: 18px;
+  --ls-radius-sm: 10px;
+  --ls-radius-md: 14px;
+  --ls-radius-lg: 18px;
+  --ls-card-pad: 14px;
+  --ls-card-h-sm: 88px;
+  --ls-content-max: 1680px;
+  --ls-rail-width: 320px;
+}
+
+/* ---------- 12 列栅格 ---------- */
+.ls-page {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--ls-gap-md);
+  align-items: start;
+}
+
+.ls-main,
+.ls-rail {
+  display: grid;
+  gap: var(--ls-gap-md);
+  min-width: 0;
+  align-content: start;
+}
+
+.ls-main {
+  grid-column: span 8;
+}
+
+.ls-rail {
+  grid-column: span 4;
+}
+
+.ls-span-3 {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+.ls-span-4 {
+  grid-column: span 4;
+  min-width: 0;
+}
+
+.ls-span-6 {
+  grid-column: span 6;
+  min-width: 0;
+}
+
+.ls-span-8 {
+  grid-column: span 8;
+  min-width: 0;
+}
+
+.ls-span-12,
+.ls-full {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* ---------- 纵向节奏 ---------- */
+.ls-stack {
+  display: grid;
+  gap: var(--ls-gap-sm);
+  align-content: start;
+  min-width: 0;
+}
+
+.ls-stack--md {
+  gap: var(--ls-gap-md);
+}
+
+/* ---------- 自适应指标条：宽屏 4 列，中屏 2 列，窄屏 1 列 ---------- */
+.ls-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ls-gap-sm);
+  min-width: 0;
+}
+
+/* ---------- 教师后台摘要条 ----------
+   .ls-row 里的 .metric-tile 原本是四张各自带标题/数字/灰说明的独立大卡（约 122px 高），
+   一排四张会把真正的作业区推到首屏以下。这里在 staff 壳内把它们收成「一条」摘要带：
+   数字在左、标签在右、说明降为一行小字，1px 分隔线代替卡片阴影。 */
+.staff-layout .ls-row:has(> .metric-tile) {
+  gap: 0;
+  padding: 2px 4px;
+  border: 1px solid var(--ls-border);
+  border-radius: var(--ls-radius-md);
+  background: var(--ls-panel-soft, var(--ls-card));
+  box-shadow: var(--ls-soft-shadow);
+  align-items: stretch;
+}
+
+.staff-layout .ls-row:has(> .metric-tile) > .metric-tile {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  align-content: center;
+  gap: 0 8px;
+  min-height: 56px;
+  padding: 9px 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.staff-layout .ls-row:has(> .metric-tile) > .metric-tile + .metric-tile::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 11px;
+  bottom: 11px;
+  width: 1px;
+  background: var(--ls-border);
+}
+
+.staff-layout .ls-row:has(> .metric-tile) > .metric-tile .metric-value {
+  order: 1;
+  margin: 0;
+  font-size: 21px;
+  line-height: 1.15;
+}
+
+.staff-layout .ls-row:has(> .metric-tile) > .metric-tile .metric-label {
+  order: 2;
+  font-size: 12.5px;
+}
+
+.staff-layout .ls-row:has(> .metric-tile) > .metric-tile .metric-note {
+  order: 3;
+  flex-basis: 100%;
+  margin: 1px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 摘要带换行成两列/一列时，去掉竖向分隔线，避免出现断在行首的短竖线 */
+@media (max-width: 1280px) {
+  .staff-layout .ls-row:has(> .metric-tile) > .metric-tile:nth-child(odd)::before {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .staff-layout .ls-row:has(> .metric-tile) > .metric-tile::before {
+    display: none;
+  }
+}
+
+.ls-row--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ls-row--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ls-row--5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* ---------- 紧凑卡片 ---------- */
+.ls-card {
+  display: grid;
+  gap: var(--ls-gap-sm);
+  min-width: 0;
+  padding: var(--ls-card-pad);
+  border: 1px solid var(--ls-border);
+  border-radius: var(--ls-radius-md);
+  background: var(--ls-card, var(--ls-surface));
+  box-shadow: var(--ls-soft-shadow);
+  align-content: start;
+}
+
+.ls-card--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ls-card--quiet {
+  background: var(--ls-panel-soft, var(--ls-surface));
+  box-shadow: none;
+}
+
+.ls-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ls-gap-sm);
+  min-width: 0;
+}
+
+.ls-card__title {
+  margin: 0;
+  color: var(--ls-ink);
+  font-family: var(--ls-display-font);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.ls-card__sub {
+  margin: 2px 0 0;
+  color: var(--ls-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ---------- 排版与状态 ---------- */
+.ls-num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+  font-weight: 650;
+  color: var(--ls-ink);
+  letter-spacing: -0.02em;
+}
+
+.ls-num--lg {
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.ls-num--xl {
+  font-size: 34px;
+  line-height: 1.05;
+}
+
+.ls-label {
+  color: var(--ls-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ls-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ls-gap-xs);
+  min-width: 0;
+}
+
+.ls-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ls-gap-md);
+  color: var(--ls-muted);
+  font-size: 12px;
+}
+
+.ls-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ls-muted);
+  flex: 0 0 auto;
+}
+
+/* 右栏列表：内部滚动，避免把页面拉长 */
+.ls-scroll {
+  max-height: 340px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.ls-empty {
+  margin: 0;
+  padding: 14px 4px;
+  color: var(--ls-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* 轮询更新时数字微闪 */
+@keyframes ls-num-flash {
+  0% {
+    opacity: 0.55;
+  }
+
+  100% {
+    opacity: 1;
+  }
+}
+
+.ls-flash {
+  animation: ls-num-flash 200ms ease-out;
+}
+
+/* ---------- 教师端密度覆盖（只影响 staff 壳层） ---------- */
+.staff-layout .page-content,
+.staff-layout .page-stack {
+  gap: var(--ls-gap-md);
+}
+
+.staff-layout .soft-card {
+  border-radius: var(--ls-radius-md);
+}
+
+.staff-layout .hero-panel {
+  padding: 16px;
+  border-radius: var(--ls-radius-md);
+}
+
+.staff-layout .metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ls-gap-sm);
+}
+
+.staff-layout .metric-tile,
+.staff-layout .mini-panel {
+  min-height: var(--ls-card-h-sm);
+  padding: var(--ls-card-pad);
+  border-radius: var(--ls-radius-md);
+  align-content: start;
+}
+
+.staff-layout .metric-label {
+  font-size: 12px;
+}
+
+.staff-layout .metric-value {
+  margin: 6px 0 4px;
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+}
+
+.staff-layout .stack-list {
+  gap: var(--ls-gap-sm);
+}
+
+/* ---------- 断点 ---------- */
+/* 1440px 以下主副栏才叠放：1600 宽屏（常见投影/一体机）仍保持 8+4 并排 */
+@media (max-width: 1439px) {
+  .ls-main {
+    grid-column: span 12;
+  }
+
+  .ls-rail {
+    grid-column: span 12;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1280px) {
+  .ls-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .staff-layout .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .ls-page {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ls-main,
+  .ls-rail,
+  .ls-span-3,
+  .ls-span-4,
+  .ls-span-6,
+  .ls-span-8 {
+    grid-column: auto;
+  }
+
+  .ls-rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .ls-row,
+  .ls-row--2,
+  .ls-row--3,
+  .staff-layout .metric-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1,5 +1,5 @@
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '@/ui/feedback';
 
 import { apiUpload } from '@/api/http';
 import type {

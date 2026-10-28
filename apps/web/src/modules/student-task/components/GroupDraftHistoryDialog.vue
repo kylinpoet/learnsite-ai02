@@ -1,6 +1,11 @@
 <template>
-  <el-dialog v-model="dialogVisible" title="共享草稿历史版本" width="min(1120px, 92vw)">
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+  <n-modal
+    v-model:show="dialogVisible"
+    preset="card"
+    title="共享草稿历史版本"
+    style="width: min(1120px, 92vw)"
+  >
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
     <div class="history-shell">
       <aside class="history-sidebar">
@@ -10,12 +15,12 @@
             <p class="history-note">默认对比当前版本与上一版的差异</p>
           </div>
           <div class="chip-row">
-            <el-tag round>{{ historyItems.length }} 条</el-tag>
-            <el-button :loading="isLoading" plain @click="loadHistory">刷新</el-button>
+            <n-tag round>{{ historyItems.length }} 条</n-tag>
+            <n-button :loading="isLoading" secondary @click="loadHistory">刷新</n-button>
           </div>
         </div>
 
-        <el-scrollbar max-height="60vh">
+        <div class="version-scroll">
           <div v-if="historyItems.length" class="version-list">
             <button
               v-for="item in historyItems"
@@ -27,26 +32,26 @@
             >
               <div class="version-card-top">
                 <strong>v{{ item.version_no }}</strong>
-                <el-tag round size="small" :type="tagType(item.event_type)">{{ item.event_label }}</el-tag>
+                <n-tag round size="small" :type="tagType(item.event_type)">{{ item.event_label }}</n-tag>
               </div>
               <p>{{ item.updated_by_name || '组内成员' }}</p>
               <p>{{ formatDateTime(item.occurred_at) }}</p>
             </button>
           </div>
-          <el-empty v-else description="还没有共享草稿历史" />
-        </el-scrollbar>
+          <n-empty v-else description="还没有共享草稿历史" />
+        </div>
       </aside>
 
       <section class="history-main">
         <template v-if="selectedItem">
           <div class="chip-row history-summary">
-            <el-tag round type="primary">当前 v{{ selectedItem.version_no }}</el-tag>
-            <el-tag round type="info">
+            <n-tag round type="primary">当前 v{{ selectedItem.version_no }}</n-tag>
+            <n-tag round type="info">
               {{ compareItem ? `对比 v${compareItem.version_no}` : '首个版本' }}
-            </el-tag>
-            <el-tag v-if="selectedItem.updated_by_name" round type="success">
+            </n-tag>
+            <n-tag v-if="selectedItem.updated_by_name" round type="success">
               {{ selectedItem.updated_by_name }}
-            </el-tag>
+            </n-tag>
           </div>
 
           <div class="history-preview-grid">
@@ -82,7 +87,7 @@
                 <span class="diff-sign">{{ line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ' }}</span>
                 <span class="diff-text">{{ line.text || ' ' }}</span>
               </article>
-              <el-empty v-if="!noteDiffLines.length" description="说明内容没有变化" />
+              <n-empty v-if="!noteDiffLines.length" description="说明内容没有变化" />
             </div>
           </article>
 
@@ -101,18 +106,19 @@
                 <span class="diff-sign">{{ line.type === 'added' ? '+' : line.type === 'removed' ? '-' : ' ' }}</span>
                 <span class="diff-text diff-text-code">{{ line.text || ' ' }}</span>
               </article>
-              <el-empty v-if="!codeDiffLines.length" description="代码内容没有变化" />
+              <n-empty v-if="!codeDiffLines.length" description="代码内容没有变化" />
             </div>
           </article>
         </template>
 
-        <el-empty v-else description="请选择要查看的版本" />
+        <n-empty v-else description="请选择要查看的版本" />
       </section>
     </div>
-  </el-dialog>
+  </n-modal>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NModal, NTag } from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 
 import { apiGet } from '@/api/http';
@@ -271,12 +277,12 @@ function formatDateTime(value: string | null) {
   return value.replace('T', ' ').slice(0, 16);
 }
 
-function tagType(eventType: string) {
+function tagType(eventType: string): 'success' | 'error' | 'info' {
   if (eventType === 'submitted') {
     return 'success';
   }
   if (eventType === 'cleared') {
-    return 'danger';
+    return 'error';
   }
   return 'info';
 }
@@ -328,7 +334,7 @@ watch(
   padding: 16px;
   border: 1px solid var(--ls-border);
   border-radius: 20px;
-  background: rgba(245, 250, 255, 0.92);
+  background: var(--ls-panel-soft);
 }
 
 .history-main {
@@ -368,6 +374,11 @@ watch(
   line-height: 1.7;
 }
 
+.version-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
 .version-list {
   display: grid;
   gap: 10px;
@@ -378,9 +389,9 @@ watch(
   gap: 6px;
   width: 100%;
   padding: 12px 14px;
-  border: 1px solid rgba(67, 109, 185, 0.12);
+  border: 1px solid var(--ls-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--ls-elevated);
   text-align: left;
   cursor: pointer;
 }
@@ -404,7 +415,7 @@ watch(
   padding: 18px;
   border: 1px solid var(--ls-border);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--ls-card);
 }
 
 .code-preview {
@@ -413,8 +424,8 @@ watch(
   overflow: auto;
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(15, 23, 42, 0.04);
-  color: #1f2a44;
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   font-size: 13px;
   line-height: 1.7;
@@ -434,7 +445,7 @@ watch(
   align-items: start;
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(15, 23, 42, 0.03);
+  background: var(--ls-chip-bg);
 }
 
 .diff-line-added {

@@ -6,6 +6,9 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 import type { EChartsType } from 'echarts/core';
 
+import { useAppStore } from '@/stores/app';
+import { readThemeToken } from '@/utils/themeTokens';
+
 const props = withDefaults(
   defineProps<{
     option: Record<string, unknown>;
@@ -20,6 +23,7 @@ const props = withDefaults(
 
 const chartRef = ref<HTMLDivElement | null>(null);
 const chartInstance = shallowRef<EChartsType | null>(null);
+const appStore = useAppStore();
 
 let resizeObserver: ResizeObserver | null = null;
 let removeWindowResizeListener: (() => void) | null = null;
@@ -27,6 +31,29 @@ let removeWindowResizeListener: (() => void) | null = null;
 const chartStyle = computed(() => ({
   height: typeof props.height === 'number' ? `${props.height}px` : props.height,
 }));
+
+/**
+ * 深色下补齐 ECharts 默认配色（坐标轴文字、tooltip 底色）。
+ * 页面自己的 option 优先，这里只填空缺项，避免覆盖各页面的业务配色。
+ */
+function withSchemeDefaults(option: Record<string, unknown>): Record<string, unknown> {
+  if (appStore.resolvedScheme !== 'dark') {
+    return option;
+  }
+  const textColor = readThemeToken('--ls-text', '#c8d2e4');
+  const borderColor = readThemeToken('--ls-border', 'rgba(150, 170, 205, 0.16)');
+  const elevated = readThemeToken('--ls-elevated', '#1a2130');
+  const tooltip = { ...((option.tooltip as Record<string, unknown> | undefined) ?? {}) };
+  tooltip.backgroundColor = tooltip.backgroundColor ?? elevated;
+  tooltip.borderColor = tooltip.borderColor ?? borderColor;
+  tooltip.textStyle = { color: textColor, ...((tooltip.textStyle as Record<string, unknown> | undefined) ?? {}) };
+
+  return {
+    ...option,
+    textStyle: { color: textColor, ...((option.textStyle as Record<string, unknown> | undefined) ?? {}) },
+    tooltip,
+  };
+}
 
 async function createChart() {
   if (!chartRef.value || chartInstance.value) {
@@ -49,11 +76,12 @@ async function createChart() {
     components.LegendComponent,
     components.DatasetComponent,
     components.TitleComponent,
+    components.GraphicComponent,
     renderers.CanvasRenderer,
   ]);
 
   chartInstance.value = init(chartRef.value);
-  chartInstance.value.setOption(props.option, true);
+  chartInstance.value.setOption(withSchemeDefaults(props.option), true);
 
   if (props.autoresize && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(() => {
@@ -73,10 +101,21 @@ watch(
     if (!chartInstance.value) {
       return;
     }
-    chartInstance.value.setOption(option, true);
+    chartInstance.value.setOption(withSchemeDefaults(option), true);
     chartInstance.value.resize();
   },
   { deep: true }
+);
+
+watch(
+  () => appStore.resolvedScheme,
+  () => {
+    if (!chartInstance.value) {
+      return;
+    }
+    chartInstance.value.setOption(withSchemeDefaults(props.option), true);
+    chartInstance.value.resize();
+  }
 );
 
 onMounted(async () => {

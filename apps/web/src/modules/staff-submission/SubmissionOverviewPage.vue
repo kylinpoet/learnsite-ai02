@@ -1,222 +1,243 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">作品评分</p>
-        <h2>教师作品总览</h2>
-        <p class="hero-copy">
-          这里汇总所有已有学生提交的任务。教师可以快速定位未评阅任务，进入详情页查看作品、预览附件并完成评分。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadOverview">刷新列表</el-button>
-        <el-button
+    <SaPageHeader
+      compact
+      description="汇总所有已有学生提交的任务，优先处理未评阅的作品。"
+      eyebrow="作品评分"
+      title="教师作品总览"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadOverview">刷新列表</n-button>
+        <n-button
           v-if="filteredItems.length"
-          plain
+          secondary
           @click="goToTask(filteredItems[0].task_id)"
         >
           前往当前筛选首项
-        </el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
+        </n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <div class="page-stack">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">任务数</p>
-              <p class="metric-value">{{ overview?.summary.task_count || 0 }}</p>
-              <p class="metric-note">当前已有学生提交记录的任务总数。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">作品总数</p>
-              <p class="metric-value">{{ overview?.summary.submission_count || 0 }}</p>
-              <p class="metric-note">教师可进入任务页查看作品说明和附件。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">已评阅</p>
-              <p class="metric-value">{{ overview?.summary.reviewed_count || 0 }}</p>
-              <p class="metric-note">已经录入评分或教师评语的作品数量。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">待评阅</p>
-              <p class="metric-value">{{ overview?.summary.pending_count || 0 }}</p>
-              <p class="metric-note">学生已提交但教师尚未完成评阅的作品数量。</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">提交学生数</p>
-              <p class="metric-value">{{ overview?.student_summary?.summary.student_count || 0 }}</p>
-              <p class="metric-note">按学生聚合统计作品与评分，便于快速查看班级学习表现。</p>
-            </article>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
+
+    <div v-else class="page-stack">
+      <div class="ls-row ls-row--5">
+        <article class="metric-tile">
+          <p class="metric-label">任务数</p>
+          <p class="metric-value">{{ overview?.summary.task_count || 0 }}</p>
+          <p class="metric-note">当前已有学生提交记录的任务总数。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">作品总数</p>
+          <p class="metric-value">{{ overview?.summary.submission_count || 0 }}</p>
+          <p class="metric-note">教师可进入任务页查看作品说明和附件。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已评阅</p>
+          <p class="metric-value">{{ overview?.summary.reviewed_count || 0 }}</p>
+          <p class="metric-note">已经录入评分或教师评语的作品数量。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">待评阅</p>
+          <p class="metric-value">{{ overview?.summary.pending_count || 0 }}</p>
+          <p class="metric-note">学生已提交但教师尚未完成评阅的作品数量。</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">提交学生数</p>
+          <p class="metric-value">{{ overview?.student_summary?.summary.student_count || 0 }}</p>
+          <p class="metric-note">按学生聚合统计作品与评分，便于快速查看班级学习表现。</p>
+        </article>
+      </div>
+
+      <div class="overview-charts">
+        <SaPanel>
+          <template #header>
+            <div class="info-row">
+              <span>评阅进度</span>
+              <n-tag round :type="reviewedRate >= 80 ? 'success' : reviewedRate >= 40 ? 'warning' : 'error'">
+                已评阅 {{ reviewedRate }}%
+              </n-tag>
+            </div>
+          </template>
+          <n-empty v-if="!overview?.summary.submission_count" description="当前还没有作品可统计评阅进度。" />
+          <AppChart v-else :height="260" :option="reviewProgressOption" />
+        </SaPanel>
+
+        <SaPanel>
+          <template #header>
+            <div class="info-row">
+              <span>任务提交与平均分</span>
+              <span class="table-note">柱为提交数（深色已评阅），折线为平均分</span>
+            </div>
+          </template>
+          <n-empty v-if="!overview?.items.length" description="当前还没有可对比的任务。" />
+          <AppChart v-else :height="260" :option="taskSubmissionOption" />
+        </SaPanel>
+      </div>
+
+      <SaPanel>
+        <template #header>
+          <div class="toolbar-row">
+            <div class="info-row">
+              <span>学生成绩汇总</span>
+              <n-tag round type="info">
+                计分学生 {{ overview?.student_summary?.summary.scored_student_count || 0 }} / {{
+                  overview?.student_summary?.summary.student_count || 0
+                }}
+              </n-tag>
+              <n-tag round type="success">
+                人均 {{ overview?.student_summary?.summary.average_student_score ?? '--' }}
+              </n-tag>
+            </div>
+            <n-button
+              :disabled="!studentSummaryItems.length"
+              :loading="isExportingStudentSummary"
+              secondary
+              @click="downloadStudentSummary"
+            >
+              导出学生成绩汇总
+            </n-button>
           </div>
+        </template>
 
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="info-row">
-                  <span>学生成绩汇总</span>
-                  <el-tag round type="info">
-                    计分学生 {{ overview?.student_summary?.summary.scored_student_count || 0 }} / {{
-                      overview?.student_summary?.summary.student_count || 0
-                    }}
-                  </el-tag>
-                  <el-tag round type="success">
-                    人均 {{ overview?.student_summary?.summary.average_student_score ?? '--' }}
-                  </el-tag>
-                </div>
-                <el-button
-                  :disabled="!studentSummaryItems.length"
-                  :loading="isExportingStudentSummary"
-                  plain
-                  @click="downloadStudentSummary"
-                >
-                  导出学生成绩汇总
-                </el-button>
+        <n-empty
+          v-if="!studentSummaryItems.length"
+          description="当前还没有可汇总的学生作品记录。"
+        />
+
+        <SaDataTable v-else :data="studentSummaryItems" row-key="student_id" stripe>
+          <SaTableColumn label="班级" min-width="140" prop="class_name" />
+          <SaTableColumn label="学号" min-width="120" prop="student_no" />
+          <SaTableColumn label="学生" min-width="120" prop="student_name" />
+          <SaTableColumn label="作品数" min-width="88" prop="submission_count" />
+          <SaTableColumn label="已评阅" min-width="88" prop="reviewed_count" />
+          <SaTableColumn label="待评阅" min-width="88" prop="pending_count" />
+          <SaTableColumn label="平均分" min-width="100">
+            <template #default="{ row }">
+              {{ row.average_score ?? '--' }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="最近提交" min-width="170">
+            <template #default="{ row }">
+              {{ formatDateTime(row.latest_submitted_at) }}
+            </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
+
+      <SaPanel>
+        <template #header>
+          <div class="toolbar-row">
+            <div class="info-row">
+              <span>任务列表</span>
+              <n-tag round type="info">
+                平均分 {{ overview?.summary.average_score ?? '--' }}
+              </n-tag>
+            </div>
+            <div class="filter-row">
+              <span class="filter-label">仅看未评阅任务</span>
+              <n-switch v-model:value="onlyPendingTasks" />
+              <n-select
+                v-model:value="selectedCourse"
+                :options="courseOptions.map((option) => ({ label: option, value: option }))"
+                class="filter-select"
+                clearable
+                placeholder="筛选课程"
+              />
+              <n-select
+                v-model:value="selectedLesson"
+                :options="lessonOptions"
+                class="filter-select filter-select-wide"
+                clearable
+                placeholder="筛选课次"
+              />
+              <n-button
+                v-if="selectedCourse || selectedLesson || !onlyPendingTasks"
+                text
+                @click="resetFilters"
+              >
+                恢复默认
+              </n-button>
+              <n-tag round type="success">
+                当前显示 {{ filteredItems.length }} / {{ overview?.items.length || 0 }}
+              </n-tag>
+            </div>
+          </div>
+        </template>
+
+        <n-empty
+          v-if="!overview?.items.length"
+          description="当前还没有学生提交的作品任务。"
+        />
+
+        <n-empty
+          v-else-if="!filteredItems.length"
+          description="当前筛选条件下没有待处理任务。"
+        />
+
+        <SaDataTable
+          v-else
+          :data="filteredItems"
+          :scroll-x="1294"
+          row-key="task_id"
+          stripe
+          @row-click="handleRowClick"
+        >
+          <SaTableColumn label="课程" min-width="220" prop="course_title" />
+          <SaTableColumn label="任务" min-width="220" prop="task_title" />
+          <SaTableColumn label="所属课次" min-width="200">
+            <template #default="{ row }">
+              <div>
+                <strong>{{ row.lesson_title }}</strong>
+                <p class="table-note">{{ row.unit_title }}</p>
               </div>
             </template>
-
-            <el-empty
-              v-if="!studentSummaryItems.length"
-              description="当前还没有可汇总的学生作品记录。"
-            />
-
-            <el-table v-else :data="studentSummaryItems" stripe>
-              <el-table-column label="班级" min-width="140" prop="class_name" />
-              <el-table-column label="学号" min-width="120" prop="student_no" />
-              <el-table-column label="学生" min-width="120" prop="student_name" />
-              <el-table-column label="作品数" min-width="88" prop="submission_count" />
-              <el-table-column label="已评阅" min-width="88" prop="reviewed_count" />
-              <el-table-column label="待评阅" min-width="88" prop="pending_count" />
-              <el-table-column label="平均分" min-width="100">
-                <template #default="{ row }">
-                  {{ row.average_score ?? '--' }}
-                </template>
-              </el-table-column>
-              <el-table-column label="最近提交" min-width="170">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.latest_submitted_at) }}
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div class="info-row">
-                  <span>任务列表</span>
-                  <el-tag round type="info">
-                    平均分 {{ overview?.summary.average_score ?? '--' }}
-                  </el-tag>
-                </div>
-                <div class="filter-row">
-                  <span class="filter-label">仅看未评阅任务</span>
-                  <el-switch v-model="onlyPendingTasks" />
-                  <el-select
-                    v-model="selectedCourse"
-                    class="filter-select"
-                    clearable
-                    placeholder="筛选课程"
-                  >
-                    <el-option
-                      v-for="option in courseOptions"
-                      :key="option"
-                      :label="option"
-                      :value="option"
-                    />
-                  </el-select>
-                  <el-select
-                    v-model="selectedLesson"
-                    class="filter-select filter-select-wide"
-                    clearable
-                    placeholder="筛选课次"
-                  >
-                    <el-option
-                      v-for="option in lessonOptions"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    />
-                  </el-select>
-                  <el-button
-                    v-if="selectedCourse || selectedLesson || !onlyPendingTasks"
-                    text
-                    @click="resetFilters"
-                  >
-                    恢复默认
-                  </el-button>
-                  <el-tag round type="success">
-                    当前显示 {{ filteredItems.length }} / {{ overview?.items.length || 0 }}
-                  </el-tag>
-                </div>
-              </div>
+          </SaTableColumn>
+          <SaTableColumn label="提交数" min-width="88" prop="submission_count" />
+          <SaTableColumn label="已评阅" min-width="88" prop="reviewed_count" />
+          <SaTableColumn label="待评阅" min-width="88" prop="pending_count" />
+          <SaTableColumn label="平均分" min-width="100">
+            <template #default="{ row }">
+              {{ row.average_score ?? '--' }}
             </template>
-
-            <el-empty
-              v-if="!overview?.items.length"
-              description="当前还没有学生提交的作品任务。"
-            />
-
-            <el-empty
-              v-else-if="!filteredItems.length"
-              description="当前筛选条件下没有待处理任务。"
-            />
-
-            <el-table v-else :data="filteredItems" stripe @row-click="handleRowClick">
-              <el-table-column label="课程" min-width="220" prop="course_title" />
-              <el-table-column label="任务" min-width="220" prop="task_title" />
-              <el-table-column label="所属课次" min-width="200">
-                <template #default="{ row }">
-                  <div>
-                    <strong>{{ row.lesson_title }}</strong>
-                    <p class="table-note">{{ row.unit_title }}</p>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="提交数" min-width="88" prop="submission_count" />
-              <el-table-column label="已评阅" min-width="88" prop="reviewed_count" />
-              <el-table-column label="待评阅" min-width="88" prop="pending_count" />
-              <el-table-column label="平均分" min-width="100">
-                <template #default="{ row }">
-                  {{ row.average_score ?? '--' }}
-                </template>
-              </el-table-column>
-              <el-table-column label="最近提交" min-width="170">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.latest_submitted_at) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" fixed="right" min-width="120">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click.stop="goToTask(row.task_id)">
-                    进入评分
-                  </el-button>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
-        </div>
-      </template>
-    </el-skeleton>
+          </SaTableColumn>
+          <SaTableColumn label="最近提交" min-width="170">
+            <template #default="{ row }">
+              {{ formatDateTime(row.latest_submitted_at) }}
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="操作" fixed="right" min-width="120">
+            <template #default="{ row }">
+              <n-button text type="primary" @click.stop="goToTask(row.task_id)">
+                进入评分
+              </n-button>
+            </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { NAlert, NButton, NEmpty, NSelect, NSkeleton, NSwitch, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage } from 'element-plus';
 
 import { apiGet, apiGetBlob } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 defineProps<{
   eyebrow?: string;
@@ -281,6 +302,7 @@ type OverviewPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const overview = ref<OverviewPayload | null>(null);
 const onlyPendingTasks = ref(true);
 const selectedCourse = ref('');
@@ -291,6 +313,99 @@ const errorMessage = ref('');
 
 const overviewItems = computed(() => overview.value?.items || []);
 const studentSummaryItems = computed(() => overview.value?.student_summary?.items || []);
+
+const reviewedRate = computed(() => {
+  const summary = overview.value?.summary;
+  if (!summary?.submission_count) {
+    return 0;
+  }
+  return Math.round((summary.reviewed_count / summary.submission_count) * 100);
+});
+
+const reviewProgressOption = computed(() => {
+  const summary = overview.value?.summary;
+  const reviewed = summary?.reviewed_count ?? 0;
+  const pending = summary?.pending_count ?? 0;
+
+  return base({
+    tooltip: tooltip('item'),
+    legend: legend({ bottom: 0, top: 'auto' }),
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '74%'],
+        center: ['50%', '44%'],
+        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
+        label: { show: false },
+        data: [
+          { value: reviewed, name: '已评阅', itemStyle: { color: palette.value[2] } },
+          { value: pending, name: '待评阅', itemStyle: { color: tokens.value.warning } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '38%',
+        style: { text: `${reviewedRate.value}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '50%',
+        style: { text: '评阅完成度', fill: tokens.value.muted, fontSize: 12 },
+      },
+    ],
+  });
+});
+
+const taskSubmissionOption = computed(() => {
+  const items = overviewItems.value.slice(0, 12);
+  const averageScores = items.map((item) => (item.average_score === null ? null : Number(item.average_score.toFixed(1))));
+
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(items.map((item) => item.task_title), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: [
+      axisY(),
+      axisY({ name: '平均分', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
+    ],
+    series: [
+      {
+        name: '已评阅',
+        type: 'bar',
+        stack: 'submission',
+        barMaxWidth: 30,
+        itemStyle: { color: palette.value[2] },
+        data: items.map((item) => item.reviewed_count),
+      },
+      {
+        name: '待评阅',
+        type: 'bar',
+        stack: 'submission',
+        barMaxWidth: 30,
+        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
+        data: items.map((item) => item.pending_count),
+      },
+      {
+        name: '平均分',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        connectNulls: true,
+        lineStyle: { color: palette.value[1] },
+        itemStyle: { color: palette.value[1] },
+        data: averageScores,
+      },
+    ],
+  });
+});
 
 const courseOptions = computed(() => {
   const options = new Set<string>();
@@ -436,6 +551,17 @@ onMounted(loadOverview);
 </script>
 
 <style scoped>
+.overview-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr);
+  gap: 16px;
+}
+
+.overview-charts :deep(.sa-panel__body) {
+  display: grid;
+  gap: 12px;
+}
+
 .toolbar-row {
   display: flex;
   justify-content: space-between;
@@ -468,6 +594,12 @@ onMounted(loadOverview);
   margin: 4px 0 0;
   color: var(--ls-muted);
   font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .overview-charts {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {

@@ -1,37 +1,38 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">阅读任务</p>
-        <h2>{{ taskDetail?.title || `阅读任务 ${route.params.taskId}` }}</h2>
-        <p class="hero-copy">
-          {{ taskDetail?.course.title || '正在加载课次信息' }}
-          <span v-if="taskDetail">
-            · {{ taskDetail.course.book_title }} · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}
-          </span>
-        </p>
-      </div>
-      <div class="action-group">
-        <el-button plain @click="goToCourse">返回课程</el-button>
-        <el-button
-          v-if="taskDetail?.task_navigation.previous_task"
-          plain
-          @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
-        >
-          上一个任务
-        </el-button>
-        <el-button
-          v-if="taskDetail?.task_navigation.next_task"
-          type="primary"
-          plain
-          @click="openNavigationTask(taskDetail.task_navigation.next_task)"
-        >
-          下一个任务
-        </el-button>
-      </div>
-    </section>
+    <SaPageHeader
+      eyebrow="阅读任务"
+      :title="taskDetail?.title || `阅读任务 ${route.params.taskId}`"
+    >
+      <p class="hero-copy">
+        {{ taskDetail?.course.title || '正在加载课次信息' }}
+        <span v-if="taskDetail">
+          · {{ taskDetail.course.book_title }} · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}
+        </span>
+      </p>
+      <template #actions>
+        <div class="action-group">
+          <n-button secondary @click="goToCourse">返回课程</n-button>
+          <n-button
+            v-if="taskDetail?.task_navigation.previous_task"
+            secondary
+            @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
+          >
+            上一个任务
+          </n-button>
+          <n-button
+            v-if="taskDetail?.task_navigation.next_task"
+            secondary
+            type="primary"
+            @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+          >
+            下一个任务
+          </n-button>
+        </div>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
     <div v-if="taskDetail" class="metric-grid">
       <article class="mini-panel">
@@ -58,124 +59,112 @@
       </article>
     </div>
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <div v-if="taskDetail" class="page-stack">
-          <el-row :gutter="16">
-            <el-col :lg="16" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>阅读内容</span>
-                    <el-tag round type="success">课程阅读</el-tag>
-                  </div>
-                </template>
-                <RichTextContent :html="taskDetail.description" empty-text="当前阅读任务还没有补充内容。" />
-              </el-card>
+    <div v-else-if="taskDetail" class="detail-grid">
+      <div class="detail-main">
+        <SaPanel title="阅读内容">
+          <template #actions>
+            <n-tag round type="success">课程阅读</n-tag>
+          </template>
+          <RichTextContent :html="taskDetail.description" empty-text="当前阅读任务还没有补充内容。" />
+        </SaPanel>
 
-              <el-card class="soft-card">
-                <template #header>学案导读</template>
-                <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
-              </el-card>
-              <el-card v-if="taskDetail.resources.length" class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>附件与拓展资源</span>
-                    <el-tag round type="info">{{ taskDetail.resources.length }} 项</el-tag>
-                  </div>
-                </template>
+        <SaPanel title="学案导读">
+          <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
+        </SaPanel>
 
-                <div class="resource-grid">
-                  <article
-                    v-for="resource in taskDetail.resources"
-                    :key="resource.id"
-                    class="resource-card"
-                  >
-                    <div class="resource-card__head">
-                      <div class="chip-row">
-                        <el-tag round :type="resource.external_url ? 'warning' : 'success'">
-                          {{ resourceTypeLabel(resource) }}
-                        </el-tag>
-                        <el-tag v-if="resource.category" round type="info">
-                          {{ resource.category.name }}
-                        </el-tag>
-                      </div>
-                      <el-button link type="primary" @click="openResource(resource)">
-                        {{ resource.external_url ? '打开外链' : '查看资料' }}
-                      </el-button>
-                    </div>
+        <SaPanel v-if="taskDetail.resources.length" title="附件与拓展资源">
+          <template #actions>
+            <n-tag round type="info">{{ taskDetail.resources.length }} 项</n-tag>
+          </template>
 
-                    <h3>{{ resource.title }}</h3>
-                    <p class="resource-card__summary">{{ resourceSummaryText(resource) }}</p>
-                    <p class="resource-card__meta">
-                      {{ resource.owner_name }}
-                      <span v-if="resource.external_url"> · 外部链接</span>
-                    </p>
-                  </article>
+          <div class="resource-grid">
+            <article v-for="resource in taskDetail.resources" :key="resource.id" class="resource-card">
+              <div class="resource-card__head">
+                <div class="chip-row">
+                  <n-tag round :type="resource.external_url ? 'warning' : 'success'">
+                    {{ resourceTypeLabel(resource) }}
+                  </n-tag>
+                  <n-tag v-if="resource.category" round type="info">
+                    {{ resource.category.name }}
+                  </n-tag>
                 </div>
-              </el-card>
-            </el-col>
+                <n-button text type="primary" @click="openResource(resource)">
+                  {{ resource.external_url ? '打开外链' : '查看资料' }}
+                </n-button>
+              </div>
 
-            <el-col :lg="8" :sm="24">
-              <el-card class="soft-card">
-                <template #header>阅读操作</template>
+              <h3>{{ resource.title }}</h3>
+              <p class="resource-card__summary">{{ resourceSummaryText(resource) }}</p>
+              <p class="resource-card__meta">
+                {{ resource.owner_name }}
+                <span v-if="resource.external_url"> · 外部链接</span>
+              </p>
+            </article>
+          </div>
+        </SaPanel>
+      </div>
 
-                <el-descriptions :column="1" border>
-                  <el-descriptions-item label="课程">{{ taskDetail.course.title }}</el-descriptions-item>
-                  <el-descriptions-item label="课次">{{ taskDetail.course.lesson_title }}</el-descriptions-item>
-                  <el-descriptions-item label="阅读状态">{{ readStatusLabel }}</el-descriptions-item>
-                  <el-descriptions-item label="已读时间">{{ readAtText }}</el-descriptions-item>
-                </el-descriptions>
+      <SaPanel title="阅读操作">
+        <n-descriptions :column="1" bordered>
+          <n-descriptions-item label="课程">{{ taskDetail.course.title }}</n-descriptions-item>
+          <n-descriptions-item label="课次">{{ taskDetail.course.lesson_title }}</n-descriptions-item>
+          <n-descriptions-item label="阅读状态">{{ readStatusLabel }}</n-descriptions-item>
+          <n-descriptions-item label="已读时间">{{ readAtText }}</n-descriptions-item>
+        </n-descriptions>
 
-                <div class="tip-panel">
-                  <p class="tip-title">阅读提示</p>
-                  <p>1. 本页用于阅读任务正文与学案导读内容。</p>
-                  <p>2. 阅读确认会记录“已读时间”，不会生成作品提交记录。</p>
-                  <p>3. 阅读完成后，可以直接进入下一任务继续学习。</p>
-                </div>
-
-                <div class="page-stack page-stack--compact">
-                  <el-button
-                    :disabled="Boolean(taskDetail.reading_progress?.is_read)"
-                    :loading="isMarkingRead"
-                    class="full-width"
-                    type="primary"
-                    @click="markAsRead"
-                  >
-                    {{ taskDetail.reading_progress?.is_read ? '已完成已读确认' : '标记为已读' }}
-                  </el-button>
-                  <el-button
-                    v-if="taskDetail.task_navigation.next_task"
-                    class="full-width"
-                    plain
-                    @click="openNavigationTask(taskDetail.task_navigation.next_task)"
-                  >
-                    进入下一任务
-                  </el-button>
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
+        <div class="tip-panel">
+          <p class="tip-title">阅读提示</p>
+          <p>1. 本页用于阅读任务正文与学案导读内容。</p>
+          <p>2. 阅读确认会记录“已读时间”，不会生成作品提交记录。</p>
+          <p>3. 阅读完成后，可以直接进入下一任务继续学习。</p>
         </div>
-      </template>
-    </el-skeleton>
+
+        <div class="page-stack page-stack--compact">
+          <n-button
+            :disabled="Boolean(taskDetail.reading_progress?.is_read)"
+            :loading="isMarkingRead"
+            block
+            type="primary"
+            @click="markAsRead"
+          >
+            {{ taskDetail.reading_progress?.is_read ? '已完成已读确认' : '标记为已读' }}
+          </n-button>
+          <n-button
+            v-if="taskDetail.task_navigation.next_task"
+            block
+            secondary
+            @click="openNavigationTask(taskDetail.task_navigation.next_task)"
+          >
+            进入下一任务
+          </n-button>
+        </div>
+      </SaPanel>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import {
+  NAlert,
+  NButton,
+  NDescriptions,
+  NDescriptionsItem,
+  NSkeleton,
+  NTag,
+} from 'naive-ui';
 import { computed, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
 
 type NavigationTask = {
   id: number;
@@ -363,13 +352,32 @@ watch(() => route.params.taskId, () => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 16fr) minmax(0, 8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.detail-main {
+  display: grid;
+  gap: 16px;
+}
+
+@media (max-width: 1200px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .tip-panel {
   margin-top: 20px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .tip-panel p {
@@ -382,10 +390,6 @@ watch(() => route.params.taskId, () => {
   margin-bottom: 8px;
   color: var(--ls-ink) !important;
   font-weight: 700;
-}
-
-.full-width {
-  width: 100%;
 }
 
 .page-stack--compact {
@@ -409,7 +413,7 @@ watch(() => route.params.taskId, () => {
   padding: 18px;
   border-radius: 18px;
   border: 1px solid var(--ls-border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 249, 255, 0.95));
+  background: var(--ls-panel);
 }
 
 .resource-card h3,

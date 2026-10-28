@@ -1,147 +1,138 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">课程体系</p>
-        <h2>教材、单元与课次绑定</h2>
-        <p class="hero-copy">
-          在创建学案前，先从课程体系中确认年级、教材、单元和具体课次，
-          便于后续将学案、资源和任务准确关联到对应课次。
-        </p>
-      </div>
-      <el-space wrap>
-        <el-button type="primary" @click="router.push('/staff/lesson-plans')">查看关联学案</el-button>
-        <el-button
+    <SaPageHeader
+      compact
+      description="先确认年级、教材、单元与课次，再把学案、资源和任务关联到对应课次。"
+      eyebrow="课程体系"
+      title="教材、单元与课次绑定"
+    >
+      <template #actions>
+        <n-button type="primary" @click="router.push('/staff/lesson-plans')">查看关联学案</n-button>
+        <n-button
           v-if="authStore.isAdmin"
-          plain
+          secondary
           @click="router.push({ path: '/staff/admin/system', query: { tab: 'curriculum' } })"
         >
           手动导入维护
-        </el-button>
-        <el-button plain @click="expandAllBooks">
-          展开全部教材
-        </el-button>
-        <el-button plain @click="collapseAllBooks">
-          收起全部教材
-        </el-button>
-        <el-button plain @click="expandAllUnits">
-          展开全部单元
-        </el-button>
-        <el-button plain @click="collapseAllUnits">
-          收起全部单元
-        </el-button>
-      </el-space>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
+        </n-button>
+        <n-button secondary @click="expandAllBooks">展开全部教材</n-button>
+        <n-button secondary @click="collapseAllBooks">收起全部教材</n-button>
+        <n-button secondary @click="expandAllUnits">展开全部单元</n-button>
+        <n-button secondary @click="collapseAllUnits">收起全部单元</n-button>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <div class="metric-grid">
-          <article class="metric-tile">
-            <p class="metric-label">教材数</p>
-            <p class="metric-value">{{ books.length }}</p>
-            <p class="metric-note">当前已纳入维护的教材版本</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">单元数</p>
-            <p class="metric-value">{{ totalUnitCount }}</p>
-            <p class="metric-note">按教材汇总得到</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">课次数</p>
-            <p class="metric-value">{{ totalLessonCount }}</p>
-            <p class="metric-note">后续学案必须绑定到课次</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">已关联学案</p>
-            <p class="metric-value">{{ totalPlanCount }}</p>
-            <p class="metric-note">可直接跳转到学案管理继续细化</p>
-          </article>
-        </div>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-        <el-empty v-if="!books.length" description="暂无课程体系数据" />
-        <el-collapse v-else v-model="expandedBooks">
-          <el-collapse-item
-            v-for="book in books"
-            :key="book.id"
-            :name="String(book.id)"
-            :title="`${book.name} · ${book.edition}`"
-          >
-            <div class="stack-list">
-              <section class="mini-panel">
-                <div class="info-row">
-                  <strong>{{ book.subject }}</strong>
-                  <span>{{ book.grade_scope }}</span>
-                </div>
-                <el-space wrap class="unit-actions">
-                  <el-tag round>单元 {{ book.unit_count }}</el-tag>
-                  <el-tag round type="success">课次 {{ book.lesson_count }}</el-tag>
-                  <el-tag round type="warning">关联学案 {{ book.plan_count }}</el-tag>
-                  <el-button link type="primary" @click="expandUnits(book)">展开单元</el-button>
-                  <el-button link type="primary" @click="collapseUnits(book)">收起单元</el-button>
-                </el-space>
-              </section>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
 
-              <el-collapse v-model="expandedUnitsByBook[String(book.id)]" class="unit-collapse">
-                <el-collapse-item
-                  v-for="unit in book.units"
-                  :key="unit.id"
-                  :name="String(unit.id)"
-                  class="unit-collapse-item"
-                  :title="`${unit.title} · 课次 ${unit.lesson_count}`"
-                >
-                  <el-table :data="unit.lessons" size="small" stripe>
-                    <el-table-column label="课次" min-width="90">
-                      <template #default="{ row }">
-                        第 {{ row.lesson_no }} 课
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="课题" min-width="240" prop="title" />
-                    <el-table-column label="关联学案" min-width="100" prop="plan_count" />
-                    <el-table-column label="最新学案" min-width="280">
-                      <template #default="{ row }">
-                        <span v-if="row.latest_plan">
-                          {{ row.latest_plan.title }} ({{ row.latest_plan.assigned_date }})
-                        </span>
-                        <span v-else>尚未创建学案</span>
-                      </template>
-                    </el-table-column>
-                    <el-table-column label="操作" min-width="120">
-                      <template #default="{ row }">
-                        <el-button
-                          v-if="row.latest_plan"
-                          link
-                          type="primary"
-                          @click="router.push(`/staff/lesson-plans/${row.latest_plan.id}`)"
-                        >
-                          查看学案
-                        </el-button>
-                        <span v-else>待创建</span>
-                      </template>
-                    </el-table-column>
-                  </el-table>
-                </el-collapse-item>
-              </el-collapse>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-      </template>
-    </el-skeleton>
+    <template v-else>
+      <div class="ls-row">
+        <article class="metric-tile">
+          <p class="metric-label">教材数</p>
+          <p class="metric-value">{{ books.length }}</p>
+          <p class="metric-note">当前已纳入维护的教材版本</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">单元数</p>
+          <p class="metric-value">{{ totalUnitCount }}</p>
+          <p class="metric-note">按教材汇总得到</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">课次数</p>
+          <p class="metric-value">{{ totalLessonCount }}</p>
+          <p class="metric-note">后续学案必须绑定到课次</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">已关联学案</p>
+          <p class="metric-value">{{ totalPlanCount }}</p>
+          <p class="metric-note">可直接跳转到学案管理继续细化</p>
+        </article>
+      </div>
+
+      <n-empty v-if="!books.length" description="暂无课程体系数据" />
+      <n-collapse v-else v-model:expanded-names="expandedBooks">
+        <n-collapse-item
+          v-for="book in books"
+          :key="book.id"
+          :name="String(book.id)"
+          :title="`${book.name} · ${book.edition}`"
+        >
+          <div class="stack-list">
+            <section class="mini-panel">
+              <div class="info-row">
+                <strong>{{ book.subject }}</strong>
+                <span>{{ book.grade_scope }}</span>
+              </div>
+              <div class="unit-actions">
+                <n-tag round>单元 {{ book.unit_count }}</n-tag>
+                <n-tag round type="success">课次 {{ book.lesson_count }}</n-tag>
+                <n-tag round type="warning">关联学案 {{ book.plan_count }}</n-tag>
+                <n-button text type="primary" @click="expandUnits(book)">展开单元</n-button>
+                <n-button text type="primary" @click="collapseUnits(book)">收起单元</n-button>
+              </div>
+            </section>
+
+            <n-collapse
+              v-model:expanded-names="expandedUnitsByBook[String(book.id)]"
+              class="unit-collapse"
+            >
+              <n-collapse-item
+                v-for="unit in book.units"
+                :key="unit.id"
+                class="unit-collapse-item"
+                :name="String(unit.id)"
+                :title="`${unit.title} · 课次 ${unit.lesson_count}`"
+              >
+                <SaDataTable :data="unit.lessons" size="small" stripe>
+                  <SaTableColumn label="课次" min-width="90">
+                    <template #default="{ row }">第 {{ row.lesson_no }} 课</template>
+                  </SaTableColumn>
+                  <SaTableColumn label="课题" min-width="240" prop="title" />
+                  <SaTableColumn label="关联学案" min-width="100" prop="plan_count" />
+                  <SaTableColumn label="最新学案" min-width="280">
+                    <template #default="{ row }">
+                      <span v-if="row.latest_plan">
+                        {{ row.latest_plan.title }} ({{ row.latest_plan.assigned_date }})
+                      </span>
+                      <span v-else>尚未创建学案</span>
+                    </template>
+                  </SaTableColumn>
+                  <SaTableColumn label="操作" min-width="120">
+                    <template #default="{ row }">
+                      <n-button
+                        v-if="row.latest_plan"
+                        text
+                        type="primary"
+                        @click="router.push(`/staff/lesson-plans/${row.latest_plan.id}`)"
+                      >
+                        查看学案
+                      </n-button>
+                      <span v-else>待创建</span>
+                    </template>
+                  </SaTableColumn>
+                </SaDataTable>
+              </n-collapse-item>
+            </n-collapse>
+          </div>
+        </n-collapse-item>
+      </n-collapse>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NCollapse, NCollapseItem, NEmpty, NSkeleton, NTag } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type CurriculumBook = {
@@ -253,7 +244,11 @@ onMounted(loadCurriculum);
 
 <style scoped>
 .unit-actions {
-  row-gap: 4px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .unit-collapse {
@@ -264,21 +259,16 @@ onMounted(loadCurriculum);
   margin-bottom: 10px;
   border: 1px solid var(--ls-border);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--ls-card);
   overflow: hidden;
 }
 
-:deep(.unit-collapse-item .el-collapse-item__header) {
+:deep(.unit-collapse-item .n-collapse-item__header) {
   padding: 0 14px;
   font-weight: 600;
-  border-bottom: 1px solid transparent;
 }
 
-:deep(.unit-collapse-item .el-collapse-item__content) {
+:deep(.unit-collapse-item .n-collapse-item__content-inner) {
   padding: 10px 14px 14px;
-}
-
-:deep(.unit-collapse-item .el-collapse-item__wrap) {
-  border-bottom: none;
 }
 </style>

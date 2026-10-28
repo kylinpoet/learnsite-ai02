@@ -8,7 +8,7 @@
 
 1. 只覆盖旧站线上明确在用的功能。
 2. 不迁移旧站历史数据，只建设新平台。
-3. 前端固定为 `Vue 3 + TypeScript + Element Plus`。
+3. 前端固定为 `Vue 3 + TypeScript + naive-ui`（Element Plus 已在 UI 迁移中彻底移除，由 `npm run check:no-element` 门禁守住）。
 4. 后端固定为 `FastAPI`，首版数据库为 `SQLite`，结构需兼容后续迁移到 `PostgreSQL`。
 5. 教师与管理员合并为统一教职工后台，通过权限区分能力。
 6. 文档必须持续细化，确保其他团队成员可以直接接手。
@@ -1023,8 +1023,8 @@
    - 重点回归 `data_submit` 任务的保存后预览、预览错误面板、错误详情复制 / 重试，以及 AI 生成提交页链路
    - 已验证预览报错后可恢复，保存前后的 iframe 预览与正式接口地址链路保持正常
 3. 原“评估教师学案页及相关模块的懒加载 / 拆包策略”已完成本轮收口：
-   - Web 端已移除全量 `app.use(ElementPlus)`，改为按需引入 Element Plus 组件 / 指令 / 样式
-   - `vite.config.ts` 已接入按需解析插件，教师学案页相关构建产物体积明显下降
+   - Web 端已由 Element Plus 迁移到 naive-ui，并移除 `element-plus` / `unplugin-element-plus` 依赖与按需解析插件
+   - `vite.config.ts` 已不再引入 Element Plus 解析插件，教师学案页相关构建产物体积明显下降
    - `npm run build:web` 已不再出现大 chunk 告警
 
 本次验证结果：
@@ -1035,3 +1035,39 @@
    - 结果：通过，且无大 chunk 告警
 3. 真实浏览器联调
    - 结果：通过，教师学案页与依赖 `v-loading` 的教师测验页均可正常访问与操作
+
+## 37. 2026-10-27 测试修复与技术债收口（PyJWT / passlib / Alembic / OpenAPI 类型 / Edge TTS / AI 学情报告）
+
+本轮完成项：
+
+1. 修复全部既有测试失败（基线 5 failed / 76 passed → 全绿）：
+   - 座位导入不完整表 400 边界、platform_name 持久化、`/settings/admin/students/import-template` 404、模型发现测试替身签名漂移（上轮已修，本轮复核）。
+   - 修复 openai SDK 调用层的浏览器兼容请求头用例：`chat_completion` / `chat_completion_stream` / `list_models` 现在显式调用 `build_remote_request_headers` 并经 `apply_provider_client_headers` 注入客户端 default_headers。
+2. P2 收口（上轮已完成，本轮验证）：AI 调用层已迁 openai SDK（`services/ai_provider_client.py`）；前端 SSE 解析已迁 `@microsoft/fetch-event-source`（`utils/companionStream.ts`，学伴悬浮窗与学案页共用）。
+3. P3 认证迁移（`core/security.py`）：
+   - 令牌改 PyJWT（HS256，保留业务字段 + iat/exp），存量旧格式令牌回退解码，TTL 内仍可用。
+   - 密码哈希改 passlib（pbkdf2_sha256, 120k rounds），存量 `hex(salt):hex(digest)` 哈希回退验证。
+   - 函数签名不变，调用方零改动。
+4. P3 Alembic 收口：baseline 迁移 `f89120c20bd3` + `init_db` 自动 stamp（全新库/存量库幂等）；`create_all` 与 `upgrade head` schema 等价性已验证（144 对象一致，唯一差异为 alembic_version 表与约束声明顺序）。
+5. P3 OpenAPI 类型生成：`npm --workspace apps/web run generate:api-types`（openapi.json 由 TestClient 导出、不入库；schema.d.ts 入库），StudentLoginPage 示范接入 `LoginRequest` 命名 schema；envelope data 未内联导致响应类型缺失已记录为局限（docs/learnsite-local-development.md 第 14 节）。
+6. P3 Edge TTS 学伴朗读：新增 `services/companion_tts.py` + `POST /assistants/companion/tts`（音色白名单、600 字上限、LRU 缓存、网络失败 502）；前端学伴气泡新增「朗读/停止朗读」按钮（Markdown 转纯文本、blob 播放、卸载自动停止）。详见 `docs/learnsite-companion-tts-flow.md`。
+7. P3 AI 学情报告（教师端新功能）：`learning_reports` 表 + `services/learning_reports.py` 统计聚合（提交/评分分布/互评/签到/学案进度）+ AI 生成 Markdown 报告三端点（生成/列表/详情，班级权限校验）；前端 `/staff/learning-reports` 页面（选班生成、历史切换、Markdown 渲染）。详见 `docs/learnsite-learning-report-flow.md`。
+
+本轮验证结果：
+
+1. `apps/api/.venv/Scripts/python.exe -m pytest apps/api/tests -q` → 全绿（93 passed，含新增 TTS 1 例 + 学情报告 2 例）。
+2. `npm run typecheck:web` → 通过。
+3. `npm run build:web` → 通过。
+4. Alembic：`upgrade head` 从空库建库成功；存量库 stamp 幂等、数据零损失。
+5. edge-tts 联网合成实测成功（21KB MP3）。
+
+已知边界与遗留建议：
+
+1. `config.py` secret_key 默认值硬编码（20 字节，PyJWT 有 InsecureKeyLengthWarning）——审计已指出，本轮按约束未改；建议后续改为强随机默认或强制环境变量。
+   【2026-10-27 已处置】保持默认值不变（兼容存量令牌），但配置层新增 `secret_key` 字段校验器：使用默认值或长度不足 32 字节时启动即告警并提示 `LEARNSITE_SECRET_KEY` 生成方式；`.env.example` 已补充 `LEARNSITE_SECRET_KEY` 条目及说明。
+2. `AdminSystemPage.vue` 单学生删除按钮调用的 `DELETE /settings/admin/students/{id}` 后端无此路由（前端 404，未被测试覆盖），本轮按约束不修。
+   【2026-10-27 已修复】`deleteStudent` / `forceDeleteStudent` 改为复用已存在的 `POST /settings/admin/students/batch-action`（单元素 student_user_ids），删除跳过时同样展示跳过明细弹窗；前端 typecheck 通过。
+3. OpenAPI 响应类型覆盖：ApiResponse envelope 未内联 data 结构，建议后端泛型化后再扩大前端接入面。
+   【2026-10-27 已处置】`ApiResponse` 改为 Pydantic 泛型模型（不参数化时行为不变，全后端零破坏）；auth 三端点（student/staff login、me）与学情报告三端点已参数化并补命名 schema，OpenAPI 已内联 data 结构；`schema.d.ts` 重新生成，`StudentLoginPage.vue` 的手写 `LoginResponse` 已切换为生成类型 `LoginPayload`。后续端点可按同一模式逐步接入。
+4. 学情报告真实 Provider 端到端与前端浏览器人工核对未做（测试为 mock），建议部署后人工验证一次。
+   【2026-10-27 本地环境已就绪】API (http://127.0.0.1:8010) + Web (http://127.0.0.1:5175) 已启动，`/api/v1/staff/learning-reports` 列表端点实测返回 OK；真实 Provider 端到端生成仍需接入真实模型服务后在浏览器人工验证（步骤见 docs/learnsite-local-development.md 第 15 节）。

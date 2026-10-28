@@ -1,0 +1,32 @@
+{
+  "name": "dark-mode",
+  "mainConversationId": "7f2142c135f74d94bf623e139e09f998",
+  "workspacePath": "d:/code/mycode-ai/learnsite-ai02",
+  "createdAt": "2026-10-27T13:00:26.966Z",
+  "options": {
+    "workspacePath": "d:/code/mycode-ai/learnsite-ai02"
+  },
+  "members": [
+    {
+      "memberId": "sweep-staff@dark-mode",
+      "name": "sweep-staff",
+      "role": "staff 模块深色适配",
+      "sessionId": "93a396fe4b344619a3fbf35c416c8f99",
+      "status": "running"
+    },
+    {
+      "memberId": "sweep-student@dark-mode",
+      "name": "sweep-student",
+      "role": "student 模块深色适配",
+      "sessionId": "298ef3801be84bbeb1028851dc903b32",
+      "status": "running"
+    },
+    {
+      "memberId": "sweep-shared@dark-mode",
+      "name": "sweep-shared",
+      "role": "共享组件与样式深色适配",
+      "sessionId": "c60a6eae686147d49eccc168d4caf5ae",
+      "status": "running"
+    }
+  ]
+}

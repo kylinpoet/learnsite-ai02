@@ -1,47 +1,48 @@
 <template>
   <div>
-    <el-alert
+    <n-alert
       :closable="false"
       :title="dataSubmitBindings.taskDataSubmitAlertTitle(task)"
-      :description="dataSubmitBindings.taskDataSubmitAlertDescription(task)"
       type="info"
-    />
+    >
+      {{ dataSubmitBindings.taskDataSubmitAlertDescription(task) }}
+    </n-alert>
 
     <div class="data-submit-endpoint-grid">
       <article class="data-submit-endpoint-card">
         <div class="data-submit-endpoint-card__head">
           <strong>学生提交接口</strong>
-          <el-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
+          <n-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
             {{ dataSubmitBindings.taskDataSubmitEndpointStatusLabel(task) }}
-          </el-tag>
+          </n-tag>
         </div>
         <code>{{ dataSubmitBindings.taskDataSubmitPromptApiPath(task) }}</code>
         <p class="section-note">
           AI 生成网页时可以直接使用这条地址；预生成的任务 ID 会在保存学案后原样落地，不需要再替换接口。
         </p>
-        <el-space wrap>
-          <el-button plain size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'submit')">
+        <div class="chip-row">
+          <n-button secondary size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'submit')">
             复制提交接口
-          </el-button>
-        </el-space>
+          </n-button>
+        </div>
       </article>
 
       <article class="data-submit-endpoint-card">
         <div class="data-submit-endpoint-card__head">
           <strong>数据读取接口</strong>
-          <el-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
+          <n-tag round :type="dataSubmitBindings.taskDataSubmitEndpointTagType(task)">
             {{ dataSubmitBindings.taskDataSubmitEndpointStatusLabel(task) }}
-          </el-tag>
+          </n-tag>
         </div>
         <code>{{ dataSubmitBindings.taskDataSubmitPromptRecordsPath(task) }}</code>
         <p class="section-note">
           数据可视化页可以直接读取这条地址，预览阶段与正式保存后的接口保持一致。
         </p>
-        <el-space wrap>
-          <el-button plain size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'records')">
+        <div class="chip-row">
+          <n-button secondary size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'records')">
             复制读取接口
-          </el-button>
-        </el-space>
+          </n-button>
+        </div>
       </article>
     </div>
 
@@ -51,8 +52,8 @@
       :generate-task-description-draft="generateTaskDescriptionDraft"
     />
 
-    <el-tabs v-model="task.config.data_submit_active_tab" class="slot-tabs">
-      <el-tab-pane label="学生提交页" name="submit">
+    <n-tabs v-model:value="task.config.data_submit_active_tab" class="slot-tabs">
+      <n-tab-pane name="submit" tab="学生提交页" display-directive="show">
         <div class="slot-block">
           <TaskAssetSlotEditor
             :task="task"
@@ -90,9 +91,9 @@
             :handle-task-preview-error="assetBindings.handleTaskPreviewError"
           />
         </div>
-      </el-tab-pane>
+      </n-tab-pane>
 
-      <el-tab-pane label="数据可视化页" name="visualization">
+      <n-tab-pane name="visualization" tab="数据可视化页" display-directive="show">
         <div class="slot-block">
           <TaskAssetSlotEditor
             :task="task"
@@ -130,12 +131,14 @@
             :handle-task-preview-error="assetBindings.handleTaskPreviewError"
           />
         </div>
-      </el-tab-pane>
-    </el-tabs>
+      </n-tab-pane>
+    </n-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NTabPane, NTabs, NTag } from 'naive-ui';
+
 import TaskAssetSlotEditor from './TaskAssetSlotEditor.vue';
 import TaskDescriptionEditor from './TaskDescriptionEditor.vue';
 import type {
@@ -163,6 +166,13 @@ defineProps<{
   line-height: 1.7;
 }
 
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
 .data-submit-endpoint-grid {
   display: grid;
   gap: 12px;
@@ -175,7 +185,7 @@ defineProps<{
   padding: 16px;
   border: 1px solid rgba(66, 97, 162, 0.14);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--ls-card);
 }
 
 .data-submit-endpoint-card__head {
@@ -190,8 +200,8 @@ defineProps<{
   display: block;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(24, 39, 75, 0.06);
-  color: #1f2a44;
+  background: var(--ls-chip-bg);
+  color: var(--ls-text);
   line-height: 1.6;
   word-break: break-all;
   white-space: pre-wrap;
@@ -203,7 +213,7 @@ defineProps<{
   padding: 16px;
   border: 1px dashed rgba(66, 97, 162, 0.18);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--ls-panel-soft);
 }
 
 @media (max-width: 768px) {

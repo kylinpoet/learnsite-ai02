@@ -1,190 +1,154 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">在线资源</p>
-        <h2>课堂资源与延伸阅读</h2>
-        <p class="hero-copy">
-          在这里按分类浏览课堂资源与延伸阅读，快速找到本节课需要的学习材料。
-        </p>
+    <SaPageHeader
+      description="在这里按分类浏览课堂资源与延伸阅读，快速找到本节课需要的学习材料。"
+      eyebrow="在线资源"
+      title="课堂资源与延伸阅读"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadResources">刷新资源</n-button>
+      </template>
+    </SaPageHeader>
+
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
+
+    <template v-else-if="resourceData">
+      <div class="metric-grid">
+        <article class="metric-tile">
+          <p class="metric-label">资源分类</p>
+          <p class="metric-value">{{ resourceData.categories.length }}</p>
+          <p class="metric-note">按教学用途组织</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">资源总数</p>
+          <p class="metric-value">{{ resourceData.total_count }}</p>
+          <p class="metric-note">当前学生可见资源</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">推荐资源</p>
+          <p class="metric-value">{{ resourceData.featured_items.length }}</p>
+          <p class="metric-note">默认优先展示重点资源</p>
+        </article>
+        <article class="metric-tile">
+          <p class="metric-label">当前分类</p>
+          <p class="metric-value resource-metric-text">{{ activeCategory?.name || '--' }}</p>
+          <p class="metric-note">{{ activeCategory?.item_count || 0 }} 条资源</p>
+        </article>
       </div>
-      <el-space wrap>
-        <el-button :loading="isLoading" type="primary" @click="loadResources">刷新资源</el-button>
-      </el-space>
-    </section>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
-
-      <template #default>
-        <template v-if="resourceData">
-          <div class="metric-grid">
-            <article class="metric-tile">
-              <p class="metric-label">资源分类</p>
-              <p class="metric-value">{{ resourceData.categories.length }}</p>
-              <p class="metric-note">按教学用途组织</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">资源总数</p>
-              <p class="metric-value">{{ resourceData.total_count }}</p>
-              <p class="metric-note">当前学生可见资源</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">推荐资源</p>
-              <p class="metric-value">{{ resourceData.featured_items.length }}</p>
-              <p class="metric-note">默认优先展示重点资源</p>
-            </article>
-            <article class="metric-tile">
-              <p class="metric-label">当前分类</p>
-              <p class="metric-value resource-metric-text">{{ activeCategory?.name || '--' }}</p>
-              <p class="metric-note">{{ activeCategory?.item_count || 0 }} 条资源</p>
-            </article>
-          </div>
-
-          <el-card v-if="resourceData.featured_items.length" class="soft-card">
-            <template #header>
-              <div class="section-head">
-                <div>
-                  <h3>推荐资源</h3>
-                  <p class="section-note">优先展示适合课堂使用和延伸阅读的内容。</p>
-                </div>
-              </div>
-            </template>
-
-            <div class="featured-grid">
-              <article
-                v-for="item in resourceData.featured_items"
-                :key="item.id"
-                class="featured-card"
-                @click="selectResource(item.id)"
-              >
-                <div class="chip-row">
-                  <el-tag round>{{ typeLabel(item.resource_type) }}</el-tag>
-                  <el-tag v-if="item.category" round type="info">{{ item.category.name }}</el-tag>
-                </div>
-                <h4>{{ item.title }}</h4>
-                <p>{{ item.summary || '暂无资源摘要。' }}</p>
-              </article>
+      <SaPanel
+        v-if="resourceData.featured_items.length"
+        description="优先展示适合课堂使用和延伸阅读的内容。"
+        title="推荐资源"
+      >
+        <div class="featured-grid">
+          <article
+            v-for="item in resourceData.featured_items"
+            :key="item.id"
+            class="featured-card"
+            @click="selectResource(item.id)"
+          >
+            <div class="chip-row">
+              <n-tag round>{{ typeLabel(item.resource_type) }}</n-tag>
+              <n-tag v-if="item.category" round type="info">{{ item.category.name }}</n-tag>
             </div>
-          </el-card>
+            <h4>{{ item.title }}</h4>
+            <p>{{ item.summary || '暂无资源摘要。' }}</p>
+          </article>
+        </div>
+      </SaPanel>
 
-          <el-row :gutter="16">
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>分类浏览</h3>
-                      <p class="section-note">切换分类后，可查看该分类下全部资源。</p>
-                    </div>
+      <div class="detail-grid">
+        <SaPanel description="切换分类后，可查看该分类下全部资源。" title="分类浏览">
+          <n-tabs v-model:value="activeCategoryKey" class="resource-tabs">
+            <n-tab-pane
+              v-for="category in resourceData.categories"
+              :key="category.id"
+              :name="String(category.id)"
+              :tab="`${category.name}（${category.item_count}）`"
+            >
+              <n-empty v-if="!category.items.length" description="该分类下暂时没有资源" />
+
+              <div v-else class="resource-list">
+                <article
+                  v-for="item in category.items"
+                  :key="item.id"
+                  :class="['resource-item', { 'resource-item-active': selectedResourceId === item.id }]"
+                  @click="selectResource(item.id)"
+                >
+                  <div class="resource-item__top">
+                    <strong>{{ item.title }}</strong>
+                    <n-tag round>{{ typeLabel(item.resource_type) }}</n-tag>
                   </div>
-                </template>
+                  <p class="resource-item__summary">{{ item.summary || '暂无资源摘要。' }}</p>
+                  <p class="section-note">提供者：{{ item.owner_name }}</p>
+                </article>
+              </div>
+            </n-tab-pane>
+          </n-tabs>
+        </SaPanel>
 
-                <el-tabs v-model="activeCategoryKey" class="resource-tabs">
-                  <el-tab-pane
-                    v-for="category in resourceData.categories"
-                    :key="category.id"
-                    :label="`${category.name}（${category.item_count}）`"
-                    :name="String(category.id)"
-                  >
-                    <el-empty v-if="!category.items.length" description="该分类下暂时没有资源" />
+        <SaPanel description="支持文章阅读和外链跳转。" title="资源详情">
+          <template v-if="resourceDetail?.external_url" #actions>
+            <n-button secondary type="primary" @click="openExternal(resourceDetail.external_url)">
+              打开外链
+            </n-button>
+          </template>
 
-                    <div v-else class="resource-list">
-                      <article
-                        v-for="item in category.items"
-                        :key="item.id"
-                        class="resource-item"
-                        :class="{ 'resource-item-active': selectedResourceId === item.id }"
-                        @click="selectResource(item.id)"
-                      >
-                        <div class="resource-item__top">
-                          <strong>{{ item.title }}</strong>
-                          <el-tag round>{{ typeLabel(item.resource_type) }}</el-tag>
-                        </div>
-                        <p class="resource-item__summary">{{ item.summary || '暂无资源摘要。' }}</p>
-                        <p class="section-note">提供者：{{ item.owner_name }}</p>
-                      </article>
-                    </div>
-                  </el-tab-pane>
-                </el-tabs>
-              </el-card>
-            </el-col>
+          <n-empty v-if="!resourceDetail" description="请先从左侧选择一条资源" />
 
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="section-head">
-                    <div>
-                      <h3>资源详情</h3>
-                      <p class="section-note">支持文章阅读和外链跳转。</p>
-                    </div>
-                    <el-button
-                      v-if="resourceDetail?.external_url"
-                      plain
-                      type="primary"
-                      @click="openExternal(resourceDetail.external_url)"
-                    >
-                      打开外链
-                    </el-button>
-                  </div>
-                </template>
+          <template v-else>
+            <div class="chip-row detail-chip-row">
+              <n-tag round>{{ typeLabel(resourceDetail.resource_type) }}</n-tag>
+              <n-tag v-if="resourceDetail.category" round type="info">
+                {{ resourceDetail.category.name }}
+              </n-tag>
+              <n-tag round type="success">{{ resourceDetail.owner_name }}</n-tag>
+            </div>
 
-                <el-empty v-if="!resourceDetail" description="请先从左侧选择一条资源" />
+            <h3 class="detail-title">{{ resourceDetail.title }}</h3>
+            <p class="detail-summary">{{ resourceDetail.summary || '暂无摘要。' }}</p>
 
-                <template v-else>
-                  <div class="chip-row detail-chip-row">
-                    <el-tag round>{{ typeLabel(resourceDetail.resource_type) }}</el-tag>
-                    <el-tag v-if="resourceDetail.category" round type="info">
-                      {{ resourceDetail.category.name }}
-                    </el-tag>
-                    <el-tag round type="success">{{ resourceDetail.owner_name }}</el-tag>
-                  </div>
+            <RichTextContent
+              :html="resourceDetail.content"
+              empty-text="当前资源没有正文内容，可直接使用外链或摘要信息。"
+            />
 
-                  <h3 class="detail-title">{{ resourceDetail.title }}</h3>
-                  <p class="detail-summary">{{ resourceDetail.summary || '暂无摘要。' }}</p>
-
-                  <RichTextContent
-                    :html="resourceDetail.content"
-                    empty-text="当前资源没有正文内容，可直接使用外链或摘要信息。"
-                  />
-
-                  <div v-if="resourceDetail.related_items.length" class="related-box">
-                    <p class="related-box__title">同类资源推荐</p>
-                    <div class="chip-row">
-                      <el-tag
-                        v-for="item in resourceDetail.related_items"
-                        :key="item.id"
-                        round
-                        type="warning"
-                        @click="selectResource(item.id)"
-                      >
-                        {{ item.title }}
-                      </el-tag>
-                    </div>
-                  </div>
-                </template>
-              </el-card>
-            </el-col>
-          </el-row>
-        </template>
-      </template>
-    </el-skeleton>
+            <div v-if="resourceDetail.related_items.length" class="related-box">
+              <p class="related-box__title">同类资源推荐</p>
+              <div class="chip-row">
+                <n-tag
+                  v-for="item in resourceDetail.related_items"
+                  :key="item.id"
+                  round
+                  type="warning"
+                  @click="selectResource(item.id)"
+                >
+                  {{ item.title }}
+                </n-tag>
+              </div>
+            </div>
+          </template>
+        </SaPanel>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { apiGet } from '@/api/http';
-import { useAuthStore } from '@/stores/auth';
 import RichTextContent from '@/components/RichTextContent.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import { useAuthStore } from '@/stores/auth';
 
 type ResourceSummary = {
   id: number;
@@ -341,6 +305,13 @@ onMounted(loadResources);
 </script>
 
 <style scoped>
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .section-head {
   display: flex;
   align-items: flex-start;
@@ -369,7 +340,7 @@ onMounted(loadResources);
   padding: 18px;
   border-radius: 18px;
   border: 1px solid var(--ls-border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(247, 250, 255, 0.94));
+  background: var(--ls-panel);
   cursor: pointer;
 }
 
@@ -398,7 +369,7 @@ onMounted(loadResources);
   padding: 14px;
   border-radius: 16px;
   border: 1px solid var(--ls-border);
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--ls-elevated);
   cursor: pointer;
   transition: border-color 0.18s ease, transform 0.18s ease;
 }
@@ -448,7 +419,8 @@ onMounted(loadResources);
 }
 
 @media (max-width: 1100px) {
-  .featured-grid {
+  .featured-grid,
+  .detail-grid {
     grid-template-columns: 1fr;
   }
 }

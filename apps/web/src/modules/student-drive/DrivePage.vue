@@ -1,226 +1,216 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">学生网盘</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">{{ heroCopy }}</p>
-      </div>
-      <div class="action-group">
-        <el-button :loading="isLoading" type="primary" @click="loadDrive">刷新网盘</el-button>
-        <el-button :disabled="!canUseCurrentSpace" plain @click="openFilePicker">选择文件</el-button>
-        <el-button
-          v-if="selectedFiles.length"
-          :disabled="!canUseCurrentSpace"
-          :loading="isUploading"
-          type="success"
-          @click="uploadSelectedFiles"
-        >
-          {{ currentUploadLabel }}
-        </el-button>
-        <el-button v-if="selectedFiles.length" :disabled="isUploading" plain @click="clearSelectedFiles">
-          清空选择
-        </el-button>
-      </div>
-    </section>
-
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-
-    <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-      <el-tab-pane label="我的网盘" name="personal" />
-      <el-tab-pane label="小组网盘" name="group" />
-    </el-tabs>
-
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="8" />
-        </el-card>
+    <SaPageHeader eyebrow="学生网盘" :description="heroCopy" :title="pageTitle">
+      <template #actions>
+        <div class="action-group">
+          <n-button :loading="isLoading" type="primary" @click="loadDrive">刷新网盘</n-button>
+          <n-button :disabled="!canUseCurrentSpace" secondary @click="openFilePicker">选择文件</n-button>
+          <n-button
+            v-if="selectedFiles.length"
+            :disabled="!canUseCurrentSpace"
+            :loading="isUploading"
+            type="success"
+            @click="uploadSelectedFiles"
+          >
+            {{ currentUploadLabel }}
+          </n-button>
+          <n-button v-if="selectedFiles.length" :disabled="isUploading" secondary @click="clearSelectedFiles">
+            清空选择
+          </n-button>
+        </div>
       </template>
+    </SaPageHeader>
 
-      <template #default>
-        <div v-if="currentSpace && canUseCurrentSpace" class="page-stack">
-          <div class="metric-grid">
-            <article class="mini-panel">
-              <p class="metric-label">文件总数</p>
-              <p class="metric-value">{{ currentSpace.file_count }}</p>
-              <p class="metric-note">当前空间中已经保存的文件数量。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">已用空间</p>
-              <p class="metric-value metric-value--small">{{ formatBytes(currentSpace.used_bytes) }}</p>
-              <p class="metric-note">剩余 {{ formatBytes(currentSpace.remaining_bytes) }}</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">总容量</p>
-              <p class="metric-value metric-value--small">{{ currentSpace.quota_mb }} MB</p>
-              <p class="metric-note">当前按系统默认空间额度管理。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">使用率</p>
-              <p class="metric-value metric-value--small">{{ currentSpace.usage_percent }}%</p>
-              <p class="metric-note">空间紧张时可删除旧文件释放容量。</p>
-            </article>
-            <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
-              <p class="metric-label">小组成员</p>
-              <p class="metric-value">{{ groupSpace.member_count }}</p>
-              <p class="metric-note">{{ roleLabel(groupSpace.my_role) }} · {{ groupSpace.class_name || '当前班级' }}</p>
-            </article>
-            <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
-              <p class="metric-label">删除权限</p>
-              <p class="metric-value metric-value--small">{{ groupDeleteRoleLabel }}</p>
-              <p class="metric-note">{{ groupDeleteRuleText }}</p>
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+
+    <n-tabs v-model:value="activeTab" @update:value="handleTabChange">
+      <n-tab-pane name="personal" tab="我的网盘" />
+      <n-tab-pane name="group" tab="小组网盘" />
+    </n-tabs>
+
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="8" animated />
+    </SaPanel>
+
+    <div v-else-if="currentSpace && canUseCurrentSpace" class="page-stack">
+      <div class="metric-grid">
+        <article class="mini-panel">
+          <p class="metric-label">文件总数</p>
+          <p class="metric-value">{{ currentSpace.file_count }}</p>
+          <p class="metric-note">当前空间中已经保存的文件数量。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">已用空间</p>
+          <p class="metric-value metric-value--small">{{ formatBytes(currentSpace.used_bytes) }}</p>
+          <p class="metric-note">剩余 {{ formatBytes(currentSpace.remaining_bytes) }}</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">总容量</p>
+          <p class="metric-value metric-value--small">{{ currentSpace.quota_mb }} MB</p>
+          <p class="metric-note">当前按系统默认空间额度管理。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">使用率</p>
+          <p class="metric-value metric-value--small">{{ currentSpace.usage_percent }}%</p>
+          <p class="metric-note">空间紧张时可删除旧文件释放容量。</p>
+        </article>
+        <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
+          <p class="metric-label">小组成员</p>
+          <p class="metric-value">{{ groupSpace.member_count }}</p>
+          <p class="metric-note">{{ roleLabel(groupSpace.my_role) }} · {{ groupSpace.class_name || '当前班级' }}</p>
+        </article>
+        <article v-if="isGroupTab && groupSpace?.enabled" class="mini-panel">
+          <p class="metric-label">删除权限</p>
+          <p class="metric-value metric-value--small">{{ groupDeleteRoleLabel }}</p>
+          <p class="metric-note">{{ groupDeleteRuleText }}</p>
+        </article>
+      </div>
+
+      <SaPanel title="空间使用情况">
+        <template #actions>
+          <n-tag round :type="isGroupTab ? 'warning' : 'success'">
+            {{ currentSpace.display_name }}
+          </n-tag>
+        </template>
+
+        <n-progress
+          :percentage="Math.min(currentSpace.usage_percent, 100)"
+          :stroke-width="18"
+          status="success"
+        />
+        <p class="section-note">
+          已用 {{ formatBytes(currentSpace.used_bytes) }} / 总容量 {{ currentSpace.quota_mb }} MB
+        </p>
+        <p v-if="isGroupTab && groupSpace?.enabled" class="section-note">
+          当前由 {{ groupSpace.member_count }} 位组员共享，适合放置过程稿、参考资料和协作文档。
+        </p>
+      </SaPanel>
+
+      <SaPanel :description="currentSpaceNote" title="文件列表">
+        <template #actions>
+          <div class="action-group compact-actions">
+            <n-button :disabled="!canUseCurrentSpace" secondary @click="openFilePicker">选择文件</n-button>
+            <n-button
+              v-if="selectedFiles.length"
+              :disabled="!canUseCurrentSpace"
+              :loading="isUploading"
+              type="primary"
+              @click="uploadSelectedFiles"
+            >
+              {{ currentUploadLabel }}
+            </n-button>
+          </div>
+        </template>
+
+        <input ref="fileInputRef" class="file-input" multiple type="file" @change="handleFileChange" />
+
+        <div v-if="selectedFiles.length" class="selected-files-panel">
+          <p class="selected-files-title">待上传文件</p>
+          <div class="stack-list">
+            <article v-for="file in selectedFiles" :key="selectedFileKey(file)" class="file-item">
+              <div>
+                <p class="file-name">{{ file.name }}</p>
+                <p class="file-meta">{{ formatBytes(file.size) }}</p>
+              </div>
+              <n-button text type="error" @click="removeSelectedFile(file.name)">移除</n-button>
             </article>
           </div>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="info-row">
-                <span>空间使用情况</span>
-                <el-tag round :type="isGroupTab ? 'warning' : 'success'">
-                  {{ currentSpace.display_name }}
-                </el-tag>
-              </div>
-            </template>
-
-            <el-progress
-              :percentage="Math.min(currentSpace.usage_percent, 100)"
-              :stroke-width="18"
-              status="success"
-            />
-            <p class="section-note">
-              已用 {{ formatBytes(currentSpace.used_bytes) }} / 总容量 {{ currentSpace.quota_mb }} MB
-            </p>
-            <p class="section-note" v-if="isGroupTab && groupSpace?.enabled">
-              当前由 {{ groupSpace.member_count }} 位组员共享，适合放置过程稿、参考资料和协作文档。
-            </p>
-          </el-card>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="toolbar-row">
-                <div>
-                  <span>文件列表</span>
-                  <p class="section-note">{{ currentSpaceNote }}</p>
-                </div>
-                <div class="action-group compact-actions">
-                  <el-button :disabled="!canUseCurrentSpace" plain @click="openFilePicker">选择文件</el-button>
-                  <el-button
-                    v-if="selectedFiles.length"
-                    :disabled="!canUseCurrentSpace"
-                    :loading="isUploading"
-                    type="primary"
-                    @click="uploadSelectedFiles"
-                  >
-                    {{ currentUploadLabel }}
-                  </el-button>
-                </div>
-              </div>
-            </template>
-
-            <input ref="fileInputRef" class="file-input" multiple type="file" @change="handleFileChange" />
-
-            <div v-if="selectedFiles.length" class="selected-files-panel">
-              <p class="selected-files-title">待上传文件</p>
-              <div class="stack-list">
-                <article v-for="file in selectedFiles" :key="selectedFileKey(file)" class="file-item">
-                  <div>
-                    <p class="file-name">{{ file.name }}</p>
-                    <p class="file-meta">{{ formatBytes(file.size) }}</p>
-                  </div>
-                  <el-button link type="danger" @click="removeSelectedFile(file.name)">移除</el-button>
-                </article>
-              </div>
-            </div>
-
-            <el-empty v-if="!currentSpace.files.length" :description="currentEmptyDescription" />
-
-            <el-table v-else :data="currentSpace.files" stripe>
-              <el-table-column label="文件名" min-width="280">
-                <template #default="{ row }">
-                  <div>
-                    <strong>{{ row.name }}</strong>
-                    <p class="table-note">
-                      {{ row.original_name !== row.name ? `原始文件名：${row.original_name}` : '已按当前名称保存' }}
-                    </p>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="上传者" min-width="170">
-                <template #default="{ row }">
-                  <div>
-                    <strong>{{ row.uploaded_by_name || '未知成员' }}</strong>
-                    <p class="table-note">
-                      {{ row.uploaded_by_student_no || '暂无学号' }}
-                      <span v-if="isCurrentUserUploader(row)"> · 我上传的</span>
-                    </p>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column label="类型" min-width="100">
-                <template #default="{ row }">{{ row.ext.toUpperCase() }}</template>
-              </el-table-column>
-              <el-table-column label="大小" min-width="120">
-                <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
-              </el-table-column>
-              <el-table-column label="更新时间" min-width="170">
-                <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
-              </el-table-column>
-              <el-table-column label="操作" min-width="210" fixed="right">
-                <template #default="{ row }">
-                  <div class="row-actions">
-                    <el-space wrap>
-                      <el-button
-                        :loading="downloadingFileId === row.id"
-                        link
-                        type="primary"
-                        @click="downloadFile(row)"
-                      >
-                        下载
-                      </el-button>
-                      <el-button
-                        :disabled="!row.can_delete"
-                        :loading="deletingFileId === row.id"
-                        link
-                        type="danger"
-                        @click="deleteFile(row)"
-                      >
-                        删除
-                      </el-button>
-                    </el-space>
-                    <p v-if="isGroupTab && !row.can_delete" class="action-note">仅上传者本人或组长可删除</p>
-                  </div>
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-card>
         </div>
 
-        <el-card v-else class="soft-card">
-          <template #header>{{ isGroupTab ? '小组网盘' : '个人网盘' }}</template>
-          <div class="group-placeholder">
-            <p>
-              {{
-                currentSpaceDisabledMessage ||
-                (isGroupTab ? '当前还没有可用的小组空间。' : '当前个人网盘暂不可用，请稍后重试。')
-              }}
-            </p>
-            <el-button v-if="isGroupTab" plain @click="goToGroups">前往小组页</el-button>
-            <el-button v-else plain @click="loadDrive">刷新状态</el-button>
-          </div>
-        </el-card>
-      </template>
-    </el-skeleton>
+        <SaDataTable
+          :data="currentSpace.files"
+          :scroll-x="1050"
+          :empty-text="currentEmptyDescription"
+          row-key="id"
+          stripe
+        >
+          <SaTableColumn label="文件名" min-width="280">
+            <template #default="{ row }">
+              <div>
+                <strong>{{ row.name }}</strong>
+                <p class="table-note">
+                  {{ row.original_name !== row.name ? `原始文件名：${row.original_name}` : '已按当前名称保存' }}
+                </p>
+              </div>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="上传者" min-width="170">
+            <template #default="{ row }">
+              <div>
+                <strong>{{ row.uploaded_by_name || '未知成员' }}</strong>
+                <p class="table-note">
+                  {{ row.uploaded_by_student_no || '暂无学号' }}
+                  <span v-if="isCurrentUserUploader(row)"> · 我上传的</span>
+                </p>
+              </div>
+            </template>
+          </SaTableColumn>
+          <SaTableColumn label="类型" min-width="100">
+            <template #default="{ row }">{{ row.ext.toUpperCase() }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="大小" min-width="120">
+            <template #default="{ row }">{{ formatBytes(row.size_bytes) }}</template>
+          </SaTableColumn>
+          <SaTableColumn label="更新时间" min-width="170">
+            <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+          </SaTableColumn>
+          <SaTableColumn fixed="right" label="操作" min-width="210">
+            <template #default="{ row }">
+              <div class="row-actions">
+                <n-space :size="8" :wrap="true">
+                  <n-button
+                    :loading="downloadingFileId === row.id"
+                    text
+                    type="primary"
+                    @click="downloadFile(row)"
+                  >
+                    下载
+                  </n-button>
+                  <n-button
+                    :disabled="!row.can_delete"
+                    :loading="deletingFileId === row.id"
+                    text
+                    type="error"
+                    @click="deleteFile(row)"
+                  >
+                    删除
+                  </n-button>
+                </n-space>
+                <p v-if="isGroupTab && !row.can_delete" class="action-note">仅上传者本人或组长可删除</p>
+              </div>
+            </template>
+          </SaTableColumn>
+        </SaDataTable>
+      </SaPanel>
+    </div>
+
+    <SaPanel v-else :title="isGroupTab ? '小组网盘' : '个人网盘'">
+      <div class="group-placeholder">
+        <p>
+          {{
+            currentSpaceDisabledMessage ||
+            (isGroupTab ? '当前还没有可用的小组空间。' : '当前个人网盘暂不可用，请稍后重试。')
+          }}
+        </p>
+        <n-button v-if="isGroupTab" secondary @click="goToGroups">前往小组页</n-button>
+        <n-button v-else secondary @click="loadDrive">刷新状态</n-button>
+      </div>
+    </SaPanel>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NProgress, NSkeleton, NSpace, NTabPane, NTabs, NTag } from 'naive-ui';
 import { computed, onMounted, ref, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiGetBlob, apiUpload } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage, ElMessageBox } from '@/ui/feedback';
 
 type DriveFile = {
   id: number;
@@ -578,7 +568,8 @@ async function deleteFile(file: DriveFile) {
   }
 }
 
-function handleTabChange() {
+function handleTabChange(value: string) {
+  activeTab.value = value === 'group' ? 'group' : 'personal';
   clearSelectedFiles();
   void router.replace({
     path: '/student/drive',
@@ -633,7 +624,7 @@ onMounted(() => {
   margin-bottom: 18px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .selected-files-title,

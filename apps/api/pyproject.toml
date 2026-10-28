@@ -8,11 +8,17 @@ version = "0.1.0"
 description = "FastAPI backend skeleton for LearnSite"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.13.0",
+  "cryptography>=42.0.0",
+  "edge-tts>=6.1.0",
   "fastapi>=0.115.12",
+  "openai>=1.59.0",
   "openpyxl>=3.1.5",
-  "uvicorn[standard]>=0.34.0",
+  "passlib>=1.7.4",
   "pydantic-settings>=2.8.1",
+  "pyjwt>=2.10.0",
   "sqlalchemy>=2.0.39",
+  "uvicorn[standard]>=0.34.0",
   "python-multipart>=0.0.20"
 ]
 

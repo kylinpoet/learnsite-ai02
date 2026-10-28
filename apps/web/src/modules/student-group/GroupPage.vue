@@ -1,246 +1,220 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">小组协作</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">
-          在这里查看小组成员、今日到课状态和共享网盘，便于分工协作、资料共享与共同完成任务。
-        </p>
-      </div>
-      <div class="action-group">
-        <el-button :loading="isLoading" type="primary" @click="loadGroup">刷新小组</el-button>
-        <el-button :disabled="!groupData?.shared_drive.enabled" plain @click="goToGroupDrive">
-          打开小组网盘
-        </el-button>
-      </div>
-    </section>
+    <SaPageHeader
+      description="在这里查看小组成员、今日到课状态和共享网盘，便于分工协作、资料共享与共同完成任务。"
+      eyebrow="小组协作"
+      :title="pageTitle"
+    >
+      <template #actions>
+        <div class="action-group">
+          <n-button :loading="isLoading" type="primary" @click="loadGroup">刷新小组</n-button>
+          <n-button :disabled="!groupData?.shared_drive.enabled" secondary @click="goToGroupDrive">
+            打开小组网盘
+          </n-button>
+        </div>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-    <el-alert
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert
       v-if="discussionBlockedMessage"
       :closable="false"
       :title="discussionBlockedMessage"
       type="warning"
     />
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <el-empty
-          v-if="groupData && !groupData.group"
-          description="当前还没有加入小组，暂时无法使用小组协作页。"
-        />
+    <n-empty
+      v-else-if="groupData && !groupData.group"
+      description="当前还没有加入小组，暂时无法使用小组协作页。"
+    />
 
-        <div v-else-if="groupData?.group" class="page-stack">
-          <div class="metric-grid">
-            <article class="mini-panel">
-              <p class="metric-label">当前小组</p>
-              <p class="metric-value metric-value--small">{{ groupData.group.name }}</p>
-              <p class="metric-note">{{ groupData.group.class_name }} · 第 {{ groupData.group.group_no }} 组</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">成员人数</p>
-              <p class="metric-value">{{ groupData.today_summary.member_count }}</p>
-              <p class="metric-note">组长和组员都在这里统一查看。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">今日已到课</p>
-              <p class="metric-value">{{ groupData.today_summary.checked_in_count }}</p>
-              <p class="metric-note">按登录 IP 自动签到后的实时结果。</p>
-            </article>
-            <article class="mini-panel">
-              <p class="metric-label">共享文件</p>
-              <p class="metric-value">{{ groupData.shared_drive.file_count ?? 0 }}</p>
-              <p class="metric-note">可直接进入小组网盘继续上传与整理。</p>
-            </article>
+    <div v-else-if="groupData?.group" class="page-stack">
+      <div class="metric-grid">
+        <article class="mini-panel">
+          <p class="metric-label">当前小组</p>
+          <p class="metric-value metric-value--small">{{ groupData.group.name }}</p>
+          <p class="metric-note">{{ groupData.group.class_name }} · 第 {{ groupData.group.group_no }} 组</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">成员人数</p>
+          <p class="metric-value">{{ groupData.today_summary.member_count }}</p>
+          <p class="metric-note">组长和组员都在这里统一查看。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">今日已到课</p>
+          <p class="metric-value">{{ groupData.today_summary.checked_in_count }}</p>
+          <p class="metric-note">按登录 IP 自动签到后的实时结果。</p>
+        </article>
+        <article class="mini-panel">
+          <p class="metric-label">共享文件</p>
+          <p class="metric-value">{{ groupData.shared_drive.file_count ?? 0 }}</p>
+          <p class="metric-note">可直接进入小组网盘继续上传与整理。</p>
+        </article>
+      </div>
+
+      <div class="detail-grid">
+        <SaPanel title="成员面板">
+          <template #actions>
+            <n-tag round type="success">
+              组长 {{ groupData.group.leader_name || '待设置' }}
+            </n-tag>
+          </template>
+
+          <div class="group-summary">
+            <p class="group-summary-title">{{ groupData.group.name }}</p>
+            <p class="group-summary-note">
+              {{ groupData.group.description || '当前小组负责课堂协作、资料共享与作品共创。' }}
+            </p>
+            <p class="group-summary-note">
+              我的身份：{{ roleLabel(groupData.group.me_role) }}
+            </p>
           </div>
 
-          <el-row :gutter="16">
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>成员面板</span>
-                    <el-tag round type="success">
-                      组长 {{ groupData.group.leader_name || '待设置' }}
-                    </el-tag>
-                  </div>
-                </template>
-
-                <div class="group-summary">
-                  <p class="group-summary-title">{{ groupData.group.name }}</p>
-                  <p class="group-summary-note">
-                    {{ groupData.group.description || '当前小组负责课堂协作、资料共享与作品共创。' }}
-                  </p>
-                  <p class="group-summary-note">
-                    我的身份：{{ roleLabel(groupData.group.me_role) }}
-                  </p>
+          <SaDataTable :data="groupData.members" row-key="user_id" stripe>
+            <SaTableColumn label="成员" min-width="220">
+              <template #default="{ row }">
+                <div>
+                  <p class="member-name">{{ row.name }}</p>
+                  <p class="table-note">{{ row.student_no }}</p>
                 </div>
-
-                <el-table :data="groupData.members" stripe>
-                  <el-table-column label="成员" min-width="220">
-                    <template #default="{ row }">
-                      <div>
-                        <p class="member-name">{{ row.name }}</p>
-                        <p class="table-note">{{ row.student_no }}</p>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="身份" min-width="120">
-                    <template #default="{ row }">
-                      <el-tag round :type="row.role === 'leader' ? 'success' : 'info'">
-                        {{ roleLabel(row.role) }}
-                      </el-tag>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="座位" min-width="150">
-                    <template #default="{ row }">
-                      <span>{{ row.seat_label || '未绑定' }}</span>
-                      <p class="table-note">{{ row.room_name || '暂无机房信息' }}</p>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="到课状态" min-width="180">
-                    <template #default="{ row }">
-                      <el-tag round :type="row.checked_in_today ? 'success' : 'warning'">
-                        {{ row.checked_in_today ? '已签到' : '未签到' }}
-                      </el-tag>
-                      <p class="table-note">
-                        {{ row.checked_in_at ? formatDateTime(row.checked_in_at) : '等待登录签到' }}
-                      </p>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </el-card>
-            </el-col>
-
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>
-                  <div class="info-row">
-                    <span>共享网盘概览</span>
-                    <el-tag round type="warning">{{ groupData.shared_drive.display_name || '小组共享网盘' }}</el-tag>
-                  </div>
-                </template>
-
-                <el-progress
-                  :percentage="Math.min(groupData.shared_drive.usage_percent ?? 0, 100)"
-                  :stroke-width="18"
-                  status="success"
-                />
-                <p class="section-note">
-                  已用 {{ formatBytes(groupData.shared_drive.used_bytes ?? 0) }} / 总容量
-                  {{ groupData.shared_drive.quota_mb ?? 0 }} MB
-                </p>
-                <p class="section-note">
-                  剩余 {{ formatBytes(groupData.shared_drive.remaining_bytes ?? 0) }}，当前共
-                  {{ groupData.shared_drive.file_count ?? 0 }} 个文件。
-                </p>
-
-                <div class="recent-file-block">
-                  <div class="info-row">
-                    <span>最近文件</span>
-                    <el-button link type="primary" @click="goToGroupDrive">去整理</el-button>
-                  </div>
-
-                  <div v-if="groupData.shared_drive.recent_files.length" class="recent-file-list">
-                    <article
-                      v-for="file in groupData.shared_drive.recent_files"
-                      :key="file.id"
-                      class="recent-file-item"
-                    >
-                      <div>
-                        <p class="member-name">{{ file.name }}</p>
-                        <p class="table-note">
-                          {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB ·
-                          {{ formatDateTime(file.updated_at) }}
-                        </p>
-                      </div>
-                    </article>
-                  </div>
-                  <el-empty v-else description="小组网盘还没有文件，先上传一份协作资料吧。" />
-                </div>
-              </el-card>
-            </el-col>
-          </el-row>
-
-          <el-card class="soft-card">
-            <template #header>
-              <div class="info-row">
-                <span>课堂动态</span>
-                <el-tag round type="info">{{ groupData.activity_feed.length }} 条最新记录</el-tag>
-              </div>
-            </template>
-
-            <div v-if="groupData.activity_feed.length" class="activity-feed">
-              <article
-                v-for="event in groupData.activity_feed"
-                :key="event.id"
-                class="activity-item"
-              >
-                <div class="info-row">
-                  <div>
-                    <p class="member-name">{{ event.title }}</p>
-                    <p class="table-note">{{ event.description }}</p>
-                  </div>
-                  <el-tag round :type="activityTagType(event.event_type)">{{ event.event_label }}</el-tag>
-                </div>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="身份" min-width="120">
+              <template #default="{ row }">
+                <n-tag round :type="row.role === 'leader' ? 'success' : 'info'">
+                  {{ roleLabel(row.role) }}
+                </n-tag>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="座位" min-width="150">
+              <template #default="{ row }">
+                <span>{{ row.seat_label || '未绑定' }}</span>
+                <p class="table-note">{{ row.room_name || '暂无机房信息' }}</p>
+              </template>
+            </SaTableColumn>
+            <SaTableColumn label="到课状态" min-width="180">
+              <template #default="{ row }">
+                <n-tag round :type="row.checked_in_today ? 'success' : 'warning'">
+                  {{ row.checked_in_today ? '已签到' : '未签到' }}
+                </n-tag>
                 <p class="table-note">
-                  {{ formatDateTime(event.occurred_at) }}
-                  <span v-if="event.actor_name"> · {{ event.actor_name }}</span>
-                  <span v-if="event.actor_student_no"> · {{ event.actor_student_no }}</span>
+                  {{ row.checked_in_at ? formatDateTime(row.checked_in_at) : '等待登录签到' }}
                 </p>
+              </template>
+            </SaTableColumn>
+          </SaDataTable>
+        </SaPanel>
+
+        <SaPanel title="共享网盘概览">
+          <template #actions>
+            <n-tag round type="warning">{{ groupData.shared_drive.display_name || '小组共享网盘' }}</n-tag>
+          </template>
+
+          <n-progress
+            :percentage="Math.min(groupData.shared_drive.usage_percent ?? 0, 100)"
+            :stroke-width="18"
+            status="success"
+          />
+          <p class="section-note">
+            已用 {{ formatBytes(groupData.shared_drive.used_bytes ?? 0) }} / 总容量
+            {{ groupData.shared_drive.quota_mb ?? 0 }} MB
+          </p>
+          <p class="section-note">
+            剩余 {{ formatBytes(groupData.shared_drive.remaining_bytes ?? 0) }}，当前共
+            {{ groupData.shared_drive.file_count ?? 0 }} 个文件。
+          </p>
+
+          <div class="recent-file-block">
+            <div class="info-row">
+              <span>最近文件</span>
+              <n-button text type="primary" @click="goToGroupDrive">去整理</n-button>
+            </div>
+
+            <div v-if="groupData.shared_drive.recent_files.length" class="recent-file-list">
+              <article
+                v-for="file in groupData.shared_drive.recent_files"
+                :key="file.id"
+                class="recent-file-item"
+              >
+                <div>
+                  <p class="member-name">{{ file.name }}</p>
+                  <p class="table-note">
+                    {{ file.ext.toUpperCase() }} · {{ file.size_kb }} KB ·
+                    {{ formatDateTime(file.updated_at) }}
+                  </p>
+                </div>
               </article>
             </div>
-            <el-empty v-else description="当前还没有可展示的小组课堂动态。" />
-          </el-card>
+            <n-empty v-else description="小组网盘还没有文件，先上传一份协作资料吧。" />
+          </div>
+        </SaPanel>
+      </div>
 
-          <el-card class="soft-card">
-            <template #header>
-              <div class="info-row">
-                <span>操作日志</span>
-                <el-tag round type="warning">{{ groupData.operation_logs.length }} 条可追溯记录</el-tag>
+      <SaPanel title="课堂动态">
+        <template #actions>
+          <n-tag round type="info">{{ groupData.activity_feed.length }} 条最新记录</n-tag>
+        </template>
+
+        <div v-if="groupData.activity_feed.length" class="activity-feed">
+          <article v-for="event in groupData.activity_feed" :key="event.id" class="activity-item">
+            <div class="info-row">
+              <div>
+                <p class="member-name">{{ event.title }}</p>
+                <p class="table-note">{{ event.description }}</p>
               </div>
-            </template>
-
-            <div v-if="groupData.operation_logs.length" class="activity-feed">
-              <article
-                v-for="log in groupData.operation_logs"
-                :key="`log-${log.id}`"
-                class="activity-item"
-              >
-                <div class="info-row">
-                  <div>
-                    <p class="member-name">{{ log.title }}</p>
-                    <p class="table-note">{{ log.description }}</p>
-                  </div>
-                  <el-tag round :type="operationTagType(log.event_type)">{{ log.event_label }}</el-tag>
-                </div>
-                <p class="table-note">
-                  {{ formatDateTime(log.occurred_at) }}
-                  <span v-if="log.actor_name"> 路 {{ log.actor_name }}</span>
-                  <span v-if="log.actor_role"> 路 {{ roleLabel(log.actor_role) }}</span>
-                </p>
-              </article>
+              <n-tag round :type="activityTagType(event.event_type)">{{ event.event_label }}</n-tag>
             </div>
-            <el-empty v-else description="当前还没有小组协作操作日志。" />
-          </el-card>
+            <p class="table-note">
+              {{ formatDateTime(event.occurred_at) }}
+              <span v-if="event.actor_name"> · {{ event.actor_name }}</span>
+              <span v-if="event.actor_student_no"> · {{ event.actor_student_no }}</span>
+            </p>
+          </article>
         </div>
-      </template>
-    </el-skeleton>
+        <n-empty v-else description="当前还没有可展示的小组课堂动态。" />
+      </SaPanel>
+
+      <SaPanel title="操作日志">
+        <template #actions>
+          <n-tag round type="warning">{{ groupData.operation_logs.length }} 条可追溯记录</n-tag>
+        </template>
+
+        <div v-if="groupData.operation_logs.length" class="activity-feed">
+          <article v-for="log in groupData.operation_logs" :key="`log-${log.id}`" class="activity-item">
+            <div class="info-row">
+              <div>
+                <p class="member-name">{{ log.title }}</p>
+                <p class="table-note">{{ log.description }}</p>
+              </div>
+              <n-tag round :type="operationTagType(log.event_type)">{{ log.event_label }}</n-tag>
+            </div>
+            <p class="table-note">
+              {{ formatDateTime(log.occurred_at) }}
+              <span v-if="log.actor_name"> 路 {{ log.actor_name }}</span>
+              <span v-if="log.actor_role"> 路 {{ roleLabel(log.actor_role) }}</span>
+            </p>
+          </article>
+        </div>
+        <n-empty v-else description="当前还没有小组协作操作日志。" />
+      </SaPanel>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NEmpty, NProgress, NSkeleton, NTag } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type GroupMember = {
@@ -414,14 +388,14 @@ function activityTagType(eventType: string) {
     return 'warning';
   }
   if (eventType === 'submission_reviewed') {
-    return 'danger';
+    return 'error';
   }
   return 'info';
 }
 
 function operationTagType(eventType: string) {
   if (eventType.includes('deleted')) {
-    return 'danger';
+    return 'error';
   }
   if (eventType.includes('reviewed')) {
     return 'warning';
@@ -477,11 +451,24 @@ onMounted(() => {
   gap: 10px;
 }
 
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1200px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .group-summary {
   margin-bottom: 16px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .group-summary-title,
@@ -527,7 +514,7 @@ onMounted(() => {
 .activity-item {
   padding: 14px 16px;
   border-radius: 16px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .metric-value--small {

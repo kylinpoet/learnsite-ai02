@@ -8,6 +8,7 @@ import { useAuthStore } from './stores/auth';
 import { authSessionExpiredEvent } from './stores/authSession';
 import './styles/theme.css';
 import './styles/base.css';
+import './styles/layout.css';
 
 const app = createApp(App);
 const pinia = createPinia();
@@ -20,6 +21,12 @@ const authStore = useAuthStore(pinia);
 authStore.initialize();
 
 if (typeof window !== 'undefined') {
+  if (typeof window.matchMedia === 'function') {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      appStore.refreshResolvedScheme();
+    });
+  }
+
   window.addEventListener(authSessionExpiredEvent, () => {
     authStore.clearSession();
     const currentPath = router.currentRoute.value.path;

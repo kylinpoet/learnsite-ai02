@@ -5,35 +5,55 @@ import json
 import logging
 import re
 from typing import Any
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.api.deps.auth import get_current_user, require_staff
+from app.api.deps.auth import get_current_user, require_admin, require_staff
 from app.api.deps.db import get_db
 from app.models import (
     AIProvider,
     ClassroomSession,
+    CompanionConversation,
+    CompanionMessage,
     CurriculumLesson,
     CurriculumUnit,
     LessonPlan,
     SchoolClass,
     StudentLessonPlanProgress,
+    StudentProfile,
     SystemSetting,
     Task,
     User,
 )
 from app.schemas.common import ApiResponse
-from app.services.remote_request_headers import build_remote_request_headers
+from app.services import ai_provider_client
+from app.services.ai_provider_client import (
+    PROVIDER_MODE_CONFIGURED_PROXY,
+    PROVIDER_MODE_NO_PROXY,
+)
+from app.services.assistant_safety import (
+    MAX_STUDENT_DAILY_MESSAGE_LIMIT,
+    enforce_student_companion_allowance,
+    find_blocked_keyword,
+    read_assistant_safety_settings,
+    write_assistant_safety_settings,
+)
 from app.services.assistant_settings import (
     read_assistant_prompt_settings,
     read_assistant_runtime_settings,
 )
+from app.services.classroom_switches import build_student_classroom_context, resolve_feature_access
+from app.services.companion_journal import (
+    append_companion_message,
+    get_or_create_conversation,
+    summarize_attachments,
+)
+from app.services.companion_tts import CompanionTtsError, synthesize_speech
+from app.services.remote_request_headers import build_remote_request_headers
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff, staff_can_access_class
 from app.services.system_settings import read_system_settings
 
@@ -129,6 +149,83 @@ def read_assistant_enabled(db: Session) -> bool:
     if row is None:
         return True
     return (row.setting_value or "").strip().lower() == "true"
+
+
+def companion_filter_texts(payload: CompanionRespondPayload) -> list[str]:
+    texts = [payload.message]
+    for attachment in payload.attachments:
+        texts.append(attachment.name)
+        if attachment.text_content:
+            texts.append(attachment.text_content)
+    return texts
+
+
+def enforce_student_companion_guards(
+    user: User,
+    db: Session,
+    payload: CompanionRespondPayload,
+) -> dict[str, str] | None:
+    """Classroom-switch / daily-allowance / keyword guards for students.
+
+    Raises HTTPException when the request must be rejected outright. Returns the
+    blocked-keyword match (if any) so the caller can persist the blocked attempt
+    with its conversation context before rejecting with 400.
+    """
+    if user.user_type != "student":
+        return None
+
+    classroom_context = build_student_classroom_context(user, db)
+    allowed, disabled_message = resolve_feature_access(
+        classroom_context,
+        "ai_assistant",
+        disabled_message="当前课堂已关闭 AI 学伴，请按老师安排学习。",
+    )
+    if not allowed:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=disabled_message)
+
+    enforce_student_companion_allowance(user, db)
+
+    safety_settings = read_assistant_safety_settings(db)
+    return find_blocked_keyword(companion_filter_texts(payload), safety_settings["blocked_keywords"])
+
+
+def persist_companion_user_message(
+    db: Session,
+    user: User,
+    scope: str,
+    message: str,
+    context: dict | None,
+    payload: CompanionRespondPayload,
+    blocked_match: dict[str, str] | None,
+):
+    """Persist the user turn (blocked or not); raises 400 when blocked."""
+    conversation = get_or_create_conversation(db, user, scope, context)
+    if blocked_match is not None:
+        append_companion_message(
+            db,
+            conversation,
+            role="user",
+            content=message,
+            attachment_summary=summarize_attachments(payload.attachments),
+            is_blocked=True,
+            blocked_category=blocked_match["category"],
+            blocked_keyword=blocked_match["keyword"],
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="你的消息包含不适宜的关键词，本次未发送给 AI，相关记录会提示老师。",
+        )
+
+    append_companion_message(
+        db,
+        conversation,
+        role="user",
+        content=message,
+        attachment_summary=summarize_attachments(payload.attachments),
+    )
+    db.commit()
+    return conversation
 
 
 def serialize_provider(provider: AIProvider) -> dict:
@@ -899,18 +996,6 @@ def chat_completions_url(provider: AIProvider) -> str:
     return f"{base_url}/chat/completions"
 
 
-def build_remote_request_opener(proxy_url: str | None) -> tuple[Any, str]:
-    normalized_proxy = (proxy_url or "").strip()
-    if normalized_proxy:
-        return (
-            urllib_request.build_opener(
-                urllib_request.ProxyHandler({"http": normalized_proxy, "https": normalized_proxy})
-            ),
-            "configured_proxy",
-        )
-    return urllib_request.build_opener(urllib_request.ProxyHandler({})), "no_proxy"
-
-
 def extract_provider_error_message(body: str, *, status_code: int | None = None) -> str:
     text = body.strip()
     if not text:
@@ -1107,28 +1192,18 @@ def call_openai_compatible_provider(
     runtime_settings: dict[str, Any],
     remote_proxy_url: str | None = None,
 ) -> tuple[str | None, str | None, str | None]:
-    payload = {
-        "model": provider.model_name,
-        "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
-        **build_runtime_generation_params(runtime_settings),
-    }
+    """非流式调用 OpenAI Compatible 服务（openai SDK）。契约与旧实现一致。"""
     request_url = chat_completions_url(provider)
-    request_data = json.dumps(payload).encode("utf-8")
-    request_headers = build_remote_request_headers(
+    request_mode = PROVIDER_MODE_CONFIGURED_PROXY if (remote_proxy_url or "").strip() else PROVIDER_MODE_NO_PROXY
+    content, reason, reasoning_content = ai_provider_client.chat_completion(
+        provider.base_url,
         provider.api_key,
-        content_type="application/json",
+        build_chat_messages(system_prompt, user_prompt, history, attachments),
+        build_runtime_generation_params(runtime_settings),
+        model=provider.model_name,
+        proxy_url=remote_proxy_url,
     )
-    opener, request_mode = build_remote_request_opener(remote_proxy_url)
-
-    try:
-        request = urllib_request.Request(
-            request_url,
-            data=request_data,
-            headers=request_headers,
-            method="POST",
-        )
-        with opener.open(request, timeout=20) as response:
-            raw_payload = json.loads(response.read().decode("utf-8"))
+    if content is not None:
         logger.warning(
             "[AI_PROVIDER_REQUEST] completion_success provider_id=%s provider_name=%s mode=%s url=%s",
             provider.id,
@@ -1136,40 +1211,16 @@ def call_openai_compatible_provider(
             request_mode,
             request_url,
         )
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="ignore")
+    else:
         logger.warning(
-            "[AI_PROVIDER_REQUEST] completion_http_error provider_id=%s provider_name=%s status=%s url=%s body=%s",
+            "[AI_PROVIDER_REQUEST] completion_error provider_id=%s provider_name=%s mode=%s url=%s error=%s",
             provider.id,
             provider.name,
-            exc.code,
+            request_mode,
             request_url,
-            body,
+            reason,
         )
-        reason = extract_provider_error_message(body, status_code=exc.code)
-        if not reason:
-            reason = str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
-        return None, reason, None
-    except (urllib_error.URLError, TimeoutError, ValueError) as exc:
-        logger.warning(
-            "[AI_PROVIDER_REQUEST] completion_transport_error provider_id=%s provider_name=%s url=%s error=%s",
-            provider.id,
-            provider.name,
-            request_url,
-            str(exc),
-        )
-        return None, str(exc), None
-
-    choices = raw_payload.get("choices") or []
-    if not choices:
-        return None, "Provider returned an empty completion result", None
-
-    message = choices[0].get("message") or {}
-    content = extract_provider_text(message.get("content"))
-    if not content:
-        return None, "Provider returned an empty message", None
-    reasoning_content = extract_provider_reasoning(message)
-    return content, None, reasoning_content or None
+    return content, reason, reasoning_content
 
 
 def call_openai_compatible_provider_stream(
@@ -1182,114 +1233,51 @@ def call_openai_compatible_provider_stream(
     runtime_settings: dict[str, Any],
     remote_proxy_url: str | None = None,
 ):
-    payload = {
-        "model": provider.model_name,
-        "messages": build_chat_messages(system_prompt, user_prompt, history, attachments),
-        **build_runtime_generation_params(runtime_settings),
-        "stream": True,
-    }
-    request_url = chat_completions_url(provider)
-    request_data = json.dumps(payload).encode("utf-8")
-    request_headers = build_remote_request_headers(
-        provider.api_key,
-        accept="text/event-stream, application/json, text/plain, */*",
-        content_type="application/json",
-    )
-    opener, request_mode = build_remote_request_opener(remote_proxy_url)
+    """流式调用 OpenAI Compatible 服务（openai SDK）。
 
-    try:
-        request = urllib_request.Request(
-            request_url,
-            data=request_data,
-            headers=request_headers,
-            method="POST",
-        )
-        with opener.open(request, timeout=35) as response:
-            content_type = (response.headers.get("Content-Type") or "").lower()
-            if "text/event-stream" not in content_type:
-                raw_payload = json.loads(response.read().decode("utf-8"))
-                choices = raw_payload.get("choices") or []
-                if not choices:
-                    return None, "Provider returned an empty completion result", None
-                message = choices[0].get("message") or {}
-                content = extract_provider_text(message.get("content"))
-                if not content:
-                    return None, "Provider returned an empty message", None
+    生成器：yield ("chunk"|"reasoning", 增量文本)，
+    return (full_text, error, full_reasoning) 作为 StopIteration.value。
+    """
+    request_url = chat_completions_url(provider)
+    request_mode = PROVIDER_MODE_CONFIGURED_PROXY if (remote_proxy_url or "").strip() else PROVIDER_MODE_NO_PROXY
+    stream = ai_provider_client.chat_completion_stream(
+        provider.base_url,
+        provider.api_key,
+        build_chat_messages(system_prompt, user_prompt, history, attachments),
+        build_runtime_generation_params(runtime_settings),
+        model=provider.model_name,
+        proxy_url=remote_proxy_url,
+    )
+    chunk_count = 0
+    while True:
+        try:
+            event_type, event_payload = next(stream)
+            if event_type == "chunk":
+                chunk_count += 1
+            yield (event_type, event_payload)
+        except StopIteration as stop:
+            full_text, reason, full_reasoning = (
+                stop.value if isinstance(stop.value, tuple) and len(stop.value) == 3 else (None, None, None)
+            )
+            if full_text is not None:
                 logger.warning(
-                    "[AI_PROVIDER_REQUEST] stream_fallback_to_json provider_id=%s provider_name=%s mode=%s url=%s",
+                    "[AI_PROVIDER_REQUEST] stream_success provider_id=%s provider_name=%s mode=%s url=%s chunk_count=%s",
                     provider.id,
                     provider.name,
                     request_mode,
                     request_url,
+                    chunk_count,
                 )
-                reasoning_content = extract_provider_reasoning(message)
-                return content, None, reasoning_content or None
-
-            chunks: list[str] = []
-            reasoning_chunks: list[str] = []
-            for raw_line in response:
-                line = raw_line.decode("utf-8", errors="ignore").strip()
-                if not line or not line.startswith("data:"):
-                    continue
-
-                raw_payload = line[5:].strip()
-                if raw_payload == "[DONE]":
-                    break
-
-                try:
-                    payload_item = json.loads(raw_payload)
-                except json.JSONDecodeError:
-                    continue
-
-                choices = payload_item.get("choices") or []
-                if not choices:
-                    continue
-                delta = choices[0].get("delta") or {}
-                content = extract_provider_stream_text(delta.get("content"))
-                if content:
-                    chunks.append(content)
-                    yield ("chunk", content)
-                reasoning = extract_provider_stream_reasoning(delta)
-                if reasoning:
-                    reasoning_chunks.append(reasoning)
-                    yield ("reasoning", reasoning)
-
-            full_text = "".join(chunks).strip()
-            full_reasoning = "".join(reasoning_chunks).strip() or None
-            if not full_text and not full_reasoning:
-                return None, "Provider returned an empty stream completion result", None
-            logger.warning(
-                "[AI_PROVIDER_REQUEST] stream_success provider_id=%s provider_name=%s mode=%s url=%s chunk_count=%s",
-                provider.id,
-                provider.name,
-                request_mode,
-                request_url,
-                len(chunks),
-            )
-            return full_text, None, full_reasoning
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="ignore")
-        logger.warning(
-            "[AI_PROVIDER_REQUEST] stream_http_error provider_id=%s provider_name=%s status=%s url=%s body=%s",
-            provider.id,
-            provider.name,
-            exc.code,
-            request_url,
-            body,
-        )
-        warning = extract_provider_error_message(body, status_code=exc.code)
-        if not warning:
-            warning = body or str(exc.reason or "").strip() or str(exc).strip() or f"Provider request failed with status {exc.code}"
-        return None, warning, None
-    except (urllib_error.URLError, TimeoutError, ValueError) as exc:
-        logger.warning(
-            "[AI_PROVIDER_REQUEST] stream_transport_error provider_id=%s provider_name=%s url=%s error=%s",
-            provider.id,
-            provider.name,
-            request_url,
-            str(exc),
-        )
-        return None, str(exc), None
+            else:
+                logger.warning(
+                    "[AI_PROVIDER_REQUEST] stream_error provider_id=%s provider_name=%s mode=%s url=%s error=%s",
+                    provider.id,
+                    provider.name,
+                    request_mode,
+                    request_url,
+                    reason,
+                )
+            return (full_text, reason, full_reasoning)
 
 
 def build_preview_reply(
@@ -1424,6 +1412,8 @@ def companion_respond(
     if not message and not payload.attachments:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message or attachments are required")
 
+    blocked_match = enforce_student_companion_guards(user, db, payload)
+
     context = resolve_context_payload(
         user,
         db,
@@ -1436,6 +1426,8 @@ def companion_respond(
     context = apply_lesson_agent_binding_to_context(context, binding)
     if scope == "lesson" and context is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lesson mode requires course context")
+
+    conversation = persist_companion_user_message(db, user, scope, message, context, payload, blocked_match)
 
     provider = resolve_provider(db, payload.provider_id)
     if payload.provider_id is not None and provider is None:
@@ -1505,6 +1497,15 @@ def companion_respond(
         reasoning_content = None
 
     provider_name = provider.name if provider is not None else "内置预览学伴"
+    append_companion_message(
+        db,
+        conversation,
+        role="assistant",
+        content=reply_text,
+        provider_name=provider_name,
+        provider_mode=provider_mode,
+    )
+    db.commit()
     return ApiResponse(
         data={
             "reply": {
@@ -1536,6 +1537,8 @@ def companion_respond_stream(
     if not message and not payload.attachments:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Message or attachments are required")
 
+    blocked_match = enforce_student_companion_guards(user, db, payload)
+
     context = resolve_context_payload(
         user,
         db,
@@ -1555,6 +1558,8 @@ def companion_respond_stream(
     runtime_settings = read_assistant_runtime_settings(db)
     if not bool(runtime_settings["streaming_enabled"]):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="AI 学伴流式输出已关闭")
+
+    conversation = persist_companion_user_message(db, user, scope, message, context, payload, blocked_match)
 
     preferred_kb_ids = list(payload.knowledge_base_ids)
     if (
@@ -1655,6 +1660,19 @@ def companion_respond_stream(
                 yield sse_event("token", {"text": fragment})
             reasoning_content = None
 
+        try:
+            append_companion_message(
+                db,
+                conversation,
+                role="assistant",
+                content=reply_text,
+                provider_name=provider_name,
+                provider_mode=provider_mode,
+            )
+            db.commit()
+        except Exception:  # noqa: BLE001 - 持久化失败不能中断已经发出的流
+            logger.warning("[AI_COMPANION] persist_assistant_message_failed", exc_info=True)
+
         done_payload = {
             "reply": {
                 "role": "assistant",
@@ -1677,6 +1695,180 @@ def companion_respond_stream(
     )
 
 
+class BlockedKeywordCategoryPayload(BaseModel):
+    label: str = Field(min_length=1, max_length=40)
+    enabled: bool = True
+    keywords: list[str] = Field(default_factory=list, max_length=100)
+
+
+class AssistantSafetySettingsPayload(BaseModel):
+    student_daily_message_limit: int = Field(ge=0, le=MAX_STUDENT_DAILY_MESSAGE_LIMIT)
+    blocked_keywords: dict[str, BlockedKeywordCategoryPayload] = Field(default_factory=dict)
+
+
+def serialize_audit_conversation(
+    conversation: CompanionConversation,
+    student: User,
+    school_class: SchoolClass,
+) -> dict:
+    return {
+        "id": conversation.id,
+        "student": {
+            "id": student.id,
+            "username": student.username,
+            "display_name": student.display_name,
+        },
+        "class": {"id": school_class.id, "name": school_class.class_name},
+        "scope": conversation.scope,
+        "context_ref": conversation.context_ref,
+        "context_title": conversation.context_title,
+        "message_count": conversation.message_count,
+        "blocked_count": conversation.blocked_count,
+        "last_active_at": (
+            conversation.updated_at.isoformat(timespec="seconds") if conversation.updated_at else None
+        ),
+    }
+
+
+def serialize_audit_message(message: CompanionMessage) -> dict:
+    return {
+        "id": message.id,
+        "role": message.role,
+        "content": message.content,
+        "provider_name": message.provider_name,
+        "provider_mode": message.provider_mode,
+        "attachment_summary": message.attachment_summary,
+        "is_blocked": message.is_blocked,
+        "blocked_category": message.blocked_category,
+        "blocked_keyword": message.blocked_keyword,
+        "created_at": (
+            message.created_at.isoformat(timespec="seconds") if message.created_at else None
+        ),
+    }
+
+
+def audit_overview_statement():
+    return (
+        select(CompanionConversation, User, StudentProfile, SchoolClass)
+        .join(User, CompanionConversation.user_id == User.id)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .join(SchoolClass, SchoolClass.id == StudentProfile.class_id)
+        .where(User.user_type == "student")
+    )
+
+
+@router.get("/staff/audit/overview", response_model=ApiResponse)
+def staff_audit_overview(
+    class_id: int | None = Query(default=None, ge=1),
+    search: str | None = Query(default=None, max_length=50),
+    blocked_only: bool = Query(default=False),
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    statement = audit_overview_statement()
+
+    if not is_admin_staff(user):
+        accessible_ids = get_accessible_class_ids(user, db)
+        statement = statement.where(StudentProfile.class_id.in_(accessible_ids))
+    if class_id is not None:
+        statement = statement.where(StudentProfile.class_id == class_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        statement = statement.where(or_(User.display_name.ilike(pattern), User.username.ilike(pattern)))
+    if blocked_only:
+        statement = statement.where(CompanionConversation.blocked_count > 0)
+
+    total = db.scalar(select(func.count()).select_from(statement.subquery()))
+    rows = db.execute(
+        statement.order_by(CompanionConversation.updated_at.desc(), CompanionConversation.id.desc())
+        .limit(limit)
+        .offset(offset)
+    ).all()
+
+    if is_admin_staff(user):
+        class_rows = db.scalars(
+            select(SchoolClass).order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())
+        ).all()
+    else:
+        class_rows = db.scalars(
+            select(SchoolClass)
+            .where(SchoolClass.id.in_(get_accessible_class_ids(user, db)))
+            .order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())
+        ).all()
+
+    return ApiResponse(
+        data={
+            "classes": [
+                {"id": item.id, "class_name": item.class_name} for item in class_rows
+            ],
+            "items": [
+                serialize_audit_conversation(conversation, student, school_class)
+                for conversation, student, _profile, school_class in rows
+            ],
+            "total": int(total or 0),
+            "limit": limit,
+            "offset": offset,
+        }
+    )
+
+
+@router.get("/staff/audit/conversations/{conversation_id}", response_model=ApiResponse)
+def staff_audit_conversation_detail(
+    conversation_id: int,
+    user: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    row = db.execute(
+        audit_overview_statement().where(CompanionConversation.id == conversation_id)
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="对话记录不存在")
+
+    conversation, student, profile, school_class = row
+    if not is_admin_staff(user) and not staff_can_access_class(user, profile.class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级的对话记录")
+
+    messages = db.scalars(
+        select(CompanionMessage)
+        .where(CompanionMessage.conversation_id == conversation.id)
+        .order_by(CompanionMessage.id.asc())
+    ).all()
+
+    return ApiResponse(
+        data={
+            "conversation": serialize_audit_conversation(conversation, student, school_class),
+            "messages": [serialize_audit_message(message) for message in messages],
+        }
+    )
+
+
+@router.get("/admin/safety-settings", response_model=ApiResponse)
+def read_safety_settings_endpoint(
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    return ApiResponse(data=read_assistant_safety_settings(db))
+
+
+@router.put("/admin/safety-settings", response_model=ApiResponse)
+def update_safety_settings_endpoint(
+    payload: AssistantSafetySettingsPayload,
+    _: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    write_assistant_safety_settings(
+        db,
+        student_daily_message_limit=payload.student_daily_message_limit,
+        blocked_keywords={
+            category: item.model_dump() for category, item in payload.blocked_keywords.items()
+        },
+    )
+    db.commit()
+    return ApiResponse(message="AI 安全设置已保存", data=read_assistant_safety_settings(db))
+
+
 @router.get("/lesson-agent-template", response_model=ApiResponse)
 def lesson_agent_template() -> ApiResponse:
     return ApiResponse(
@@ -1690,3 +1882,45 @@ def lesson_agent_template() -> ApiResponse:
             ],
         }
     )
+
+
+class CompanionTtsPayload(BaseModel):
+    text: str = Field(min_length=1, max_length=1200)
+    voice: str | None = None
+
+
+@router.post("/companion/tts")
+def companion_tts(
+    payload: CompanionTtsPayload,
+    user: User = Depends(get_current_user),
+) -> Response:
+    """AI 学伴回复朗读：用 Edge TTS 合成 MP3 音频流。
+
+    - 入参 text 为待朗读文本（端点层先做长度硬上限，service 内再做朗读上限）；
+    - 成功直接返回 audio/mpeg 二进制（不走 envelope）；
+    - 文本超限 / 音色非法 -> 400；合成失败（网络等）-> 502。
+    """
+    normalized_text = (payload.text or "").strip()
+    if not normalized_text:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="朗读内容为空")
+
+    try:
+        audio = synthesize_speech(normalized_text, voice=payload.voice)
+    except CompanionTtsError as exc:
+        message = str(exc)
+        if "过长" in message or "音色" in message or "为空" in message:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=message) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=message or "朗读服务暂不可用，请稍后重试",
+        ) from exc
+
+    return Response(
+        content=audio,
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Disposition": 'inline; filename="companion-reply.mp3"',
+        },
+    )
+

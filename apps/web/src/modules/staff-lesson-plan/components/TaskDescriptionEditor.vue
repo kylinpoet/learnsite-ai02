@@ -1,20 +1,22 @@
 <template>
-  <el-form-item :label="props.label">
+  <n-form-item :label="props.label">
     <div class="description-toolbar">
       <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
-      <el-button :loading="props.generating" plain @click="props.generateTaskDescriptionDraft(props.task)">
+      <n-button :loading="props.generating" secondary @click="props.generateTaskDescriptionDraft(props.task)">
         AI 生成说明
-      </el-button>
+      </n-button>
     </div>
     <RichTextEditor
       v-model="props.task.description"
       :min-height="props.minHeight"
       :placeholder="props.placeholder"
     />
-  </el-form-item>
+  </n-form-item>
 </template>
 
 <script setup lang="ts">
+import { NButton, NFormItem } from 'naive-ui';
+
 import RichTextEditor from '@/components/RichTextEditor.vue';
 
 import type { PlanFormTask } from '../lessonPlan.types';

@@ -42,6 +42,7 @@ const AdminSystemPage = () => import('@/modules/staff-admin/AdminSystemPage.vue'
 const StaffQuizPage = () => import('@/modules/staff-quiz/StaffQuizPage.vue');
 const StaffTypingPage = () => import('@/modules/staff-typing/StaffTypingPage.vue');
 const StaffResourcePage = () => import('@/modules/staff-resource/StaffResourcePage.vue');
+const StaffLearningReportPage = () => import('@/modules/staff-report/StaffLearningReportPage.vue');
 
 type StoredUser = {
   role: string;
@@ -98,7 +99,7 @@ const routes: RouteRecordRaw[] = [
     path: '/staff',
     component: StaffLayout,
     children: [
-      { path: '', redirect: '/staff/dashboard' },
+      { path: '', redirect: '/staff/classroom' },
       { path: 'dashboard', component: StaffDashboardPage },
       { path: 'classroom', component: ClassroomPage },
       { path: 'classroom/:sessionId', component: ClassroomPage },
@@ -110,12 +111,14 @@ const routes: RouteRecordRaw[] = [
       { path: 'submissions', component: SubmissionOverviewPage },
       { path: 'submissions/:taskId', component: SubmissionTaskPage },
       { path: 'attendance', component: StaffAttendancePage },
+      { path: 'learning-reports', component: StaffLearningReportPage },
       { path: 'students', component: StaffStudentPage },
       { path: 'quizzes', component: StaffQuizPage },
       { path: 'typing', component: StaffTypingPage },
       { path: 'resources', component: StaffResourcePage },
       { path: 'admin/system', component: AdminSystemPage },
       { path: 'admin/ai-providers', component: AdminSystemPage },
+      { path: 'admin/ai-safety', component: AdminSystemPage },
     ],
   },
 ];
@@ -165,7 +168,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.path.startsWith('/staff/admin') && !hasRole(user, 'admin')) {
-    return '/staff/dashboard';
+    return '/staff/classroom';
   }
 
   if (to.path === '/login/student' && sessionExists && user?.role === 'student') {
@@ -173,7 +176,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.path === '/login/staff' && sessionExists && user?.role === 'staff') {
-    return '/staff/dashboard';
+    return '/staff/classroom';
   }
 
   return true;

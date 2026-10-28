@@ -1,17 +1,16 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">我的作品</p>
-        <h2>{{ pageTitle }}</h2>
-        <p class="hero-copy">
-          这里会汇总你已经提交的作品、教师评价状态以及最近一次更新时间。教师评价前，你仍然可以回到任务页继续覆盖提交。
-        </p>
-      </div>
-      <el-button :loading="isLoading" type="primary" @click="loadWorkList">刷新作品列表</el-button>
-    </section>
+    <SaPageHeader
+      description="这里会汇总你已经提交的作品、教师评价状态以及最近一次更新时间。教师评价前，你仍然可以回到任务页继续覆盖提交。"
+      eyebrow="我的作品"
+      :title="pageTitle"
+    >
+      <template #actions>
+        <n-button :loading="isLoading" type="primary" @click="loadWorkList">刷新作品列表</n-button>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
     <div v-if="workData" class="metric-grid">
       <article class="mini-panel">
@@ -36,98 +35,120 @@
       </article>
     </div>
 
-    <el-card class="soft-card">
-      <template #header>
-        <div class="info-row">
-          <span>作品记录</span>
-          <el-tag round type="info">{{ latestUpdateText }}</el-tag>
-        </div>
+    <div v-if="workData" class="work-charts">
+      <SaPanel>
+        <template #header>
+          <div class="work-chart-head">
+            <strong>作品状态分布</strong>
+            <span class="work-chart-note">已评价与待评价作品的比例</span>
+          </div>
+        </template>
+        <n-empty v-if="!workData.summary.total_count" description="还没有作品可统计。" />
+        <AppChart v-else :height="260" :option="statusDonutOption" />
+      </SaPanel>
+
+      <SaPanel>
+        <template #header>
+          <div class="work-chart-head">
+            <strong>各课程作品与得分</strong>
+            <span class="work-chart-note">柱为作品数，折线为平均得分</span>
+          </div>
+        </template>
+        <n-empty v-if="!courseStats.length" description="暂无可对比的课程。" />
+        <AppChart v-else :height="260" :option="courseScoreOption" />
+      </SaPanel>
+    </div>
+
+    <SaPanel title="作品记录">
+      <template #actions>
+        <n-tag round type="info">{{ latestUpdateText }}</n-tag>
       </template>
 
-      <el-skeleton :loading="isLoading" animated>
-        <template #template>
-          <el-skeleton :rows="6" />
-        </template>
+      <n-skeleton v-if="isLoading" :rows="6" animated />
 
-        <template #default>
-          <el-empty v-if="!workData?.items.length" description="还没有作品记录" />
-
-          <el-table v-else :data="workData.items" stripe>
-            <el-table-column label="课程" min-width="220" prop="course_title" />
-            <el-table-column label="任务" min-width="180" prop="task_title" />
-            <el-table-column label="提交方式" min-width="220">
-              <template #default="{ row }">
-                <el-tag :type="submissionScopeTagType(row)" round>{{ submissionScopeLabel(row) }}</el-tag>
-                <p v-if="row.submission_scope === 'group'" class="submission-meta">
-                  {{ groupDisplayLabel(row) }}
-                  <span v-if="row.submitted_by_name"> · 最近提交 {{ row.submitted_by_name }}</span>
-                </p>
-              </template>
-            </el-table-column>
-            <el-table-column label="状态" min-width="120">
-              <template #default="{ row }">
-                <el-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="得分" min-width="90">
-              <template #default="{ row }">
-                {{ row.score ?? '--' }}
-              </template>
-            </el-table-column>
-            <el-table-column label="教师评语" min-width="220">
-              <template #default="{ row }">
-                {{ teacherCommentPreview(row.teacher_comment) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="附件" min-width="180">
-              <template #default="{ row }">
-                <span>{{ row.primary_file_name || '暂无附件' }}</span>
-                <span v-if="row.file_count > 1" class="file-count">+{{ row.file_count - 1 }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="更新时间" min-width="170">
-              <template #default="{ row }">
-                {{ formatDateTime(row.updated_at) }}
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" min-width="180" fixed="right">
-              <template #default="{ row }">
-                <el-space>
-                  <el-button link type="primary" @click="goToDetail(row.submission_id)">查看详情</el-button>
-                  <el-button
-                    v-if="row.can_resubmit"
-                    link
-                    type="primary"
-                    @click="goToTask(row.course_id, row.task_id, row.task_type)"
-                  >
-                    再次提交
-                  </el-button>
-                  <el-button
-                    v-if="row.status === 'reviewed'"
-                    :loading="revokingSubmissionId === row.submission_id"
-                    link
-                    type="warning"
-                    @click="revokeReviewedSubmission(row)"
-                  >
-                    撤销评阅
-                  </el-button>
-                </el-space>
-              </template>
-            </el-table-column>
-          </el-table>
-        </template>
-      </el-skeleton>
-    </el-card>
+      <SaDataTable
+        v-else
+        :data="workData?.items ?? []"
+        :scroll-x="1580"
+        empty-text="还没有作品记录"
+        row-key="submission_id"
+        stripe
+      >
+        <SaTableColumn label="课程" min-width="220" prop="course_title" />
+        <SaTableColumn label="任务" min-width="180" prop="task_title" />
+        <SaTableColumn label="提交方式" min-width="220">
+          <template #default="{ row }">
+            <n-tag :type="submissionScopeTagType(row)" round>{{ submissionScopeLabel(row) }}</n-tag>
+            <p v-if="row.submission_scope === 'group'" class="submission-meta">
+              {{ groupDisplayLabel(row) }}
+              <span v-if="row.submitted_by_name"> · 最近提交 {{ row.submitted_by_name }}</span>
+            </p>
+          </template>
+        </SaTableColumn>
+        <SaTableColumn label="状态" min-width="120">
+          <template #default="{ row }">
+            <n-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</n-tag>
+          </template>
+        </SaTableColumn>
+        <SaTableColumn label="得分" min-width="90">
+          <template #default="{ row }">{{ row.score ?? '--' }}</template>
+        </SaTableColumn>
+        <SaTableColumn label="教师评语" min-width="220">
+          <template #default="{ row }">{{ teacherCommentPreview(row.teacher_comment) }}</template>
+        </SaTableColumn>
+        <SaTableColumn label="附件" min-width="180">
+          <template #default="{ row }">
+            <span>{{ row.primary_file_name || '暂无附件' }}</span>
+            <span v-if="row.file_count > 1" class="file-count">+{{ row.file_count - 1 }}</span>
+          </template>
+        </SaTableColumn>
+        <SaTableColumn label="更新时间" min-width="170">
+          <template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template>
+        </SaTableColumn>
+        <SaTableColumn fixed="right" label="操作" min-width="180">
+          <template #default="{ row }">
+            <n-space :size="8" :wrap="true">
+              <n-button text type="primary" @click="goToDetail(row.submission_id)">查看详情</n-button>
+              <n-button
+                v-if="row.can_resubmit"
+                text
+                type="primary"
+                @click="goToTask(row.course_id, row.task_id, row.task_type)"
+              >
+                再次提交
+              </n-button>
+              <n-button
+                v-if="row.status === 'reviewed'"
+                :loading="revokingSubmissionId === row.submission_id"
+                text
+                type="warning"
+                @click="revokeReviewedSubmission(row)"
+              >
+                撤销评阅
+              </n-button>
+            </n-space>
+          </template>
+        </SaTableColumn>
+      </SaDataTable>
+    </SaPanel>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { NAlert, NButton, NEmpty, NSkeleton, NSpace, NTag } from 'naive-ui';
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
+import SaDataTable from '@/components/sa/SaDataTable.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
+import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
+
+const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type SubmissionItem = {
   submission_id: number;
@@ -164,6 +185,7 @@ type WorkPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
+const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const workData = ref<WorkPayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -180,6 +202,100 @@ const latestUpdateText = computed(() => {
     return '暂无更新记录';
   }
   return `最近更新：${formatDateTime(latestItem.updated_at)}`;
+});
+
+const statusDonutOption = computed(() => {
+  const summary = workData.value?.summary;
+  const reviewed = summary?.reviewed_count ?? 0;
+  const pending = summary?.submitted_count ?? 0;
+
+  return base({
+    tooltip: tooltip('item'),
+    legend: legend({ bottom: 0, top: 'auto' }),
+    series: [
+      {
+        type: 'pie',
+        radius: ['52%', '74%'],
+        center: ['50%', '44%'],
+        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
+        label: { show: false },
+        data: [
+          { value: reviewed, name: '已评价', itemStyle: { color: palette.value[2] } },
+          { value: pending, name: '待评价', itemStyle: { color: tokens.value.warning } },
+        ],
+      },
+    ],
+    graphic: [
+      {
+        type: 'text',
+        left: 'center',
+        top: '38%',
+        style: { text: `${summary?.total_count ?? 0}`, fill: tokens.value.ink, fontSize: 26, fontWeight: 700 },
+      },
+      {
+        type: 'text',
+        left: 'center',
+        top: '50%',
+        style: { text: '作品总数', fill: tokens.value.muted, fontSize: 12 },
+      },
+    ],
+  });
+});
+
+const courseStats = computed(() => {
+  const bucket = new Map<string, { count: number; scoreSum: number; scoreCount: number }>();
+  for (const item of workData.value?.items || []) {
+    const record = bucket.get(item.course_title) || { count: 0, scoreSum: 0, scoreCount: 0 };
+    record.count += 1;
+    if (item.score !== null) {
+      record.scoreSum += item.score;
+      record.scoreCount += 1;
+    }
+    bucket.set(item.course_title, record);
+  }
+  return Array.from(bucket.entries())
+    .map(([title, value]) => ({
+      title,
+      count: value.count,
+      averageScore: value.scoreCount ? Number((value.scoreSum / value.scoreCount).toFixed(1)) : null,
+    }))
+    .slice(0, 10);
+});
+
+const courseScoreOption = computed(() => {
+  const items = courseStats.value;
+  return base({
+    tooltip: tooltip('axis'),
+    legend: legend({ top: 0 }),
+    grid: grid({ top: 42 }),
+    xAxis: axisX(items.map((item) => item.title), {
+      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
+    }),
+    yAxis: [
+      axisY({ name: '作品数', nameTextStyle: { color: tokens.value.muted } }),
+      axisY({ name: '平均分', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
+    ],
+    series: [
+      {
+        name: '作品数',
+        type: 'bar',
+        barMaxWidth: 30,
+        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
+        data: items.map((item) => item.count),
+      },
+      {
+        name: '平均得分',
+        type: 'line',
+        smooth: true,
+        yAxisIndex: 1,
+        symbolSize: 7,
+        connectNulls: true,
+        lineStyle: { color: palette.value[1] },
+        itemStyle: { color: palette.value[1] },
+        data: items.map((item) => item.averageScore),
+      },
+    ],
+  });
 });
 
 function statusLabel(status: SubmissionItem['status']) {
@@ -277,6 +393,35 @@ onMounted(loadWorkList);
 </script>
 
 <style scoped>
+.work-charts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 16px;
+}
+
+.work-charts :deep(.sa-panel__body) {
+  display: grid;
+  gap: 12px;
+}
+
+.work-chart-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.work-chart-head strong {
+  color: var(--ls-ink);
+  font-size: 15px;
+}
+
+.work-chart-note {
+  color: var(--ls-muted);
+  font-size: 12px;
+}
+
 .file-count {
   margin-left: 6px;
   color: var(--ls-muted);
@@ -287,5 +432,11 @@ onMounted(loadWorkList);
   margin: 8px 0 0;
   color: var(--ls-muted);
   font-size: 12px;
+}
+
+@media (max-width: 960px) {
+  .work-charts {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

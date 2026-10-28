@@ -1,61 +1,58 @@
 <template>
   <div class="page-stack">
-    <section class="hero-panel">
-      <div>
-        <p class="eyebrow">代码任务</p>
-        <h2>{{ taskDetail?.title || `代码任务 ${route.params.taskId}` }}</h2>
-        <p class="hero-copy">
-          {{ taskDetail?.course.title || '正在加载课次信息' }}
-          <span v-if="taskDetail">
-            · {{ taskDetail.course.book_title }} · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}
-          </span>
-        </p>
-      </div>
-      <div class="action-group">
-        <el-button plain @click="goToCourse">返回课程</el-button>
-        <el-button
+    <SaPageHeader eyebrow="代码任务">
+      <template #title>{{ taskDetail?.title || `代码任务 ${route.params.taskId}` }}</template>
+      <p class="hero-copy">
+        {{ taskDetail?.course.title || '正在加载课次信息' }}
+        <span v-if="taskDetail">
+          · {{ taskDetail.course.book_title }} · {{ taskDetail.course.unit_title }} · {{ taskDetail.course.lesson_title }}
+        </span>
+      </p>
+      <template #actions>
+        <n-button secondary @click="goToCourse">返回课程</n-button>
+        <n-button
           v-if="taskDetail?.task_navigation.previous_task"
-          plain
+          secondary
           @click="openNavigationTask(taskDetail.task_navigation.previous_task)"
         >
           上一个任务
-        </el-button>
-        <el-button plain @click="goToPeerReview">作品互评</el-button>
-        <el-button v-if="currentSubmission" plain @click="goToWorkDetail">查看已提交作品</el-button>
-        <el-button
+        </n-button>
+        <n-button secondary @click="goToPeerReview">作品互评</n-button>
+        <n-button v-if="currentSubmission" secondary @click="goToWorkDetail">查看已提交作品</n-button>
+        <n-button
           v-if="currentSubmission?.status === 'reviewed'"
           :loading="isRevokingReview"
-          plain
+          secondary
           type="warning"
           @click="revokeReviewedSubmission"
         >
           撤销评阅并继续提交
-        </el-button>
-        <el-button
+        </n-button>
+        <n-button
           v-if="taskDetail?.task_navigation.next_task"
-          plain
+          secondary
           type="primary"
           @click="openNavigationTask(taskDetail.task_navigation.next_task)"
         >
           下一个任务
-        </el-button>
-      </div>
-    </section>
+        </n-button>
+      </template>
+    </SaPageHeader>
 
-    <el-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
-    <el-alert
+    <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
+    <n-alert
       v-if="taskDetail && submitBlockedMessage"
       :closable="false"
       :title="submitBlockedMessage"
       type="warning"
     />
-    <el-alert
+    <n-alert
       v-if="taskDetail?.group_collaboration && !groupDiscussionEnabled && groupDiscussionMessage"
       :closable="false"
       :title="groupDiscussionMessage"
       type="warning"
     />
-    <el-alert
+    <n-alert
       v-if="taskDetail"
       :closable="false"
       class="mode-alert"
@@ -95,24 +92,20 @@
       </article>
     </div>
 
-    <el-skeleton :loading="isLoading" animated>
-      <template #template>
-        <el-card class="soft-card">
-          <el-skeleton :rows="10" />
-        </el-card>
-      </template>
+    <SaPanel v-if="isLoading">
+      <n-skeleton :rows="10" animated />
+    </SaPanel>
 
-      <template #default>
-        <div v-if="taskDetail" class="page-stack">
-          <el-row :gutter="16">
-            <el-col :lg="15" :sm="24">
-              <el-card class="soft-card">
+    <div v-else-if="taskDetail" class="page-stack">
+          <div class="task-layout">
+            <div class="task-column">
+              <SaPanel>
                 <template #header>
                   <div class="info-row">
                     <span>代码编辑区</span>
                     <div class="editor-tag-row">
-                      <el-tag round type="warning">Python 任务</el-tag>
-                      <el-tag round type="success">{{ draftStatusLabel }}</el-tag>
+                      <n-tag round type="warning">Python 任务</n-tag>
+                      <n-tag round type="success">{{ draftStatusLabel }}</n-tag>
                     </div>
                   </div>
                 </template>
@@ -125,9 +118,9 @@
                     </p>
                   </div>
                   <div v-if="taskDetail.can_submit" class="action-group">
-                    <el-button plain @click="restoreStarterCode">恢复起始代码</el-button>
-                    <el-button v-if="hasSubmittedCode" plain @click="restoreSubmittedWork">恢复最近提交</el-button>
-                    <el-button v-if="hasLocalDraft" plain @click="clearLocalDraftManually">清除本地草稿</el-button>
+                    <n-button secondary @click="restoreStarterCode">恢复起始代码</n-button>
+                    <n-button v-if="hasSubmittedCode" secondary @click="restoreSubmittedWork">恢复最近提交</n-button>
+                    <n-button v-if="hasLocalDraft" secondary @click="clearLocalDraftManually">清除本地草稿</n-button>
                   </div>
                 </div>
 
@@ -145,15 +138,13 @@
                   <span>字符 {{ sourceCode.length }}</span>
                   <span>{{ draftFootnote }}</span>
                 </div>
-              </el-card>
+              </SaPanel>
 
-              <el-card class="soft-card">
-                <template #header>任务说明</template>
+              <SaPanel title="任务说明">
                 <RichTextContent :html="taskDetail.description" empty-text="当前代码任务还没有补充说明。" />
-              </el-card>
+              </SaPanel>
 
-              <el-card class="soft-card">
-                <template #header>实现说明</template>
+              <SaPanel title="实现说明">
                 <RichTextEditor
                   v-if="taskDetail.can_submit"
                   v-model="reflectionNote"
@@ -165,27 +156,26 @@
                   :html="reflectionNote"
                   empty-text="这次提交没有填写额外说明。"
                 />
-              </el-card>
-            </el-col>
+              </SaPanel>
+            </div>
 
-            <el-col :lg="9" :sm="24">
-              <el-card class="soft-card">
-                <template #header>提交信息</template>
+            <div class="task-column">
+              <SaPanel title="提交信息">
 
-                <el-descriptions :column="1" border>
-                  <el-descriptions-item label="课程">{{ taskDetail.course.title }}</el-descriptions-item>
-                  <el-descriptions-item label="课次">{{ taskDetail.course.lesson_title }}</el-descriptions-item>
-                  <el-descriptions-item label="当前状态">{{ submissionStatusLabel }}</el-descriptions-item>
-                  <el-descriptions-item label="最近提交">
+                <n-descriptions :column="1" bordered>
+                  <n-descriptions-item label="课程">{{ taskDetail.course.title }}</n-descriptions-item>
+                  <n-descriptions-item label="课次">{{ taskDetail.course.lesson_title }}</n-descriptions-item>
+                  <n-descriptions-item label="当前状态">{{ submissionStatusLabel }}</n-descriptions-item>
+                  <n-descriptions-item label="最近提交">
                     {{ formatDateTime(currentSubmission?.updated_at || null) }}
-                  </el-descriptions-item>
-                  <el-descriptions-item label="提交范围">
+                  </n-descriptions-item>
+                  <n-descriptions-item label="提交范围">
                     {{ taskDetail.submission_scope === 'group' ? '小组作品' : '个人作品' }}
-                  </el-descriptions-item>
-                  <el-descriptions-item v-if="currentSubmission?.submission_scope === 'group'" label="最近提交人">
+                  </n-descriptions-item>
+                  <n-descriptions-item v-if="currentSubmission?.submission_scope === 'group'" label="最近提交人">
                     {{ currentSubmission?.submitted_by_name || '组内成员' }}
-                  </el-descriptions-item>
-                </el-descriptions>
+                  </n-descriptions-item>
+                </n-descriptions>
 
                 <div class="review-comment-panel">
                   <p class="review-comment-title">教师评语</p>
@@ -216,18 +206,18 @@
                 />
 
                 <div class="page-stack page-stack--compact">
-                  <el-button :disabled="!taskDetail.can_submit" plain @click="openFilePicker">
+                  <n-button :disabled="!taskDetail.can_submit" secondary @click="openFilePicker">
                     选择补充附件
-                  </el-button>
-                  <el-button
+                  </n-button>
+                  <n-button
                     v-if="selectedFiles.length"
                     :disabled="isSubmitting"
-                    plain
+                    secondary
                     @click="clearSelectedFiles"
                   >
                     清空本次新增附件
-                  </el-button>
-                  <el-button
+                  </n-button>
+                  <n-button
                     :disabled="!taskDetail.can_submit"
                     :loading="isSubmitting"
                     class="full-width"
@@ -235,22 +225,21 @@
                     @click="submitTask"
                   >
                     {{ submitButtonText }}
-                  </el-button>
-                  <el-button
+                  </n-button>
+                  <n-button
                     v-if="currentSubmission?.status === 'reviewed'"
                     :loading="isRevokingReview"
                     class="full-width"
-                    plain
+                    secondary
                     type="warning"
                     @click="revokeReviewedSubmission"
                   >
                     撤销评阅并继续提交
-                  </el-button>
+                  </n-button>
                 </div>
-              </el-card>
+              </SaPanel>
 
-              <el-card v-if="taskDetail.group_collaboration" class="soft-card">
-                <template #header>小组共同编辑</template>
+              <SaPanel v-if="taskDetail.group_collaboration" title="小组共同编辑">
 
                 <div class="tip-panel">
                   <p class="tip-title">共享草稿</p>
@@ -260,38 +249,37 @@
                 </div>
 
                 <div class="file-actions">
-                  <el-tag round type="info">
+                  <n-tag round type="info">
                     {{ currentGroupDraft ? `版本 ${currentGroupDraft.version_no}` : '未同步' }}
-                  </el-tag>
-                  <el-tag v-if="currentGroupDraft?.updated_by_name" round type="success">
+                  </n-tag>
+                  <n-tag v-if="currentGroupDraft?.updated_by_name" round type="success">
                     {{ currentGroupDraft.updated_by_name }}
-                  </el-tag>
+                  </n-tag>
                 </div>
 
                 <div class="page-stack page-stack--compact">
-                  <el-button
+                  <n-button
                     :disabled="!groupDraftActionsEnabled"
                     :loading="isGroupDraftSaving"
-                    plain
+                    secondary
                     type="primary"
                     @click="saveGroupDraft"
                   >
                     同步代码到小组草稿
-                  </el-button>
-                  <el-button :disabled="!currentGroupDraft" plain @click="restoreGroupDraft">
+                  </n-button>
+                  <n-button :disabled="!currentGroupDraft" secondary @click="restoreGroupDraft">
                     恢复小组草稿
-                  </el-button>
-                  <el-button :loading="isRefreshingTask" plain @click="refreshTaskDetail">
+                  </n-button>
+                  <n-button :loading="isRefreshingTask" secondary @click="refreshTaskDetail">
                     刷新协作内容
-                  </el-button>
-                  <el-button plain @click="isGroupDraftHistoryVisible = true">
+                  </n-button>
+                  <n-button secondary @click="isGroupDraftHistoryVisible = true">
                     历史版本
-                  </el-button>
+                  </n-button>
                 </div>
-              </el-card>
+              </SaPanel>
 
-              <el-card class="soft-card">
-                <template #header>附件处理</template>
+              <SaPanel title="附件处理">
 
                 <div class="stack-list">
                   <article class="file-item">
@@ -299,7 +287,7 @@
                       <p class="file-name">{{ generatedCodeDisplayName }}</p>
                       <p class="file-meta">主代码文件 · 会根据当前编辑器内容自动生成</p>
                     </div>
-                    <el-tag round type="warning">自动生成</el-tag>
+                    <n-tag round type="warning">自动生成</n-tag>
                   </article>
 
                   <article
@@ -312,18 +300,18 @@
                       <p class="file-meta">{{ formatFileSize(file.size) }} · 本次新增附件</p>
                     </div>
                     <div class="file-actions">
-                      <el-button
+                      <n-button
                         :loading="previewLoadingSelectedFileKey === selectedFileKey(file)"
                         :disabled="!isLocalFilePreviewable(file)"
-                        link
+                        text
                         type="primary"
                         @click="previewSelectedFile(file)"
                       >
                         预览
-                      </el-button>
-                      <el-button link type="danger" @click="removeSelectedFile(file.name)">
+                      </n-button>
+                      <n-button text type="error" @click="removeSelectedFile(file.name)">
                         移除
-                      </el-button>
+                      </n-button>
                     </div>
                   </article>
 
@@ -339,49 +327,48 @@
                       </p>
                     </div>
                     <div class="file-actions">
-                      <el-tag v-if="file.id === sourceCodeFileId" round type="warning">由编辑器替换</el-tag>
-                      <el-tag v-else-if="keptExistingFileIds.includes(file.id)" round type="success">本次保留</el-tag>
-                      <el-tag v-else round type="info">本次不保留</el-tag>
-                      <el-button
+                      <n-tag v-if="file.id === sourceCodeFileId" round type="warning">由编辑器替换</n-tag>
+                      <n-tag v-else-if="keptExistingFileIds.includes(file.id)" round type="success">本次保留</n-tag>
+                      <n-tag v-else round type="info">本次不保留</n-tag>
+                      <n-button
                         v-if="file.id !== sourceCodeFileId && taskDetail.can_submit"
-                        link
-                        type="danger"
+                        text
+                        type="error"
                         @click="toggleRetainedFile(file.id)"
                       >
                         {{ keptExistingFileIds.includes(file.id) ? '本次不保留' : '恢复保留' }}
-                      </el-button>
-                      <el-button
+                      </n-button>
+                      <n-button
                         :loading="previewLoadingSavedFileId === file.id"
                         :disabled="!isSavedFilePreviewable(file)"
-                        link
+                        text
                         type="primary"
                         @click="previewSavedFile(file)"
                       >
                         预览
-                      </el-button>
-                      <el-button
+                      </n-button>
+                      <n-button
                         :loading="downloadLoadingFileId === file.id"
-                        link
+                        text
                         @click="downloadSavedFile(file)"
                       >
                         下载
-                      </el-button>
+                      </n-button>
                     </div>
                   </article>
 
-                  <el-empty
+                  <n-empty
                     v-if="!selectedFiles.length && !currentSubmission?.files.length"
                     description="暂时还没有提交附件。"
                   />
                 </div>
-              </el-card>
+              </SaPanel>
 
-              <el-card class="soft-card">
-                <template #header>学案导读</template>
+              <SaPanel title="学案导读">
                 <RichTextContent :html="taskDetail.course.content" empty-text="当前学案还没有补充导读内容。" />
-              </el-card>
-            </el-col>
-          </el-row>
+              </SaPanel>
+            </div>
+          </div>
 
           <RecommendedWorksShowcase
             :items="taskDetail.recommended_showcase.items"
@@ -399,56 +386,59 @@
             :token="authStore.token || ''"
           />
 
-          <el-dialog
-            v-model="filePreviewDialogVisible"
+          <n-modal
+            v-model:show="filePreviewDialogVisible"
+            preset="card"
             :title="`附件预览 · ${filePreviewName || '未命名文件'}`"
-            width="min(980px, 92vw)"
-            append-to-body
-            @closed="resetFilePreviewState"
+            style="width: min(980px, 92vw)"
+            @after-leave="resetFilePreviewState"
           >
-            <div v-loading="isFilePreviewLoading" class="file-preview-stage">
-              <iframe
-                v-if="!isFilePreviewLoading && filePreviewKind === 'pdf' && filePreviewUrl"
-                :src="filePreviewUrl"
-                class="file-preview-frame"
-                title="附件预览"
-              ></iframe>
-              <img
-                v-else-if="!isFilePreviewLoading && filePreviewKind === 'image' && filePreviewUrl"
-                :src="filePreviewUrl"
-                alt="附件预览"
-                class="file-preview-image"
-              />
-              <div v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text-shell">
-                <div v-if="filePreviewTextCanExpand" class="file-preview-text-toolbar">
-                  <p>{{ filePreviewTextHint() }}</p>
-                  <el-button link type="primary" :loading="isFilePreviewTextExpanding" @click="toggleFilePreviewTextExpand">
-                    {{ filePreviewTextExpanded ? '恢复截断' : '展开全文' }}
-                  </el-button>
+            <n-spin :show="isFilePreviewLoading">
+              <div class="file-preview-stage">
+                <iframe
+                  v-if="!isFilePreviewLoading && filePreviewKind === 'pdf' && filePreviewUrl"
+                  :src="filePreviewUrl"
+                  class="file-preview-frame"
+                  title="附件预览"
+                ></iframe>
+                <img
+                  v-else-if="!isFilePreviewLoading && filePreviewKind === 'image' && filePreviewUrl"
+                  :src="filePreviewUrl"
+                  alt="附件预览"
+                  class="file-preview-image"
+                />
+                <div v-else-if="!isFilePreviewLoading && filePreviewKind === 'text'" class="file-preview-text-shell">
+                  <div v-if="filePreviewTextCanExpand" class="file-preview-text-toolbar">
+                    <p>{{ filePreviewTextHint() }}</p>
+                    <n-button text type="primary" :loading="isFilePreviewTextExpanding" @click="toggleFilePreviewTextExpand">
+                      {{ filePreviewTextExpanded ? '恢复截断' : '展开全文' }}
+                    </n-button>
+                  </div>
+                  <pre class="file-preview-text">{{ filePreviewText }}</pre>
                 </div>
-                <pre class="file-preview-text">{{ filePreviewText }}</pre>
-              </div>
-              <div v-else class="file-preview-fallback">
-                <p>当前文件暂不支持在线预览。</p>
-                <p>可点击下载后在本地打开查看。</p>
-              </div>
-            </div>
-          </el-dialog>
-        </div>
-      </template>
-    </el-skeleton>
+                <div v-else class="file-preview-fallback">
+                  <p>当前文件暂不支持在线预览。</p>
+                  <p>可点击下载后在本地打开查看。</p>
+                </div>
+                </div>
+            </n-spin>
+          </n-modal>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NDescriptions, NDescriptionsItem, NEmpty, NModal, NSkeleton, NSpin, NTag } from 'naive-ui';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '@/ui/feedback';
 import { useRoute, useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob, apiPost, apiPut, apiUpload } from '@/api/http';
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import RichTextContent from '@/components/RichTextContent.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
+import SaPageHeader from '@/components/sa/SaPageHeader.vue';
+import SaPanel from '@/components/sa/SaPanel.vue';
 import GroupDraftHistoryDialog from '@/modules/student-task/components/GroupDraftHistoryDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { normalizeRichTextHtml } from '@/utils/richText';
@@ -1484,6 +1474,26 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.task-layout {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+
+.task-column {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+@media (min-width: 1200px) {
+  .task-layout {
+    grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
+  }
+}
+
 .action-group {
   display: flex;
   gap: 10px;
@@ -1532,10 +1542,10 @@ onBeforeUnmount(() => {
 .code-editor-shell {
   margin-top: 16px;
   border-radius: 20px;
-  border: 1px solid rgba(67, 109, 185, 0.16);
+  border: 1px solid var(--ls-border);
   background:
     linear-gradient(180deg, rgba(15, 23, 42, 0.03), rgba(15, 23, 42, 0.05)),
-    rgba(255, 255, 255, 0.96);
+    var(--ls-card);
   overflow: hidden;
 }
 
@@ -1547,7 +1557,7 @@ onBeforeUnmount(() => {
   padding: 18px 20px;
   border: none;
   background: transparent;
-  color: #1f2a44;
+  color: var(--ls-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   font-size: 14px;
   line-height: 1.75;
@@ -1569,15 +1579,15 @@ onBeforeUnmount(() => {
   margin-top: 20px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(67, 109, 185, 0.08);
+  background: var(--ls-primary-soft);
 }
 
 .review-comment-panel {
   margin-top: 16px;
   padding: 14px 16px;
   border-radius: 16px;
-  border: 1px solid rgba(67, 109, 185, 0.14);
-  background: rgba(67, 109, 185, 0.05);
+  border: 1px solid var(--ls-border);
+  background: var(--ls-chip-bg);
 }
 
 .review-comment-title {
@@ -1665,8 +1675,8 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(67, 109, 185, 0.14);
-  background: rgba(67, 109, 185, 0.06);
+  border: 1px solid var(--ls-border);
+  background: var(--ls-chip-bg);
 }
 
 .file-preview-text-toolbar p {
@@ -1681,8 +1691,8 @@ onBeforeUnmount(() => {
   overflow: auto;
   padding: 16px;
   border-radius: 12px;
-  background: rgba(67, 109, 185, 0.08);
-  color: #1f2a44;
+  background: var(--ls-code-bg);
+  color: var(--ls-code-text);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   line-height: 1.7;
   white-space: pre-wrap;

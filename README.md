@@ -1,6 +1,6 @@
 # LearnSite 新平台
 
-面向信息科技教学场景的新平台原型，技术栈为 `Vue 3 + TypeScript + Element Plus + FastAPI + SQLite`。
+面向信息科技教学场景的新平台原型，技术栈为 `Vue 3 + TypeScript + naive-ui + FastAPI + SQLite`。
 
 当前仓库不是迁移旧 ASPX 工程，而是基于线上明确在用的功能，重建一个更易维护、更易扩展的新平台。
 
@@ -44,9 +44,26 @@ npm run dev:down
 
 默认地址：
 
-1. 前端：`http://localhost:5173`
-2. 后端：`http://127.0.0.1:8010`
-3. 接口文档：`http://127.0.0.1:8010/docs`
+1. 前端本机访问：`http://localhost:5173`
+2. 前端局域网访问：`http://<本机局域网IP>:5173`
+3. 后端：`http://<本机局域网IP>:8010`
+4. 接口文档：`http://<本机局域网IP>:8010/docs`
+
+## 发布运行
+
+发布推荐使用单端口模式：先构建前端，再由 FastAPI 同时提供 API 与前端静态页面。
+
+```powershell
+npm run release:up
+```
+
+默认监听 `0.0.0.0:8010`，同一局域网设备可访问：
+
+```text
+http://<服务器IP>:8010
+```
+
+更多发布配置见：[docs/learnsite-release-deployment.md](docs/learnsite-release-deployment.md)
 
 ## 测试账号
 

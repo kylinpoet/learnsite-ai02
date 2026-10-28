@@ -1,29 +1,25 @@
 <template>
-  <div class="session-tools">
-    <div v-if="authStore.user" class="session-chip">
-      <p class="session-name">{{ authStore.user.display_name }}</p>
-      <p class="session-meta">{{ sessionMeta }}</p>
-    </div>
-
-    <el-dropdown trigger="click" @command="handleSwitchCommand">
-      <el-button plain>切换账号</el-button>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item command="student">切换到学生登录</el-dropdown-item>
-          <el-dropdown-item command="staff">切换到教师/管理员登录</el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
-
-    <el-button plain type="danger" @click="logout">退出登录</el-button>
-  </div>
+  <n-dropdown :options="options" placement="bottom-end" trigger="click" @select="handleSelect">
+    <button class="session-chip" type="button">
+      <n-avatar :size="28" round class="session-avatar">{{ avatarText }}</n-avatar>
+      <span class="session-copy">
+        <strong class="session-name">{{ authStore.user?.display_name || '未登录' }}</strong>
+        <small class="session-meta">{{ sessionMeta }}</small>
+      </span>
+      <AppIcon class="session-caret" :icon="ChevronDown" :size="13" />
+    </button>
+  </n-dropdown>
 </template>
 
 <script setup lang="ts">
+import type { DropdownOption } from 'naive-ui';
+import { NAvatar, NDropdown } from 'naive-ui';
+import { ElMessage } from '@/ui/feedback';
+import { ChevronDown } from 'lucide-vue-next';
 import { computed } from 'vue';
-import { ElMessage } from 'element-plus';
 import { useRouter } from 'vue-router';
 
+import AppIcon from '@/components/AppIcon.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type LoginTarget = 'student' | 'staff';
@@ -31,10 +27,23 @@ type LoginTarget = 'student' | 'staff';
 const authStore = useAuthStore();
 const router = useRouter();
 
+const options: DropdownOption[] = [
+  { label: '切换到学生登录', key: 'switch-student' },
+  { label: '切换到教师/管理员登录', key: 'switch-staff' },
+  { type: 'divider', key: 'divider' },
+  { label: '退出登录', key: 'logout' },
+];
+
+const roleLabel = computed(() => (authStore.isAdmin ? '管理员' : authStore.isStaff ? '教师' : '学生'));
+
 const sessionMeta = computed(() => {
-  const roleLabel = authStore.isAdmin ? '管理员' : authStore.isStaff ? '教师' : '学生';
   const username = authStore.user?.username || '';
-  return username ? `${roleLabel}账号 · ${username}` : `${roleLabel}账号`;
+  return username ? `${roleLabel.value} · ${username}` : roleLabel.value;
+});
+
+const avatarText = computed(() => {
+  const name = authStore.user?.display_name?.trim() || '';
+  return name ? name.slice(0, 1) : '师';
 });
 
 async function openLogin(target: LoginTarget) {
@@ -43,61 +52,80 @@ async function openLogin(target: LoginTarget) {
   ElMessage.success(target === 'student' ? '已切换到学生登录' : '已切换到教师/管理员登录');
 }
 
-async function handleSwitchCommand(command: string | number | object) {
-  if (command !== 'student' && command !== 'staff') {
+async function handleSelect(key: string | number) {
+  if (key === 'switch-student' || key === 'switch-staff') {
+    await openLogin(key === 'switch-student' ? 'student' : 'staff');
     return;
   }
-  await openLogin(command);
-}
-
-async function logout() {
-  const target: LoginTarget = authStore.isStaff ? 'staff' : 'student';
-  authStore.clearSession();
-  await router.push(target === 'student' ? '/login/student' : '/login/staff');
-  ElMessage.success('已退出登录');
+  if (key === 'logout') {
+    const target: LoginTarget = authStore.isStaff ? 'staff' : 'student';
+    authStore.clearSession();
+    await router.push(target === 'student' ? '/login/student' : '/login/staff');
+    ElMessage.success('已退出登录');
+  }
 }
 </script>
 
 <style scoped>
-.session-tools {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex-wrap: nowrap;
-  justify-content: flex-end;
-}
-
 .session-chip {
-  min-width: 148px;
-  flex: 0 0 auto;
-  padding: 10px 14px;
-  border: 1px solid var(--ls-chip-border);
-  border-radius: 16px;
-  background: var(--ls-chip-bg);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 10px 3px 3px;
+  border: 1px solid var(--ls-chip-border, var(--ls-border));
+  border-radius: 999px;
+  background: var(--ls-chip-bg, rgba(255, 255, 255, 0.84));
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
-.session-name,
-.session-meta {
-  margin: 0;
+.session-chip:hover {
+  border-color: var(--ls-primary);
+  box-shadow: 0 4px 12px rgba(44, 64, 106, 0.08);
+}
+
+.session-avatar {
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--ls-primary), var(--ls-accent));
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.session-copy {
+  display: grid;
+  gap: 0;
+  text-align: left;
+  line-height: 1.25;
 }
 
 .session-name {
-  font-weight: 700;
   color: var(--ls-ink);
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
 }
 
 .session-meta {
-  margin-top: 2px;
   color: var(--ls-muted);
-  font-size: 12px;
+  font-size: 11px;
   white-space: nowrap;
 }
 
-@media (max-width: 960px) {
-  .session-tools {
-    flex-wrap: wrap;
-    justify-content: flex-start;
+.session-caret {
+  flex: 0 0 auto;
+  color: var(--ls-muted);
+}
+
+@media (max-width: 760px) {
+  .session-copy,
+  .session-caret {
+    display: none;
+  }
+
+  .session-chip {
+    padding: 3px;
   }
 }
 </style>

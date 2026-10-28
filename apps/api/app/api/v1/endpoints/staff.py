@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date
+from datetime import date, datetime
 from math import ceil
 from urllib.parse import quote
 
@@ -29,6 +29,7 @@ from app.models import (
     CurriculumUnit,
     DriveFile,
     DriveSpace,
+    LearningReport,
     LessonPlan,
     SchoolClass,
     StudentGroup,
@@ -45,6 +46,13 @@ from app.services.drive_files import (
     stored_drive_file_path,
     upload_files_to_drive_space,
 )
+from app.services.learning_reports import (
+    build_class_learning_overview,
+    call_provider_for_learning_report,
+    provider_is_demo as learning_report_provider_is_demo,
+    resolve_report_provider,
+)
+from app.services.staff_access import build_staff_roles, get_accessible_class_ids, staff_can_access_class
 from app.services.group_activity import build_group_activity_feed, load_recent_group_submissions
 from app.services.group_operation_logs import (
     count_filtered_class_group_logs,
@@ -113,6 +121,44 @@ class StaffStudentResetPasswordPayload(BaseModel):
 
 class StaffStudentStatusPayload(BaseModel):
     is_active: bool
+
+
+class LearningReportGeneratePayload(BaseModel):
+    class_id: int = Field(ge=1)
+    lesson_plan_id: int | None = Field(default=None, ge=1)
+
+
+class LearningReportSummary(BaseModel):
+    id: int
+    class_id: int
+    class_name: str
+    lesson_plan_id: int | None
+    lesson_plan_title: str | None
+    teacher_id: int | None
+    teacher_name: str
+    title: str
+    status: str
+    error_message: str | None
+    created_at: str | None
+
+
+class LearningReportDetail(LearningReportSummary):
+    content_md: str
+
+
+class LearningReportListData(BaseModel):
+    items: list[LearningReportSummary]
+    total: int
+    page: int
+    page_size: int
+
+
+class LearningReportDetailData(BaseModel):
+    report: LearningReportDetail
+
+
+class LearningReportGenerateData(BaseModel):
+    report: LearningReportDetail
 
 
 class StaffStudentBatchActionPayload(BaseModel):
@@ -198,7 +244,9 @@ def serialize_launchpad_plan(plan: LessonPlan) -> dict:
         "completed_count": completed_count,
         "book_name": lesson.unit.book.name if lesson else "",
         "unit_title": lesson.unit.title if lesson else "暂未绑定",
+        "unit_no": lesson.unit.unit_no if lesson else None,
         "lesson_title": lesson.title if lesson else "暂未绑定课次",
+        "lesson_no": lesson.lesson_no if lesson else None,
     }
 
 
@@ -338,6 +386,8 @@ def serialize_session_summary(
         "recommended_count": 0,
     }
     pending_signin_count = max(student_count - checked_in_count, 0)
+    plan = session.lesson_plan
+    lesson = plan.lesson
 
     return {
         "session_id": session.id,
@@ -349,11 +399,12 @@ def serialize_session_summary(
             "student_count": student_count,
         },
         "plan": {
-            "id": session.lesson_plan.id,
-            "title": session.lesson_plan.title,
-            "lesson_title": session.lesson_plan.lesson.title,
-            "unit_title": session.lesson_plan.lesson.unit.title,
-            "book_name": session.lesson_plan.lesson.unit.book.name,
+            "id": plan.id,
+            "title": plan.title,
+            # 学案可以不绑定课次，此时退回学案标题，避免首屏「上哪节课」空掉
+            "lesson_title": lesson.title if lesson is not None else plan.title,
+            "unit_title": lesson.unit.title if lesson is not None else "未绑定单元",
+            "book_name": lesson.unit.book.name if lesson is not None else "",
         },
         "task_count": len(session.lesson_plan.tasks),
         "submission_count": submission_summary["submission_count"],
@@ -1988,6 +2039,188 @@ def dashboard(
     )
 
 
+@router.get("/classroom/live", response_model=ApiResponse)
+def classroom_live(
+    class_id: int = Query(..., ge=1),
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """课堂实时状态（轻量）：只查「一个班 + 今天 + 最近一节课的学案」。
+
+    供仪表盘首屏与课堂控制页 10s 轮询使用。与 /dashboard 的全校聚合相比，
+    查询范围与班级规模相关，与学校规模无关。
+    """
+    if not staff_can_access_class(staff, class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级课堂状态")
+
+    school_class = db.scalar(
+        select(SchoolClass)
+        .where(SchoolClass.id == class_id)
+        .options(
+            selectinload(SchoolClass.students).selectinload(StudentProfile.user),
+            selectinload(SchoolClass.default_room).selectinload(ComputerRoom.seats),  # type: ignore[name-defined]
+            selectinload(SchoolClass.seat_assignments).selectinload(ClassSeatAssignment.seat),
+        )
+    )
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+
+    today = date.today()
+    attendance_rows = db.scalars(
+        select(AttendanceRecord).where(
+            AttendanceRecord.attendance_date == today,
+            AttendanceRecord.class_id == class_id,
+        )
+    ).all()
+
+    seat_by_id: dict[int, ComputerSeat] = {}
+    if school_class.default_room is not None:
+        seat_by_id = {seat.id: seat for seat in school_class.default_room.seats}
+
+    checked_in_at_by_student: dict[int, str] = {}
+    checked_in_record_by_seat_id: dict[int, AttendanceRecord] = {}
+    seat_label_by_student: dict[int, str] = {}
+    for record in attendance_rows:
+        checked_in_at_by_student[record.student_id] = record.checked_in_at.isoformat()
+        if record.seat_id is None:
+            continue
+        existing_record = checked_in_record_by_seat_id.get(record.seat_id)
+        if existing_record is None or existing_record.checked_in_at <= record.checked_in_at:
+            checked_in_record_by_seat_id[record.seat_id] = record
+        seat = seat_by_id.get(record.seat_id)
+        if seat is not None:
+            seat_label_by_student[record.student_id] = seat.seat_label
+
+    # 未登录学生回落到班级座位表，保证“名单里也能看出他该坐哪”
+    for assignment in school_class.seat_assignments:
+        seat = assignment.seat
+        if seat is None or assignment.student_user_id in seat_label_by_student:
+            continue
+        seat_label_by_student[assignment.student_user_id] = seat.seat_label
+
+    session = db.scalars(
+        select(ClassroomSession)
+        .where(ClassroomSession.class_id == class_id)
+        .options(
+            selectinload(ClassroomSession.school_class),
+            selectinload(ClassroomSession.lesson_plan)
+            .selectinload(LessonPlan.lesson)
+            .selectinload(CurriculumLesson.unit)
+            .selectinload(CurriculumUnit.book),
+            selectinload(ClassroomSession.lesson_plan).selectinload(LessonPlan.tasks),
+        )
+        .order_by(ClassroomSession.started_at.desc(), ClassroomSession.id.desc())
+        .limit(1)
+    ).first()
+
+    plan = session.lesson_plan if session is not None and session.lesson_plan is not None else None
+    task_ids = [task.id for task in plan.tasks] if plan is not None else []
+    student_ids = [profile.user_id for profile in school_class.students] or [-1]
+
+    submissions = (
+        db.scalars(
+            select(Submission)
+            .where(
+                Submission.student_id.in_(student_ids),
+                Submission.task_id.in_(task_ids),
+            )
+            .options(selectinload(Submission.task))
+        ).all()
+        if task_ids
+        else []
+    )
+    student_submission_summary_by_id, plan_submission_summary_by_student = build_student_submission_summaries(
+        list(submissions)
+    )
+
+    seat_map = serialize_seat_map(
+        school_class,
+        checked_in_at_by_student,
+        checked_in_record_by_seat_id,
+        student_submission_summary_by_id,
+        plan_submission_summary_by_student,
+        focus_plan_id=(plan.id if plan is not None else None),
+        focus_plan_title=(plan.title if plan is not None else None),
+        focus_plan_task_count=(len(plan.tasks) if plan is not None else None),
+    )
+
+    def to_live_student(payload: dict[str, Any]) -> dict[str, Any]:
+        stage = payload.get("focus_plan_submission_stage") or "none"
+        if stage not in {"none", "partial", "completed"}:
+            stage = "none"
+        return {
+            "user_id": payload["user_id"],
+            "display_name": payload["display_name"],
+            "student_no": payload["student_no"],
+            "seat_label": seat_label_by_student.get(payload["user_id"]),
+            "signed_in_at": payload.get("checked_in_at"),
+            "submission_stage": stage,
+        }
+
+    live_students = [to_live_student(item) for item in seat_map["students"]]
+    stage_counts = {"none": 0, "partial": 0, "completed": 0}
+    for item in live_students:
+        stage_counts[item["submission_stage"]] += 1
+
+    return ApiResponse(
+        data={
+            "class": {
+                "id": school_class.id,
+                "class_name": school_class.class_name,
+                "grade_no": school_class.grade_no,
+                "class_no": school_class.class_no,
+                "student_count": seat_map["student_count"],
+            },
+            "session": (
+                {
+                    "session_id": session.id,
+                    "status": session.status,
+                    "started_at": session.started_at.isoformat(),
+                    "class_id": school_class.id,
+                    "class_name": school_class.class_name,
+                    "plan_id": (plan.id if plan is not None else None),
+                    "plan_title": (plan.title if plan is not None else None),
+                    "lesson_title": (
+                        plan.lesson.title
+                        if plan is not None and plan.lesson is not None
+                        else (plan.title if plan is not None else None)
+                    ),
+                    "unit_title": (
+                        plan.lesson.unit.title if plan is not None and plan.lesson is not None else None
+                    ),
+                    "book_name": (
+                        plan.lesson.unit.book.name if plan is not None and plan.lesson is not None else None
+                    ),
+                    "lesson_no": (
+                        plan.lesson.lesson_no if plan is not None and plan.lesson is not None else None
+                    ),
+                    "task_count": (len(plan.tasks) if plan is not None else 0),
+                }
+                if session is not None
+                else None
+            ),
+            "attendance": {
+                "student_count": seat_map["student_count"],
+                "checked_in_count": seat_map["checked_in_count"],
+                "pending_signin_count": seat_map["pending_signin_count"],
+                "pending_students": [to_live_student(item) for item in seat_map["unassigned_students"]],
+            },
+            "submission": {
+                "task_count": (len(plan.tasks) if plan is not None else 0),
+                "submitted_count": len(submissions),
+                "pending_review_count": sum(1 for item in submissions if item.submit_status == "submitted"),
+                "completed_student_count": stage_counts["completed"],
+                "partial_student_count": stage_counts["partial"],
+                "none_student_count": stage_counts["none"],
+            },
+            "students": live_students,
+            "seats": seat_map["seats"],
+            "room": seat_map["room"],
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+        }
+    )
+
+
 @router.get("/classes/{class_id}/groups", response_model=ApiResponse)
 def class_group_overview(
     class_id: int,
@@ -2920,3 +3153,169 @@ def save_class_seat_map(
     school_class.default_room_id = room.id
     db.commit()
     return ApiResponse(message="班级座位表已更新", data={"class_id": class_id, "room_id": room.id})
+
+
+def serialize_learning_report(report: LearningReport, *, with_content: bool = False) -> dict:
+    payload = {
+        "id": report.id,
+        "class_id": report.class_id,
+        "class_name": report.school_class.class_name if report.school_class else "",
+        "lesson_plan_id": report.lesson_plan_id,
+        "lesson_plan_title": report.lesson_plan.title if report.lesson_plan else None,
+        "teacher_id": report.teacher_id,
+        "teacher_name": report.teacher.display_name if report.teacher else "",
+        "title": report.title,
+        "status": report.status,
+        "error_message": report.error_message,
+        "created_at": report.created_at.isoformat() if report.created_at else None,
+    }
+    if with_content:
+        payload["content_md"] = report.content_md
+    return payload
+
+
+def load_learning_report_or_404(report_id: int, staff: User, db: Session) -> LearningReport:
+    report = db.scalar(
+        select(LearningReport)
+        .where(LearningReport.id == report_id)
+        .options(
+            selectinload(LearningReport.school_class),
+            selectinload(LearningReport.teacher),
+            selectinload(LearningReport.lesson_plan),
+        )
+    )
+    if report is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学情报告不存在")
+    if not staff_can_access_class(staff, report.class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级的学情报告")
+    return report
+
+
+@router.get("/learning-reports", response_model=ApiResponse[LearningReportListData])
+def list_learning_reports(
+    class_id: int | None = Query(default=None, ge=1),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=50),
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse[LearningReportListData]:
+    accessible_class_ids = get_accessible_class_ids(staff, db)
+    if not accessible_class_ids:
+        return ApiResponse(data=LearningReportListData(items=[], total=0, page=page, page_size=page_size))
+
+    filters = [LearningReport.class_id.in_(accessible_class_ids)]
+    if class_id is not None:
+        if class_id not in accessible_class_ids:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级的学情报告")
+        filters.append(LearningReport.class_id == class_id)
+
+    total = db.scalar(select(func.count()).select_from(LearningReport).where(*filters)) or 0
+    rows = db.scalars(
+        select(LearningReport)
+        .where(*filters)
+        .options(
+            selectinload(LearningReport.school_class),
+            selectinload(LearningReport.teacher),
+            selectinload(LearningReport.lesson_plan),
+        )
+        .order_by(LearningReport.created_at.desc(), LearningReport.id.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return ApiResponse(
+        data=LearningReportListData(
+            items=[serialize_learning_report(item) for item in rows],  # type: ignore[arg-type]
+            total=total,
+            page=page,
+            page_size=page_size,
+        )
+    )
+
+
+@router.get("/learning-reports/{report_id}", response_model=ApiResponse[LearningReportDetailData])
+def get_learning_report(
+    report_id: int,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse[LearningReportDetailData]:
+    report = load_learning_report_or_404(report_id, staff, db)
+    return ApiResponse(data=LearningReportDetailData(report=serialize_learning_report(report, with_content=True)))  # type: ignore[arg-type]
+
+
+@router.post("/learning-reports/generate", response_model=ApiResponse[LearningReportGenerateData])
+def generate_learning_report(
+    payload: LearningReportGeneratePayload,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse[LearningReportGenerateData]:
+    if not staff_can_access_class(staff, payload.class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权为该班级生成学情报告")
+
+    school_class = db.scalar(
+        select(SchoolClass)
+        .where(SchoolClass.id == payload.class_id)
+        .options(selectinload(SchoolClass.students).selectinload(StudentProfile.user))
+    )
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+
+    if payload.lesson_plan_id is not None:
+        plan = db.get(LessonPlan, payload.lesson_plan_id)
+        if plan is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
+
+    provider = resolve_report_provider(db)
+    if provider is None or learning_report_provider_is_demo(provider):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="尚未配置可用的 AI Provider，请先在系统设置中接入真实模型服务",
+        )
+
+    overview = build_class_learning_overview(
+        school_class,
+        db,
+        lesson_plan_id=payload.lesson_plan_id,
+    )
+    content_md, provider_error = call_provider_for_learning_report(provider, overview, db)
+    if provider_error or not content_md.strip():
+        error_message = provider_error or "AI 返回内容为空"
+        db.add(
+            LearningReport(
+                class_id=payload.class_id,
+                teacher_id=staff.id,
+                lesson_plan_id=payload.lesson_plan_id,
+                title=f"{school_class.class_name} 学情报告（生成失败）",
+                content_md="",
+                status="failed",
+                error_message=error_message,
+            )
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AI 生成学情报告失败：{error_message}",
+        )
+
+    scope_suffix = (
+        f" · {overview['scope']['plan_title']}"
+        if overview.get("scope") is not None
+        else " · 全部数据"
+    )
+    report = LearningReport(
+        class_id=payload.class_id,
+        teacher_id=staff.id,
+        lesson_plan_id=payload.lesson_plan_id,
+        title=f"{school_class.class_name} AI 学情报告{scope_suffix}",
+        content_md=content_md.strip(),
+        status="completed",
+        error_message=None,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return ApiResponse(
+        message="学情报告已生成",
+        data=LearningReportGenerateData(
+            report={**serialize_learning_report(report, with_content=True), "class_name": school_class.class_name}  # type: ignore[arg-type]
+        ),
+    )

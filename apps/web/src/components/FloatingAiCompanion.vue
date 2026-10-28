@@ -18,12 +18,11 @@
       </span>
     </button>
 
-    <el-drawer
-      v-model="drawerVisible"
-      :size="drawerSize"
-      :with-header="false"
-      append-to-body
-      direction="rtl"
+    <n-drawer
+      v-model:show="drawerVisible"
+      :width="drawerSize"
+      placement="right"
+      to="body"
     >
       <div class="ai-panel">
         <header class="ai-panel__hero">
@@ -35,37 +34,31 @@
             </p>
           </div>
           <div class="ai-panel__hero-tags">
-            <el-tag round>{{ activeProviderLabel }}</el-tag>
-            <el-tag v-if="lessonModeAvailable" round type="success">已识别当前学案</el-tag>
+            <n-tag round>{{ activeProviderLabel }}</n-tag>
+            <n-tag v-if="lessonModeAvailable" round type="success">已识别当前学案</n-tag>
           </div>
         </header>
 
-        <el-alert
+        <n-alert
           v-if="bootstrapError"
           :closable="false"
           :title="bootstrapError"
           type="error"
         />
 
-        <template v-if="bootstrapLoading">
-          <div class="soft-card ai-loading-card">
-            <el-skeleton animated>
-              <template #template>
-                <el-skeleton :rows="10" />
-              </template>
-            </el-skeleton>
-          </div>
-        </template>
+        <div v-if="bootstrapLoading" class="soft-card ai-loading-card">
+          <n-skeleton :rows="10" animated />
+        </div>
 
         <template v-else-if="bootstrap">
-          <el-tabs v-model="activeScope" class="ai-tabs">
-            <el-tab-pane label="通用学伴" name="general" />
-            <el-tab-pane
+          <n-tabs v-model:value="activeScope" class="ai-tabs" pane-style="padding: 0">
+            <n-tab-pane name="general" tab="通用学伴" />
+            <n-tab-pane
               :disabled="!lessonModeAvailable"
-              label="当前课程学案学伴"
               name="lesson"
+              tab="当前课程学案学伴"
             />
-          </el-tabs>
+          </n-tabs>
 
           <section
             v-if="activeScope === 'lesson' && currentContext"
@@ -76,7 +69,7 @@
                 <p class="ai-context-card__kicker">{{ contextKindLabel(currentContext.kind) }}</p>
                 <h4>{{ currentContext.title }}</h4>
               </div>
-              <el-tag round type="warning">{{ currentContext.lesson.unit_title }}</el-tag>
+              <n-tag round type="warning">{{ currentContext.lesson.unit_title }}</n-tag>
             </div>
             <p class="ai-context-card__subtitle">{{ currentContext.subtitle }}</p>
             <p v-if="currentContext.description" class="section-note">
@@ -97,9 +90,9 @@
                     <h4>会话设置</h4>
                     <p class="section-note">模型服务、对话模式、推理模式和知识库默认收起，需要时再展开。</p>
                   </div>
-                  <el-tag round type="info">
+                  <n-tag round type="info">
                     {{ activeScope === 'lesson' ? '学案模式' : '通用模式' }}
-                  </el-tag>
+                  </n-tag>
                 </div>
                 <p class="ai-settings-card__summary">{{ settingsSummary }}</p>
               </div>
@@ -112,21 +105,14 @@
                   <h4>模型服务</h4>
                   <p class="section-note">默认跟随系统配置，也可临时切换当前会话使用的模型。</p>
                 </div>
-                <el-select
-                  v-model="selectedProviderId"
+                <n-select
+                  v-model:value="selectedProviderId"
                   class="full-width"
                   clearable
                   :disabled="!bootstrap.providers.length"
-                  :value-on-clear="null"
+                  :options="providerOptions"
                   placeholder="跟随系统默认模型服务"
-                >
-                  <el-option
-                    v-for="item in bootstrap.providers"
-                    :key="item.id"
-                    :label="`${item.name} · ${item.model_name}`"
-                    :value="item.id"
-                  />
-                </el-select>
+                />
                 <p v-if="!bootstrap.providers.length" class="section-note">
                   当前未启用外部模型服务，将使用系统默认学伴。
                 </p>
@@ -136,12 +122,10 @@
                   <h4>对话模式</h4>
                   <p class="section-note">可切换流式输出（逐段生成）或标准输出（一次返回）。</p>
                 </div>
-                <el-switch
-                  v-model="streamModeEnabled"
-                  :disabled="!streamCapabilityEnabled"
-                  active-text="流式"
-                  inactive-text="标准"
-                />
+                <div class="ai-switch-row">
+                  <n-switch v-model:value="streamModeEnabled" :disabled="!streamCapabilityEnabled" />
+                  <span class="ai-switch-row__label">{{ streamModeEnabled && streamCapabilityEnabled ? '流式' : '标准' }}</span>
+                </div>
               </div>
               <div class="ai-provider-field">
                 <div class="ai-provider-field__head">
@@ -150,37 +134,24 @@
                     默认关闭。开启后会在接口调用时请求模型进行额外推理，通常更慢；关闭时可节省回复时间。
                   </p>
                 </div>
-                <el-switch
-                  v-model="thinkingModeEnabled"
-                  active-text="开启"
-                  inactive-text="关闭"
-                />
+                <div class="ai-switch-row">
+                  <n-switch v-model:value="thinkingModeEnabled" />
+                  <span class="ai-switch-row__label">{{ thinkingModeEnabled ? '开启' : '关闭' }}</span>
+                </div>
               </div>
               <div class="ai-provider-field">
                 <div class="ai-provider-field__head">
                   <h4>知识库</h4>
                   <p class="section-note">当前回复会优先参考你选择的知识库。</p>
                 </div>
-                <el-select
-                  v-model="activeKnowledgeBaseIds"
+                <n-select
+                  v-model:value="activeKnowledgeBaseIds"
                   class="full-width"
-                  collapse-tags
-                  collapse-tags-tooltip
+                  :max-tag-count="1"
                   multiple
+                  :options="knowledgeBaseOptions"
                   placeholder="请选择知识库"
-                >
-                  <el-option
-                    v-for="item in visibleKnowledgeBases"
-                    :key="item.id"
-                    :label="item.name"
-                    :value="item.id"
-                  >
-                    <div class="ai-knowledge-option">
-                      <strong>{{ item.name }}</strong>
-                      <span>{{ item.description }}</span>
-                    </div>
-                  </el-option>
-                </el-select>
+                />
               </div>
             </div>
           </section>
@@ -251,12 +222,25 @@
                       >
                         {{ assistantFootnote(message) }}
                       </p>
+                      <div
+                        v-if="message.role === 'assistant' && !message.streaming && message.content"
+                        class="ai-chat-bubble__speech"
+                      >
+                        <n-button
+                          size="small"
+                          text
+                          :disabled="speechLoadingMessageId !== null && speechLoadingMessageId !== message.id"
+                          @click="toggleMessageSpeech(message)"
+                        >
+                          {{ speechButtonLabel(message) }}
+                        </n-button>
+                      </div>
                     </div>
                   </div>
                 </article>
               </template>
 
-              <el-empty
+              <n-empty
                 v-else-if="activeScope === 'lesson' && !currentContext"
                 description="当前页面还没有可绑定的课程或学案上下文"
               />
@@ -264,16 +248,16 @@
               <div v-else class="soft-card ai-starter-card">
                 <h4>你可以这样开始</h4>
                 <div class="ai-starter-card__actions">
-                  <el-button
+                  <n-button
                     v-for="question in activeStarterQuestions"
                     :key="question"
-                    plain
                     round
+                    secondary
                     size="small"
                     @click="applyStarterQuestion(question)"
                   >
                     {{ question }}
-                  </el-button>
+                  </n-button>
                 </div>
               </div>
             </div>
@@ -287,15 +271,15 @@
                   </p>
                 </div>
                 <div class="chip-row">
-                  <el-button plain @click="openAttachmentPicker">添加附件</el-button>
-                  <el-button
+                  <n-button secondary @click="openAttachmentPicker">添加附件</n-button>
+                  <n-button
                     v-if="composerAttachments.length"
-                    plain
-                    type="danger"
+                    secondary
+                    type="error"
                     @click="clearComposerAttachments"
                   >
                     清空附件
-                  </el-button>
+                  </n-button>
                 </div>
               </div>
 
@@ -331,18 +315,18 @@
                     <small v-else-if="attachment.dataUrl">已生成多模态图片内容</small>
                     <small v-else>将只发送文件元数据</small>
                   </div>
-                  <el-button
-                    link
-                    type="danger"
+                  <n-button
+                    text
+                    type="error"
                     @click="removeComposerAttachment(attachment.id)"
                   >
                     移除
-                  </el-button>
+                  </n-button>
                 </article>
               </div>
 
-              <el-input
-                v-model="draftMessage"
+              <n-input
+                v-model:value="draftMessage"
                 :autosize="{ minRows: 4, maxRows: 8 }"
                 resize="none"
                 type="textarea"
@@ -353,33 +337,34 @@
               <div class="ai-composer__footer">
                 <span class="section-note ai-composer__shortcut">`Ctrl/Cmd + Enter` 发送</span>
                 <div class="ai-composer__actions">
-                  <el-button
+                  <n-button
                     v-if="canAbort"
-                    plain
-                    type="danger"
-                    @click="abortCurrentRequest"
+                    secondary
+                    type="error"
+                    @click="abortCurrentRequest()"
                   >
                     停止生成
-                  </el-button>
-                  <el-button
+                  </n-button>
+                  <n-button
                     :disabled="sendDisabled"
                     :loading="isSending"
                     type="primary"
                     @click="sendCurrentMessage"
                   >
                     发送
-                  </el-button>
+                  </n-button>
                 </div>
               </div>
             </section>
           </section>
         </template>
       </div>
-    </el-drawer>
+    </n-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NDrawer, NEmpty, NInput, NSelect, NSkeleton, NSwitch, NTabPane, NTabs, NTag } from 'naive-ui';
 import {
   computed,
   nextTick,
@@ -389,12 +374,13 @@ import {
   ref,
   watch,
 } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '@/ui/feedback';
 import { useRoute } from 'vue-router';
 
-import { apiGet, apiPost } from '@/api/http';
+import { apiGet, apiPost, apiPostBlob } from '@/api/http';
 import MarkdownContent from '@/components/MarkdownContent.vue';
 import { useAuthStore } from '@/stores/auth';
+import { streamCompanionReply } from '@/utils/companionStream';
 
 type Scope = 'general' | 'lesson';
 type ContextQuery = Partial<Record<'course_id' | 'task_id' | 'plan_id' | 'session_id', number>>;
@@ -479,10 +465,6 @@ type ReplyPayload = {
   };
   active_provider: CompanionProvider | null;
   context: CompanionContext | null;
-};
-
-type StreamTokenPayload = {
-  text?: string;
 };
 type ComposerAttachment = {
   id: string;
@@ -663,6 +645,20 @@ const visibleKnowledgeBases = computed(() =>
   (bootstrap.value?.knowledge_bases || []).filter((item) => item.scopes.includes(activeScope.value))
 );
 
+const providerOptions = computed(() =>
+  (bootstrap.value?.providers || []).map((item) => ({
+    label: `${item.name} · ${item.model_name}`,
+    value: item.id,
+  }))
+);
+
+const knowledgeBaseOptions = computed(() =>
+  visibleKnowledgeBases.value.map((item) => ({
+    label: item.description ? `${item.name} · ${item.description}` : item.name,
+    value: item.id,
+  }))
+);
+
 const activeStarterQuestions = computed(() => {
   if (activeScope.value === 'lesson' && currentContext.value?.suggested_questions?.length) {
     return currentContext.value.suggested_questions;
@@ -809,6 +805,88 @@ function formatMessageTime(value: string) {
     2,
     '0'
   )}`;
+}
+
+const speechMessageId = ref<string | null>(null);
+const speechLoadingMessageId = ref<string | null>(null);
+let speechAudio: HTMLAudioElement | null = null;
+let speechObjectUrl: string | null = null;
+
+function stopSpeechPlayback() {
+  if (speechAudio) {
+    speechAudio.pause();
+    speechAudio.src = '';
+    speechAudio = null;
+  }
+  if (speechObjectUrl) {
+    URL.revokeObjectURL(speechObjectUrl);
+    speechObjectUrl = null;
+  }
+  speechMessageId.value = null;
+  speechLoadingMessageId.value = null;
+}
+
+function markdownToSpeechText(markdown: string) {
+  return markdown
+    .replace(/```[\s\S]*?```/g, '（代码略）')
+    .replace(/`[^`]*`/g, '')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[#>*_~|-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function toggleMessageSpeech(message: ChatMessage) {
+  if (speechLoadingMessageId.value === message.id) {
+    return;
+  }
+  if (speechMessageId.value === message.id) {
+    stopSpeechPlayback();
+    return;
+  }
+  stopSpeechPlayback();
+
+  const speechText = markdownToSpeechText(message.content || '');
+  if (!speechText) {
+    ElMessage.warning('当前回复没有可朗读的文本');
+    return;
+  }
+  if (!authStore.token) {
+    ElMessage.warning('请先登录后再使用朗读');
+    return;
+  }
+
+  speechLoadingMessageId.value = message.id;
+  try {
+    const response = await apiPostBlob('/assistants/companion/tts', { text: speechText }, authStore.token);
+    const blob = await response.blob();
+    if (!blob.size) {
+      throw new Error('朗读服务未返回音频');
+    }
+    speechObjectUrl = URL.createObjectURL(blob);
+    speechAudio = new Audio(speechObjectUrl);
+    speechAudio.onended = () => stopSpeechPlayback();
+    speechAudio.onerror = () => {
+      ElMessage.error('朗读播放失败，请重试');
+      stopSpeechPlayback();
+    };
+    speechMessageId.value = message.id;
+    await speechAudio.play();
+  } catch (error) {
+    stopSpeechPlayback();
+    const message_text = error instanceof Error ? error.message : '朗读失败，请稍后重试';
+    ElMessage.error(message_text);
+  } finally {
+    speechLoadingMessageId.value = null;
+  }
+}
+
+function speechButtonLabel(message: ChatMessage) {
+  if (speechLoadingMessageId.value === message.id) {
+    return '合成中…';
+  }
+  return speechMessageId.value === message.id ? '停止朗读' : '朗读';
 }
 
 function assistantFootnote(message: ChatMessage) {
@@ -1003,38 +1081,6 @@ function buildCompanionRequestBody(
   };
 }
 
-async function readCompanionStreamError(response: Response) {
-  const contentType = response.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    const payload = await response.json();
-    return payload.detail || payload.message || `请求失败：${response.status}`;
-  }
-  const text = await response.text();
-  return text || `请求失败：${response.status}`;
-}
-
-function parseSseBlock(block: string) {
-  const lines = block.replace(/\r/g, '').split('\n');
-  let eventName = 'message';
-  const dataLines: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('event:')) {
-      eventName = line.slice(6).trim() || 'message';
-      continue;
-    }
-    if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trimStart());
-    }
-  }
-  if (!dataLines.length) {
-    return null;
-  }
-  return {
-    event: eventName,
-    data: dataLines.join('\n'),
-  };
-}
-
 function updateMessageById(scope: Scope, id: string, updater: (message: ChatMessage) => ChatMessage) {
   const store = messagesRef(scope);
   store.value = store.value.map((message) => (message.id === id ? updater(message) : message));
@@ -1066,88 +1112,30 @@ async function sendCompanionMessageStream(
   await scrollMessagesToBottom();
 
   try {
-    const response = await fetch(`${COMPANION_API_BASE_URL}/assistants/companion/respond/stream`, {
-      method: 'POST',
-      signal,
-      headers: {
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authStore.token}`,
-      },
-      body: JSON.stringify({
-        ...requestBody,
-        stream: true,
-      }),
-    });
-    if (!response.ok) {
-      const errorMessage = await readCompanionStreamError(response);
-      throw new Error(errorMessage);
-    }
-    if (!response.body) {
-      throw new Error('流式响应不可用，请稍后重试');
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder('utf-8');
-    let buffer = '';
-    let donePayload: ReplyPayload | null = null;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-
-      let boundary = buffer.indexOf('\n\n');
-      while (boundary !== -1) {
-        const rawBlock = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        const parsed = parseSseBlock(rawBlock);
-        if (parsed) {
-          if (parsed.event === 'token') {
-            try {
-              const tokenPayload = JSON.parse(parsed.data) as StreamTokenPayload;
-              if (tokenPayload.text) {
-                updateMessageById(scope, assistantMessageId, (message) => ({
-                  ...message,
-                  content: `${message.content}${tokenPayload.text}`,
-                }));
-              }
-            } catch {
-              // ignore malformed token event
-            }
-          }
-          if (parsed.event === 'reasoning') {
-            try {
-              const tokenPayload = JSON.parse(parsed.data) as StreamTokenPayload;
-              if (tokenPayload.text) {
-                updateMessageById(scope, assistantMessageId, (message) => ({
-                  ...message,
-                  reasoningContent: `${message.reasoningContent || ''}${tokenPayload.text}`,
-                  reasoningStreaming: true,
-                }));
-              }
-            } catch {
-              // ignore malformed reasoning event
-            }
-          }
-          if (parsed.event === 'done') {
-            try {
-              donePayload = JSON.parse(parsed.data) as ReplyPayload;
-            } catch {
-              donePayload = null;
-            }
-          }
-        }
-        boundary = buffer.indexOf('\n\n');
+    const donePayload = await streamCompanionReply<ReplyPayload>(
+      `${COMPANION_API_BASE_URL}/assistants/companion/respond/stream`,
+      {
+        body: {
+          ...requestBody,
+          stream: true,
+        },
+        token: authStore.token,
+        signal,
+        onToken: (text) => {
+          updateMessageById(scope, assistantMessageId, (message) => ({
+            ...message,
+            content: `${message.content}${text}`,
+          }));
+        },
+        onReasoning: (text) => {
+          updateMessageById(scope, assistantMessageId, (message) => ({
+            ...message,
+            reasoningContent: `${message.reasoningContent || ''}${text}`,
+            reasoningStreaming: true,
+          }));
+        },
       }
-
-      if (done) {
-        break;
-      }
-    }
-
-    if (!donePayload) {
-      throw new Error('流式响应中断，请稍后重试');
-    }
+    );
 
     if (bootstrap.value) {
       bootstrap.value.active_provider = donePayload.active_provider;
@@ -1162,13 +1150,13 @@ async function sendCompanionMessageStream(
 
     updateMessageById(scope, assistantMessageId, (message) => ({
       ...message,
-      content: donePayload?.reply.content || message.content,
-      createdAt: donePayload?.reply.created_at || message.createdAt,
-      providerName: donePayload?.reply.provider_name,
-      providerMode: donePayload?.reply.provider_mode,
-      warning: donePayload?.reply.warning,
+      content: donePayload.reply.content || message.content,
+      createdAt: donePayload.reply.created_at || message.createdAt,
+      providerName: donePayload.reply.provider_name,
+      providerMode: donePayload.reply.provider_mode,
+      warning: donePayload.reply.warning,
       streaming: false,
-      reasoningContent: donePayload?.reply.reasoning_content || message.reasoningContent || null,
+      reasoningContent: donePayload.reply.reasoning_content || message.reasoningContent || null,
       reasoningStreaming: false,
     }));
   } catch (error) {
@@ -1683,6 +1671,7 @@ watch(
 
 onBeforeUnmount(() => {
   abortCurrentRequest(false);
+  stopSpeechPlayback();
   if (scrollFrameId !== null) {
     window.cancelAnimationFrame(scrollFrameId);
   }
@@ -1783,7 +1772,7 @@ onBeforeUnmount(() => {
   padding: 20px;
   background:
     radial-gradient(circle at top right, rgba(255, 210, 111, 0.15), transparent 30%),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 248, 255, 0.98));
+    var(--ls-panel);
 }
 
 .ai-panel__hero {
@@ -1793,7 +1782,7 @@ onBeforeUnmount(() => {
   padding: 20px;
   border: 1px solid var(--ls-border);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--ls-card);
   box-shadow: var(--ls-shadow);
 }
 
@@ -1923,16 +1912,24 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
+.ai-switch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-switch-row__label {
+  color: var(--ls-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ai-composer__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   justify-content: flex-end;
   align-items: center;
-}
-
-.ai-composer__actions :deep(.el-button + .el-button) {
-  margin-left: 0;
 }
 
 .ai-composer__shortcut {
@@ -1942,18 +1939,6 @@ onBeforeUnmount(() => {
 .ai-context-card__subtitle {
   color: var(--ls-text);
   font-weight: 600;
-}
-
-.ai-knowledge-option {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.ai-knowledge-option span {
-  color: var(--ls-muted);
-  font-size: 12px;
-  white-space: normal;
 }
 
 .ai-chat-shell {
@@ -1989,13 +1974,13 @@ onBeforeUnmount(() => {
 .ai-chat-bubble {
   padding: 14px 16px;
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 12px 28px rgba(32, 60, 112, 0.08);
+  background: var(--ls-card);
+  box-shadow: var(--ls-soft-shadow);
 }
 
 .ai-chat-item.is-user .ai-chat-bubble {
   border-bottom-right-radius: 6px;
-  background: linear-gradient(135deg, rgba(47, 135, 255, 0.16), rgba(255, 255, 255, 0.92));
+  background: linear-gradient(135deg, rgba(47, 135, 255, 0.16), var(--ls-card));
 }
 
 .ai-chat-item.is-assistant .ai-chat-bubble {
@@ -2063,6 +2048,12 @@ onBeforeUnmount(() => {
   color: var(--ls-muted);
   font-size: 12px;
   line-height: 1.6;
+}
+
+.ai-chat-bubble__speech {
+  margin-top: 6px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .ai-chat-reasoning {
@@ -2133,7 +2124,7 @@ onBeforeUnmount(() => {
   padding: 12px;
   border: 1px dashed var(--ls-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--ls-panel-soft);
 }
 
 .ai-composer__attachment-preview {
@@ -2172,10 +2163,6 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
-:deep(.el-drawer__body) {
-  padding: 0;
-}
-
 @media (max-width: 768px) {
   .ai-panel {
     padding: 14px;
@@ -2195,7 +2182,7 @@ onBeforeUnmount(() => {
     justify-content: stretch;
   }
 
-  .ai-composer__actions :deep(.el-button) {
+  .ai-composer__actions :deep(.n-button) {
     flex: 1;
   }
 
@@ -2207,7 +2194,7 @@ onBeforeUnmount(() => {
     grid-template-columns: 60px minmax(0, 1fr);
   }
 
-  .ai-composer__attachment :deep(.el-button) {
+  .ai-composer__attachment :deep(.n-button) {
     grid-column: 1 / -1;
     justify-self: flex-start;
   }

@@ -7,8 +7,8 @@
           支持网页任务、讨论任务、图文任务、数据提交任务等多类型编排。每个任务会作为独立 Tab 页面编辑。
         </p>
       </div>
-      <el-space wrap>
-        <el-button plain @click="addTaskRow">新增空白任务</el-button>
+      <div class="chip-row">
+        <n-button secondary @click="addTaskRow">新增空白任务</n-button>
         <TaskTemplatePickerDropdown
           :custom-task-templates-loading="customTaskTemplatesLoading"
           :custom-task-templates="customTaskTemplates"
@@ -18,13 +18,18 @@
           :task-type-label="taskTypeLabel"
           :handle-task-template-command="handleTaskTemplateCommand"
         />
-        <el-button plain @click="openTaskTemplateLibrary">模板库</el-button>
-      </el-space>
+        <n-button secondary @click="openTaskTemplateLibrary">模板库</n-button>
+      </div>
     </div>
 
-    <el-tabs v-model="activeTaskEditorKey" class="task-editor-tabs" type="card">
-      <el-tab-pane v-for="(task, index) in tasks" :key="task.key" :name="task.key" lazy>
-        <template #label>
+    <n-tabs v-model:value="activeTaskEditorKey" class="task-editor-tabs" type="card">
+      <n-tab-pane
+        v-for="(task, index) in tasks"
+        :key="task.key"
+        :name="task.key"
+        display-directive="show:lazy"
+      >
+        <template #tab>
           <LessonPlanTaskTabLabel
             :task="task"
             :index="index"
@@ -61,12 +66,14 @@
           :handle-task-type-change="handleTaskTypeChange"
           :generate-task-description-draft="generateTaskDescriptionDraft"
         />
-      </el-tab-pane>
-    </el-tabs>
+      </n-tab-pane>
+    </n-tabs>
   </div>
 </template>
 
 <script setup lang="ts">
+import { NButton, NTabs, NTabPane } from 'naive-ui';
+
 import LessonPlanTaskEditorCard from './LessonPlanTaskEditorCard.vue';
 import LessonPlanTaskTabLabel from './LessonPlanTaskTabLabel.vue';
 import TaskTemplatePickerDropdown from './TaskTemplatePickerDropdown.vue';
@@ -122,14 +129,16 @@ defineProps<{
   margin-top: 8px;
 }
 
-.task-editor-tabs :deep(.el-tabs__header) {
-  margin-bottom: 18px;
-}
-
-.task-editor-tabs :deep(.el-tabs__item) {
-  height: auto;
+.task-editor-tabs :deep(.n-tabs-tab) {
   padding-top: 10px;
   padding-bottom: 10px;
+}
+
+.chip-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .dialog-task-head {
@@ -154,10 +163,6 @@ defineProps<{
   .dialog-task-head {
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .task-editor-tabs :deep(.el-tabs__nav) {
-    flex-wrap: wrap;
   }
 }
 </style>

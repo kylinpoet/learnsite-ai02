@@ -6,6 +6,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Tex
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
+from app.models.encrypted import EncryptedText
 
 
 class ComputerRoom(TimestampMixin, Base):
@@ -364,10 +365,51 @@ class AIProvider(TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     provider_type: Mapped[str] = mapped_column(String(40), nullable=False, default="openai-compatible")
     base_url: Mapped[str] = mapped_column(String(255), nullable=False)
-    api_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    api_key: Mapped[str] = mapped_column(EncryptedText, nullable=False)
     model_name: Mapped[str] = mapped_column(String(120), nullable=False)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class CompanionConversation(TimestampMixin, Base):
+    __tablename__ = "companion_conversations"
+    __table_args__ = (
+        UniqueConstraint("user_id", "scope", "context_ref", name="uq_companion_conversations_user_scope_context"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    scope: Mapped[str] = mapped_column(String(20), nullable=False, default="general")
+    context_ref: Mapped[str] = mapped_column(String(80), nullable=False, default="general")
+    context_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    message_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    blocked_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+    messages: Mapped[list[CompanionMessage]] = relationship(
+        back_populates="conversation",
+        cascade="all, delete-orphan",
+        order_by="CompanionMessage.id.asc()",
+    )
+
+
+class CompanionMessage(TimestampMixin, Base):
+    __tablename__ = "companion_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("companion_conversations.id"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    provider_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    provider_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    attachment_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    blocked_category: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    blocked_keyword: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    conversation: Mapped[CompanionConversation] = relationship(back_populates="messages")
 
 
 class QuestionBank(TimestampMixin, Base):
@@ -964,3 +1006,24 @@ class ClassroomSession(TimestampMixin, Base):
 
     school_class: Mapped[SchoolClass] = relationship(back_populates="classroom_sessions")
     lesson_plan: Mapped[LessonPlan] = relationship(back_populates="classroom_sessions")
+
+
+class LearningReport(TimestampMixin, Base):
+    """AI 学情报告：教师为本班生成的学情分析（Markdown）历史记录。"""
+
+    __tablename__ = "learning_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    class_id: Mapped[int] = mapped_column(ForeignKey("school_classes.id"), nullable=False, index=True)
+    teacher_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    lesson_plan_id: Mapped[int | None] = mapped_column(
+        ForeignKey("lesson_plans.id"), nullable=True, index=True
+    )
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    content_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed", index=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    school_class: Mapped[SchoolClass] = relationship(foreign_keys=[class_id])
+    teacher: Mapped[User] = relationship(foreign_keys=[teacher_id])
+    lesson_plan: Mapped[LessonPlan | None] = relationship(foreign_keys=[lesson_plan_id])

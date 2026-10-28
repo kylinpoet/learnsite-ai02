@@ -10,10 +10,17 @@
     "dev:down": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-down.ps1",
     "dev:seed-demo": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-seed-demo.ps1",
     "dev:web": "npm --workspace apps/web run dev",
+    "dev:lan": "powershell -ExecutionPolicy Bypass -File .\\scripts\\dev-up.ps1 -ApiHost 0.0.0.0 -WebHost 0.0.0.0",
     "build:web": "npm --workspace apps/web run build",
+    "build:release": "npm run typecheck:web && npm run check:no-element && npm run check:api && npm run build:web",
     "typecheck:web": "npm --workspace apps/web run typecheck",
     "check:mirror-js": "npm --workspace apps/web run check:mirror-js",
-    "dev:api": "python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8010 --app-dir apps/api",
+    "check:no-element": "npm --workspace apps/web run check:no-element",
+    "dev:api": "python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8010 --app-dir apps/api",
+    "serve:api": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8010 --app-dir apps/api",
+    "serve:web": "npm --workspace apps/web run preview -- --host 0.0.0.0 --port 4173",
+    "serve:release": "npm run build:release && npm run serve:api",
+    "release:up": "powershell -ExecutionPolicy Bypass -File .\\scripts\\release-up.ps1",
     "check:api": "python -m compileall apps/api/app apps/api/tests",
     "hooks:install": "git config core.hooksPath .githooks"
   }

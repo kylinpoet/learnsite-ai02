@@ -19,3 +19,13 @@ class LoginPayload(BaseModel):
     token_type: str = "bearer"
     expires_at: str
     user: UserSummary
+
+
+class MePayload(BaseModel):
+    id: str
+    username: str
+    display_name: str
+    roles: list[str]
+    theme: str
+    platform_name: str
+    expires_at: str | None = None
