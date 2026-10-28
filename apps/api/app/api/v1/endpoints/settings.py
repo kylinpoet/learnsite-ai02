@@ -46,6 +46,7 @@ from app.models import (
     User,
 )
 from app.schemas.common import ApiResponse
+from app.services.class_code import generate_unique_class_code
 from app.services.remote_request_headers import build_remote_request_headers
 from app.services.assistant_settings import (
     read_assistant_prompt_settings,
@@ -1833,6 +1834,7 @@ def execute_promotions(
                 grade_no=target_grade_no,
                 class_no=target_class_no,
                 class_name=make_class_display_name(target_grade_no, target_class_no),
+                class_code=generate_unique_class_code(db),
                 head_teacher_name=source.head_teacher_name,
                 default_room_id=source.default_room_id,
             )
@@ -1959,6 +1961,7 @@ def create_class(
         grade_no=payload.grade_no,
         class_no=payload.class_no,
         class_name=make_class_display_name(payload.grade_no, payload.class_no),
+        class_code=generate_unique_class_code(db),
         head_teacher_name=(payload.head_teacher_name or "").strip() or None,
         default_room_id=payload.default_room_id,
     )
@@ -2016,6 +2019,7 @@ def create_classes_batch(
             grade_no=item.grade_no,
             class_no=item.class_no,
             class_name=class_name,
+            class_code=generate_unique_class_code(db),
             head_teacher_name=(item.head_teacher_name or "").strip() or None,
             default_room_id=item.default_room_id,
         )

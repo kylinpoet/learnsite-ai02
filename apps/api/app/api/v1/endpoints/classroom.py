@@ -558,6 +558,7 @@ def classroom_launchpad(
                 {
                     "id": school_class.id,
                     "class_name": school_class.class_name,
+                    "class_code": school_class.class_code or "",
                     "grade_no": school_class.grade_no,
                     "class_no": school_class.class_no,
                     "student_count": len(school_class.students),

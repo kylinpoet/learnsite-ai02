@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, time
 from math import ceil
 from urllib.parse import quote
 
@@ -31,6 +31,7 @@ from app.models import (
     DriveSpace,
     LearningReport,
     LessonPlan,
+    QuizAttempt,
     SchoolClass,
     StudentGroup,
     StudentGroupMember,
@@ -38,9 +39,11 @@ from app.models import (
     StudentLessonPlanProgress,
     Submission,
     Task,
+    TypingRecord,
     User,
 )
 from app.schemas.common import ApiResponse
+from app.services.class_code import regenerate_class_code
 from app.services.drive_files import (
     guess_drive_media_type,
     stored_drive_file_path,
@@ -1977,6 +1980,46 @@ def dashboard(
     recommended_total = sum(item["recommended_count"] for item in submission_by_class.values())
     active_session_total = sum(1 for item in latest_session_by_class.values() if item.status == "active")
 
+    # 已学/未学：学案本身是校级课程资源，没有班级归属；「已学」按本教师可见班级是否开过课来判定。
+    taught_plan_ids = set(
+        db.scalars(
+            select(ClassroomSession.plan_id).where(
+                ClassroomSession.class_id.in_(accessible_class_id_list)
+            )
+        ).all()
+    )
+    plan_taught_count = len(taught_plan_ids)
+    plan_untaught_count = max(total_plans - plan_taught_count, 0)
+
+    # 今日活跃：签到 / 提交 / 测验作答 / 打字记录，四路去重。
+    today_start = datetime.combine(today, time.min)
+    active_student_ids: set[int] = set(checked_in_student_ids)
+    active_student_ids.update(
+        db.scalars(
+            select(Submission.student_id).where(
+                Submission.student_id.in_(accessible_student_id_list),
+                Submission.submitted_at.is_not(None),
+                Submission.submitted_at >= today_start,
+            )
+        ).all()
+    )
+    active_student_ids.update(
+        db.scalars(
+            select(QuizAttempt.student_user_id).where(
+                QuizAttempt.student_user_id.in_(accessible_student_id_list),
+                QuizAttempt.started_at >= today_start,
+            )
+        ).all()
+    )
+    active_student_ids.update(
+        db.scalars(
+            select(TypingRecord.student_user_id).where(
+                TypingRecord.student_user_id.in_(accessible_student_id_list),
+                TypingRecord.played_at >= today_start,
+            )
+        ).all()
+    )
+
     return ApiResponse(
         data={
             "current_user": {
@@ -1984,6 +2027,17 @@ def dashboard(
                 "display_name": staff.display_name,
                 "title": staff.staff_profile.title if staff.staff_profile else None,
                 "roles": roles,
+            },
+            "overview_metrics": {
+                "grade_count": len({school_class.grade_no for school_class in classes}),
+                "class_count": total_classes,
+                "student_count": total_students,
+                "plan_total": total_plans,
+                "plan_taught_count": plan_taught_count,
+                "plan_untaught_count": plan_untaught_count,
+                "active_student_today": len(active_student_ids),
+                "checked_in_today": checked_in_today,
+                "pending_signin_count": pending_signin_count,
             },
             "stats": {
                 "class_count": total_classes,
@@ -2011,6 +2065,7 @@ def dashboard(
                     {
                         "id": school_class.id,
                         "class_name": school_class.class_name,
+                        "class_code": school_class.class_code or "",
                         "grade_no": school_class.grade_no,
                         "class_no": school_class.class_no,
                         "student_count": len(class_student_ids.get(school_class.id, set())),
@@ -2039,9 +2094,35 @@ def dashboard(
     )
 
 
+@router.post("/classes/{class_id}/class-code/regenerate", response_model=ApiResponse)
+def regenerate_class_code_endpoint(
+    class_id: int,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    """换一个班级码：旧码立即失效，已投影出去的码需要重新公布。"""
+    if not staff_can_access_class(staff, class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权管理该班级")
+    school_class = db.get(SchoolClass, class_id)
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+
+    code = regenerate_class_code(school_class, db)
+    db.commit()
+    return ApiResponse(
+        message="班级码已更新",
+        data={
+            "class_id": school_class.id,
+            "class_name": school_class.class_name,
+            "class_code": code,
+        },
+    )
+
+
 @router.get("/classroom/live", response_model=ApiResponse)
 def classroom_live(
     class_id: int = Query(..., ge=1),
+    session_id: int | None = Query(None, ge=1),
     staff: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
@@ -2098,10 +2179,12 @@ def classroom_live(
             continue
         seat_label_by_student[assignment.student_user_id] = seat.seat_label
 
+    session_query = select(ClassroomSession).where(ClassroomSession.class_id == class_id)
+    if session_id is not None:
+        # 实时课堂页绑定的是具体会话；显式指定时不能回落到“最近一节课”。
+        session_query = session_query.where(ClassroomSession.id == session_id)
     session = db.scalars(
-        select(ClassroomSession)
-        .where(ClassroomSession.class_id == class_id)
-        .options(
+        session_query.options(
             selectinload(ClassroomSession.school_class),
             selectinload(ClassroomSession.lesson_plan)
             .selectinload(LessonPlan.lesson)
@@ -2167,6 +2250,7 @@ def classroom_live(
             "class": {
                 "id": school_class.id,
                 "class_name": school_class.class_name,
+                "class_code": school_class.class_code or "",
                 "grade_no": school_class.grade_no,
                 "class_no": school_class.class_no,
                 "student_count": seat_map["student_count"],

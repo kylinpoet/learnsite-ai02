@@ -28,6 +28,29 @@ export type SeatCell = {
 
 export type RoomBrief = { id: number; name: string; row_count: number; col_count: number } | null;
 
+/** 开课台可选的班级（含班级码与今日签到） */
+export type LaunchpadClass = {
+  id: number;
+  class_name: string;
+  class_code: string;
+  grade_no: number;
+  class_no: number;
+  student_count: number;
+  checked_in_count: number;
+};
+
+/** 开课台可选的学案：带教材单元与任务量，便于开课前核对 */
+export type LaunchpadPlan = {
+  id: number;
+  title: string;
+  lesson_title: string;
+  unit_title: string;
+  book_name?: string;
+  lesson_no?: number | null;
+  task_count: number;
+  pending_count: number;
+};
+
 export type LiveSession = {
   session_id: number;
   status: string;
@@ -48,6 +71,7 @@ export type ClassLivePayload = {
   class: {
     id: number;
     class_name: string;
+    class_code?: string;
     grade_no: number;
     class_no: number;
     student_count: number;

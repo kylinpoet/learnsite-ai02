@@ -7,6 +7,7 @@ from app.api.v1.endpoints import (
     curriculum,
     drives,
     groups,
+    guest,
     health,
     lesson_plans,
     peer_reviews,
@@ -38,3 +39,4 @@ api_router.include_router(typing.router, prefix="/typing", tags=["typing"])
 api_router.include_router(resources.router, prefix="/resources", tags=["resources"])
 api_router.include_router(settings.router, prefix="/settings", tags=["settings"])
 api_router.include_router(assistants.router, prefix="/assistants", tags=["assistants"])
+api_router.include_router(guest.router, prefix="/guest", tags=["guest"])

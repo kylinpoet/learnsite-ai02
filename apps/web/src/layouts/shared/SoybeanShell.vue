@@ -243,6 +243,10 @@ watch(
     if (!route.path.startsWith('/staff') && !route.path.startsWith('/student')) {
       return;
     }
+    // 中转页（如 /staff/classroom 自动定位到具体会话）不单独占标签页
+    if (route.meta.skipTab) {
+      return;
+    }
     tabsStore.openTab({
       path: route.fullPath,
       title: props.currentPageLabel,
@@ -253,7 +257,7 @@ watch(
 );
 
 function homePath() {
-  return props.variant === 'staff' ? '/staff/classroom' : '/student/home';
+  return props.variant === 'staff' ? '/staff' : '/student/home';
 }
 
 function handleMenuSelect(key: string) {

@@ -55,6 +55,12 @@ from app.models import (
     User,
 )
 from app.services.review_templates import ensure_default_review_templates
+from app.services.class_code import (
+    CLASS_CODE_ALPHABET,
+    CLASS_CODE_LENGTH,
+    ensure_class_code,
+    generate_unique_class_code,
+)
 from app.services.system_settings import ensure_system_setting_defaults
 from app.services.submission_files import stored_file_path
 
@@ -228,6 +234,7 @@ def create_class(session, grade_no: int, class_no: int, room: ComputerRoom, head
         grade_no=grade_no,
         class_no=class_no,
         class_name=f"{grade_no}{class_no:02d}班",
+        class_code=generate_unique_class_code(session),
         head_teacher_name=head_teacher_name,
         default_room_id=room.id,
     )
@@ -374,6 +381,7 @@ def ensure_runtime_schema() -> None:
     task_columns = {column["name"] for column in inspector.get_columns("tasks")}
     submission_columns = {column["name"] for column in inspector.get_columns("submissions")}
     student_profile_columns = {column["name"] for column in inspector.get_columns("student_profiles")}
+    school_class_columns = {column["name"] for column in inspector.get_columns("school_classes")}
     profile_change_audit_columns = {column["name"] for column in inspector.get_columns("profile_change_audit_logs")}
     task_template_columns = {column["name"] for column in inspector.get_columns("task_templates")} if "task_templates" in table_names else set()
     lesson_plan_columns = inspector.get_columns("lesson_plans") if "lesson_plans" in table_names else []
@@ -419,6 +427,10 @@ def ensure_runtime_schema() -> None:
             connection.commit()
 
     with engine.begin() as connection:
+        if "class_code" not in school_class_columns:
+            connection.execute(
+                text("ALTER TABLE school_classes ADD COLUMN class_code VARCHAR(12)")
+            )
         if "submission_scope" not in task_columns:
             connection.execute(
                 text("ALTER TABLE tasks ADD COLUMN submission_scope VARCHAR(20) NOT NULL DEFAULT 'individual'")
@@ -468,6 +480,9 @@ def ensure_runtime_schema() -> None:
                 text("ALTER TABLE task_templates ADD COLUMN use_count INTEGER NOT NULL DEFAULT 0")
             )
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_submissions_group_id ON submissions (group_id)"))
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_school_classes_class_code ON school_classes (class_code)")
+        )
         if task_template_columns:
             connection.execute(
                 text("CREATE INDEX IF NOT EXISTS ix_task_templates_group_name ON task_templates (group_name)")
@@ -1312,6 +1327,20 @@ def ensure_alembic_stamp() -> None:
             {"head": head},
         )
 
+def ensure_class_codes(session) -> int:
+    """为历史库里的班级补班级码（幂等）。"""
+    classes = session.scalars(select(SchoolClass).order_by(SchoolClass.id.asc())).all()
+    filled = 0
+    for school_class in classes:
+        if school_class.class_code:
+            continue
+        ensure_class_code(school_class, session)
+        filled += 1
+    if filled:
+        session.commit()
+    return filled
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_runtime_schema()
@@ -1321,3 +1350,4 @@ def init_db() -> None:
         ensure_system_setting_defaults(session)
         session.commit()
         migrate_ai_provider_api_keys(session)
+        ensure_class_codes(session)

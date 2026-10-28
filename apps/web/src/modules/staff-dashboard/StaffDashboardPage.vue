@@ -1,25 +1,6 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      :description="headerDescription"
-      eyebrow="教师工作台"
-      :title="pageTitle"
-    >
-      <template #actions>
-        <n-tag
-          v-for="role in dashboard?.current_user.roles || []"
-          :key="role"
-          round
-          size="small"
-          :type="role === 'admin' ? 'warning' : 'success'"
-        >
-          {{ role === 'admin' ? '管理员' : '教师' }}
-        </n-tag>
-        <n-button secondary size="small" @click="navigate('/staff/lesson-plans')">学案管理</n-button>
-        <n-button size="small" type="primary" @click="navigate('/staff/classroom')">课堂会话中心</n-button>
-      </template>
-    </SaPageHeader>
+    <SaPageHeader compact :description="headerDescription" title="教学总览" />
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
@@ -27,97 +8,93 @@
       <n-skeleton :rows="8" animated />
     </SaPanel>
 
+    <!-- 上课中：8+4 双栏，主栏只讲这一节课 -->
+    <div v-if="isLivePhase && dashboard" class="ls-page">
+      <div class="ls-main">
+        <LiveSessionCard
+          :book-name="currentLesson.book_name"
+          :checkin="checkin"
+          :class-code="selectedClassCode"
+          :class-name="sessionClassName"
+          :is-refreshing="polling.isRefreshing.value"
+          :lesson-title="currentLesson.lesson_title"
+          :phase="phase"
+          :plan-title="currentLesson.plan_title"
+          :room-label="roomInfo?.name ?? null"
+          :session-id="activeSession?.session_id ?? null"
+          :started-at="activeSession?.started_at ?? null"
+          :submission="submissionInfo"
+          :unit-title="currentLesson.unit_title"
+          :updated-text="updatedText"
+          @close-session="closeSession"
+          @copy-code="copyClassCode"
+          @open-classroom="openClassroom"
+          @refresh="refreshNow"
+          @regenerate-code="regenerateClassCode"
+        />
+
+        <CompactSeatMap
+          :cells="seatCells"
+          :class-label="sessionClassName"
+          :cols="seatCols"
+          :room-label="roomInfo?.name ?? null"
+          :updated-text="seatFootText"
+        />
+
+        <p class="page-summary">{{ summaryLine }}</p>
+      </div>
+
+      <div class="ls-rail">
+        <TodoPanel :overview="railOverview" @navigate="navigate" />
+        <RecentSessionsCard :sessions="recentSessions" @navigate="navigate" />
+      </div>
+    </div>
+
+    <!-- 未开课 / 上一节已结束：单列三段，页面只讲开课 -->
     <div v-else-if="dashboard" class="page-stack">
-      <div class="ls-page">
-        <div class="ls-main">
-          <LiveSessionCard
-            :book-name="currentLesson.book_name"
-            :checkin="checkin"
-            :class-name="sessionClassName"
-            :class-options="classOptions"
-            :is-refreshing="polling.isRefreshing.value"
-            :launch-class-id="launchForm.class_id"
-            :launch-plan-id="launchForm.plan_id"
-            :launching="isLaunching"
-            :lesson-title="currentLesson.lesson_title"
-            :phase="phase"
-            :plan-options="planOptions"
-            :plan-title="currentLesson.plan_title"
-            :room-label="roomInfo?.name ?? null"
-            :session-id="activeSession?.session_id ?? null"
-            :started-at="activeSession?.started_at ?? null"
-            :submission="submissionInfo"
-            :unit-title="currentLesson.unit_title"
-            :updated-text="updatedText"
-            @close-session="closeSession"
-            @launch="startClassroom"
-            @open-classroom="openClassroom"
-            @refresh="refreshNow"
-            @update:launch-class-id="(value: number) => (launchForm.class_id = value)"
-            @update:launch-plan-id="(value: number) => (launchForm.plan_id = value)"
-          />
+      <LaunchpadPanel
+        :class-id="launchForm.class_id"
+        :classes="dashboard.launchpad.classes"
+        :launching="isLaunching"
+        :phase="phase"
+        :plan-id="launchForm.plan_id"
+        :plans="dashboard.launchpad.ready_plans"
+        @copy-code="copyClassCode"
+        @launch="startClassroom"
+        @regenerate-code="regenerateClassCode"
+        @update:class-id="(value: number) => (launchForm.class_id = value)"
+        @update:plan-id="(value: number) => (launchForm.plan_id = value)"
+      />
 
-          <CompactSeatMap
-            :cells="seatCells"
-            :class-label="sessionClassName"
-            :cols="seatCols"
-            :room-label="roomInfo?.name ?? null"
-            :updated-text="seatFootText"
-          />
-        </div>
+      <TodoPanel :columns="3" :overview="railOverview" @navigate="navigate" />
 
-        <div class="ls-rail">
-          <DashboardSideRail
-            :overview="railOverview"
-            :sessions="dashboard.recent_sessions.slice(0, 4)"
-            @navigate="navigate"
-          />
-        </div>
-      </div>
+      <RecentSessionsCard :sessions="recentSessions" @navigate="navigate" />
 
-      <div class="dashboard-charts">
-        <SaPanel compact>
-          <template #header>
-            <div class="dashboard-chart-head">
-              <strong>今日概览</strong>
-              <span class="dashboard-chart-note">签到、活跃课堂与待办事项的量化对比</span>
-            </div>
-          </template>
-          <AppChart :height="260" :option="todayOverviewOption" />
-        </SaPanel>
-
-        <SaPanel compact>
-          <template #header>
-            <div class="dashboard-chart-head">
-              <strong>近期课堂提交与待评阅</strong>
-              <span class="dashboard-chart-note">按课堂会话查看提交量与待评阅积压</span>
-            </div>
-          </template>
-          <n-empty v-if="!recentSessions.length" description="当前还没有课堂会话记录。" />
-          <AppChart v-else :height="260" :option="recentSessionOption" />
-        </SaPanel>
-      </div>
+      <p class="page-summary">{{ summaryLine }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
-import { NAlert, NButton, NEmpty, NSkeleton, NTag } from 'naive-ui';
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { NAlert, NSkeleton } from 'naive-ui';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiPost } from '@/api/http';
 import SaPageHeader from '@/components/sa/SaPageHeader.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling';
 import { useAuthStore } from '@/stores/auth';
 import CompactSeatMap from './components/CompactSeatMap.vue';
-import DashboardSideRail from './components/DashboardSideRail.vue';
+import LaunchpadPanel from './components/LaunchpadPanel.vue';
 import LiveSessionCard from './components/LiveSessionCard.vue';
+import RecentSessionsCard from './components/RecentSessionsCard.vue';
+import TodoPanel from './components/TodoPanel.vue';
 import type {
   ClassLivePayload,
+  LaunchpadClass,
+  LaunchpadPlan,
   LiveSession,
   LiveStudent,
   RoomBrief,
@@ -180,25 +157,6 @@ type SessionSummary = {
   pending_signin_count: number;
 };
 
-type LaunchpadClass = {
-  id: number;
-  class_name: string;
-  grade_no: number;
-  class_no: number;
-  student_count: number;
-  checked_in_count: number;
-};
-type LaunchpadPlan = {
-  id: number;
-  title: string;
-  lesson_title: string;
-  unit_title: string;
-  book_name?: string;
-  lesson_no?: number | null;
-  task_count: number;
-  pending_count: number;
-};
-
 type RecentSession = {
   session_id: number;
   status: string;
@@ -211,6 +169,17 @@ type RecentSession = {
 
 type DashboardPayload = {
   current_user: { display_name: string; title: string | null; roles: string[] };
+  overview_metrics: {
+    grade_count: number;
+    class_count: number;
+    student_count: number;
+    plan_total: number;
+    plan_taught_count: number;
+    plan_untaught_count: number;
+    active_student_today: number;
+    checked_in_today: number;
+    pending_signin_count: number;
+  };
   stats: { class_count: number };
   today_overview: {
     checked_in_today: number;
@@ -234,8 +203,6 @@ type DashboardPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
-const { axisX, axisY, base, palette, tokens, tooltip } = useChartTheme();
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 const dashboard = ref<DashboardPayload | null>(null);
 const live = ref<ClassLivePayload | null>(null);
@@ -249,25 +216,43 @@ const launchForm = ref<{ class_id: number | null; plan_id: number | null }>({
 const nowTick = ref(Date.now());
 let clockTimer: number | undefined;
 
-const pageTitle = computed(() => {
-  const user = dashboard.value?.current_user;
-  if (!user) return '课堂首页';
-  return user.title ? `${user.display_name} · ${user.title}` : user.display_name;
-});
+const selectedClassCode = computed(() => selectedClass.value?.class_code || '');
 
-const classOptions = computed(() =>
-  (dashboard.value?.launchpad.classes || []).map((item) => ({
-    label: `${item.grade_no} 年级 ${item.class_name} · ${item.student_count}人`,
-    value: item.id,
-  })),
-);
+async function copyClassCode() {
+  if (!selectedClassCode.value) return;
+  try {
+    await navigator.clipboard.writeText(selectedClassCode.value);
+    ElMessage.success('班级码已复制');
+  } catch {
+    ElMessage.warning(`班级码：${selectedClassCode.value}`);
+  }
+}
 
-const planOptions = computed(() =>
-  (dashboard.value?.launchpad.ready_plans || []).map((item) => ({
-    label: `${item.title} · ${item.lesson_title}`,
-    value: item.id,
-  })),
-);
+async function regenerateClassCode() {
+  const classId = focusClassId.value;
+  if (!authStore.token || !classId) return;
+  try {
+    await ElMessageBox.confirm('换码后旧班级码立即失效，已投屏的码需要重新公布。', '更换班级码', {
+      type: 'warning',
+      confirmButtonText: '换一个',
+      cancelButtonText: '取消',
+    });
+  } catch {
+    return;
+  }
+  try {
+    const payload = await apiPost<{ class_code: string }>(
+      `/staff/classes/${classId}/class-code/regenerate`,
+      {},
+      authStore.token,
+    );
+    const target = dashboard.value?.launchpad.classes.find((item) => item.id === classId);
+    if (target) target.class_code = payload.class_code;
+    ElMessage.success(`新班级码：${payload.class_code}`);
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '更换班级码失败';
+  }
+}
 
 const focusClassId = computed(
   () => launchForm.value.class_id ?? dashboard.value?.focus_class_id ?? dashboard.value?.launchpad.default_class_id ?? null,
@@ -306,6 +291,10 @@ const phase = computed<'live' | 'last' | 'idle'>(() => {
   if (activeSession.value) return 'last';
   return 'idle';
 });
+
+const isLivePhase = computed(() => phase.value === 'live');
+
+const recentSessions = computed(() => dashboard.value?.recent_sessions.slice(0, 4) ?? []);
 
 const selectedPlan = computed<LaunchpadPlan | null>(() => {
   const planId = launchForm.value.plan_id;
@@ -432,10 +421,25 @@ const headerDescription = computed(() => {
   const identity = [sessionClassName.value, currentLesson.value.lesson_title, roomInfo.value?.name]
     .filter(Boolean)
     .join(' · ');
-  if (!identity) return '先选班级与课次，再一键开课；开课后首屏就是签到与提交进度。';
   if (phase.value === 'live') return `正在上：${identity}`;
-  if (phase.value === 'last') return `准备开课：${identity}（上一次课堂已结束）`;
+  if (phase.value === 'last') return `上一节已结束：${identity}`;
+  if (!identity) return '还没有任课班级或已发布的学案';
   return `准备上课：${identity}`;
+});
+
+/** 页面页脚一行：任课范围与今日规模，不重复主卡里已经给出的数字 */
+const summaryLine = computed(() => {
+  const metrics = dashboard.value?.overview_metrics;
+  if (!metrics) return '';
+  const parts = [
+    `${metrics.class_count} 个班`,
+    `${metrics.student_count} 名学生`,
+    `学案 ${metrics.plan_total} 份（已学 ${metrics.plan_taught_count} 份）`,
+  ];
+  if (phase.value !== 'live') {
+    parts.push(`今日活跃 ${metrics.active_student_today} 人`, `今日已到 ${metrics.checked_in_today} 人`);
+  }
+  return parts.join(' · ');
 });
 
 const seatCols = computed(() => roomInfo.value?.col_count || 1);
@@ -468,71 +472,6 @@ const railOverview = computed(() => {
   };
 });
 
-const recentSessions = computed(() => dashboard.value?.recent_sessions || []);
-
-const todayOverviewOption = computed(() => {
-  const overview = dashboard.value?.today_overview;
-  const items = [
-    { name: '今日签到', value: overview?.checked_in_today ?? 0, color: palette.value[2] },
-    { name: '待签到', value: overview?.pending_signin_count ?? 0, color: tokens.value.warning },
-    { name: '待评阅', value: overview?.pending_review_count ?? 0, color: palette.value[1] },
-    { name: '已推荐', value: overview?.recommended_count ?? 0, color: palette.value[0] },
-    { name: '活跃课堂', value: overview?.active_session_count ?? 0, color: palette.value[3] },
-  ];
-
-  return base({
-    tooltip: tooltip('axis'),
-    grid: { left: 8, right: 28, top: 12, bottom: 4, containLabel: true },
-    xAxis: {
-      type: 'value',
-      minInterval: 1,
-      splitLine: { show: false },
-      axisLabel: { show: false },
-      axisLine: { show: false },
-      axisTick: { show: false },
-    },
-    yAxis: axisX(items.map((item) => item.name), { inverse: true }),
-    series: [
-      {
-        type: 'bar',
-        barMaxWidth: 22,
-        itemStyle: { borderRadius: [0, 8, 8, 0] },
-        label: { show: true, position: 'right', color: tokens.value.text, fontSize: 12, fontWeight: 600 },
-        data: items.map((item) => ({ value: item.value, itemStyle: { color: item.color } })),
-      },
-    ],
-  });
-});
-
-const recentSessionOption = computed(() => {
-  const sessions = recentSessions.value.slice(0, 8).reverse();
-  return base({
-    tooltip: tooltip('axis'),
-    legend: { top: 0, textStyle: { color: tokens.value.muted, fontSize: 11 } },
-    grid: { left: 8, right: 16, top: 34, bottom: 4, containLabel: true },
-    xAxis: axisX(sessions.map((item) => item.plan.title || item.class.name), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 78, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: axisY(),
-    series: [
-      {
-        name: '提交数',
-        type: 'bar',
-        barMaxWidth: 26,
-        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
-        data: sessions.map((item) => item.submission_count),
-      },
-      {
-        name: '待评阅',
-        type: 'bar',
-        barMaxWidth: 26,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        data: sessions.map((item) => item.pending_review_count),
-      },
-    ],
-  });
-});
-
 const pollingEnabled = computed(() => phase.value === 'live' && Boolean(focusClassId.value));
 
 const polling = useVisibilityPolling({
@@ -552,11 +491,8 @@ const updatedText = computed(() => {
   return seconds <= 2 ? '刚刚更新' : `更新于 ${seconds} 秒前`;
 });
 
-const seatFootText = computed(() => {
-  const room = roomInfo.value;
-  if (!room) return '';
-  return `${room.name} · ${room.row_count} 行 × ${room.col_count} 列 · ${updatedText.value}`;
-});
+/** 座位图脚下只留刷新时间，机房与行列已经写在摘要行里 */
+const seatFootText = computed(() => updatedText.value);
 
 async function fetchLive(signal?: AbortSignal) {
   const classId = focusClassId.value;
@@ -692,33 +628,17 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dashboard-charts {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: var(--ls-gap-md, 12px);
-}
-
-.dashboard-chart-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.dashboard-chart-head strong {
-  color: var(--ls-ink);
-  font-size: 14px;
-}
-
-.dashboard-chart-note {
+.page-summary {
+  margin: 0;
+  padding: 2px 2px 0;
   color: var(--ls-muted);
   font-size: 12px;
+  line-height: 1.5;
 }
 
-@media (max-width: 1080px) {
-  .dashboard-charts {
-    grid-template-columns: 1fr;
+@media (max-width: 760px) {
+  .page-summary {
+    padding: 0 2px 4px;
   }
 }
 </style>

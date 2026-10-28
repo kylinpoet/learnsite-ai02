@@ -103,7 +103,7 @@ async function handleLogin() {
   try {
     const payload = await apiPost<LoginResponse>('/auth/staff/login', form);
     authStore.setSession(payload.access_token, payload.user, payload.expires_at);
-    await router.push('/staff/classroom');
+    await router.push('/staff');
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '登录失败，请稍后重试';
   } finally {

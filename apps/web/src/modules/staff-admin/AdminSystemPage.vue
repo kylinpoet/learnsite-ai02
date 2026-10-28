@@ -2877,7 +2877,7 @@ async function saveTeacher() {
     if (editingTeacherId.value && Number(authStore.user?.id) === editingTeacherId.value) {
       await authStore.syncSessionUser(true);
       if (!authStore.isAdmin) {
-        await router.replace('/staff/classroom');
+        await router.replace('/staff');
       }
     }
 
@@ -2921,7 +2921,7 @@ async function saveTeacherEditor() {
     if (Number(authStore.user?.id) === teacherId) {
       await authStore.syncSessionUser(true);
       if (!authStore.isAdmin) {
-        await router.replace('/staff/classroom');
+        await router.replace('/staff');
       }
     }
 

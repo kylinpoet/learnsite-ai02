@@ -57,6 +57,8 @@ class SchoolClass(TimestampMixin, Base):
     grade_no: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     class_no: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     class_name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    # 班级码：学生登录页换取本班名单的短口令，可为空以兼容尚未回填的历史库。
+    class_code: Mapped[str | None] = mapped_column(String(12), nullable=True, unique=True, index=True)
     head_teacher_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     default_room_id: Mapped[int | None] = mapped_column(
         ForeignKey("computer_rooms.id"),

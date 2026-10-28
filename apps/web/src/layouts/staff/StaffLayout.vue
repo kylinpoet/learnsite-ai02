@@ -39,8 +39,8 @@ const navGroups = computed(() => {
     {
       title: '总览',
       items: [
-        { label: '课堂控制', to: '/staff/classroom', icon: markRaw(MonitorPlay) },
-        { label: '仪表盘', to: '/staff/dashboard', icon: markRaw(LayoutDashboard) },
+        { label: '教学总览', to: '/staff', icon: markRaw(LayoutDashboard) },
+        { label: '实时课堂', to: '/staff/classroom', icon: markRaw(MonitorPlay) },
       ],
     },
     {
@@ -76,8 +76,8 @@ const navGroups = computed(() => {
 });
 
 const staffPageItems: StaffPageItem[] = [
-  { label: '仪表盘', icon: markRaw(LayoutDashboard), matches: [(path) => path === '/staff/dashboard'] },
-  { label: '课堂控制', icon: markRaw(MonitorPlay), matches: [(path) => path.startsWith('/staff/classroom')] },
+  { label: '教学总览', icon: markRaw(LayoutDashboard), matches: [(path) => path === '/staff' || path === '/staff/dashboard'] },
+  { label: '实时课堂', icon: markRaw(MonitorPlay), matches: [(path) => path.startsWith('/staff/classroom')] },
   { label: '学案管理', icon: markRaw(NotebookPen), matches: [(path) => path.startsWith('/staff/lesson-plans')] },
   { label: '课程内容', icon: markRaw(BookCopy), matches: [(path) => path.startsWith('/staff/curriculum')] },
   { label: '测验题库', icon: markRaw(FileQuestion), matches: [(path) => path.startsWith('/staff/quizzes')] },

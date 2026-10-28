@@ -1,51 +1,58 @@
 <template>
   <article class="ls-card seat-card">
     <header class="seat-head">
-      <div>
+      <div class="seat-head__copy">
         <p class="ls-card__title">
           {{ classLabel || '当前班级' }}
           <span v-if="roomLabel" class="seat-head__room"> · {{ roomLabel }}</span>
         </p>
-        <p class="ls-card__sub">
-          座位按登录 IP 自动匹配；色点表示当前学案的提交阶段。
-        </p>
+        <p class="ls-card__sub">{{ summary }}</p>
       </div>
-      <div class="seat-legend">
-        <span class="legend-item"><i class="ls-dot dot--completed" />完成 {{ counts.completed }}</span>
-        <span class="legend-item"><i class="ls-dot dot--partial" />部分 {{ counts.partial }}</span>
-        <span class="legend-item"><i class="ls-dot dot--none" />未交 {{ counts.none }}</span>
-        <span class="legend-item"><i class="ls-dot dot--signed" />已签到 {{ counts.signedIn }}</span>
-      </div>
+      <n-button v-if="cells.length" size="tiny" quaternary @click="expanded = !expanded">
+        {{ expanded ? '收起座位图' : '展开座位图' }}
+      </n-button>
     </header>
 
     <p v-if="!cells.length" class="ls-empty">当前班级还没有绑定机房座位表，请先在系统设置里维护座位。</p>
 
-    <div v-else class="seat-grid" :style="gridStyle">
-      <div
-        v-for="cell in cells"
-        :key="cell.key"
-        :class="[
-          'seat-cell',
-          {
-            'is-empty': !cell.displayName,
-            'is-virtual': cell.virtual,
-            'is-signed': cell.signedIn,
-          },
-        ]"
-        :title="cellTitle(cell)"
-      >
-        <span class="seat-cell__label">{{ cell.label }}</span>
-        <span class="seat-cell__name">{{ cell.displayName || (cell.virtual ? '未配置' : '空') }}</span>
-        <span :class="['seat-cell__dot', `dot--${cell.stage}`]" />
-      </div>
-    </div>
+    <template v-else>
+      <div v-show="expanded" class="seat-body">
+        <div class="seat-legend">
+          <span class="legend-item"><i class="ls-dot dot--completed" />完成 {{ counts.completed }}</span>
+          <span class="legend-item"><i class="ls-dot dot--partial" />部分 {{ counts.partial }}</span>
+          <span class="legend-item"><i class="ls-dot dot--none" />未交 {{ counts.none }}</span>
+          <span class="legend-item"><i class="ls-dot dot--signed" />已签到 {{ counts.signedIn }}</span>
+        </div>
 
-    <p v-if="updatedText" class="seat-foot">{{ updatedText }}</p>
+        <div class="seat-grid" :style="gridStyle">
+          <div
+            v-for="cell in cells"
+            :key="cell.key"
+            :class="[
+              'seat-cell',
+              {
+                'is-empty': !cell.displayName,
+                'is-virtual': cell.virtual,
+                'is-signed': cell.signedIn,
+              },
+            ]"
+            :title="cellTitle(cell)"
+          >
+            <span class="seat-cell__label">{{ cell.label }}</span>
+            <span class="seat-cell__name">{{ cell.displayName || (cell.virtual ? '未配置' : '空') }}</span>
+            <span :class="['seat-cell__dot', `dot--${cell.stage}`]" />
+          </div>
+        </div>
+      </div>
+
+      <p v-if="updatedText" class="seat-foot">{{ updatedText }}</p>
+    </template>
   </article>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { NButton } from 'naive-ui';
+import { computed, ref, watch } from 'vue';
 
 import type { SeatCell } from './dashboardTypes';
 
@@ -56,6 +63,16 @@ const props = defineProps<{
   roomLabel: string | null;
   updatedText: string;
 }>();
+
+/** 默认收起：座位图只在需要点名时才展开，首屏先给摘要 */
+const expanded = ref(false);
+
+watch(
+  () => props.classLabel,
+  () => {
+    expanded.value = false;
+  },
+);
 
 const gridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${Math.max(props.cols, 1)}, minmax(0, 1fr))`,
@@ -71,6 +88,20 @@ const counts = computed(() => {
   return result;
 });
 
+const occupied = computed(() => props.cells.filter((cell) => Boolean(cell.displayName)).length);
+
+const summary = computed(() => {
+  if (!props.cells.length) return '还没有座位表';
+  const rows = Math.max(...props.cells.map((cell) => cell.row));
+  const parts = [
+    `${rows} 行 × ${Math.max(props.cols, 1)} 列`,
+    `${occupied.value} 人在座`,
+    `已签到 ${counts.value.signedIn}`,
+    `未交 ${counts.value.none}`,
+  ];
+  return parts.join(' · ');
+});
+
 function cellTitle(cell: SeatCell) {
   if (!cell.displayName) return `座位 ${cell.label} · ${cell.virtual ? '未配置' : '当前无人登录'}`;
   const signed = cell.signedIn ? '已签到' : '未签到';
@@ -82,6 +113,8 @@ function cellTitle(cell: SeatCell) {
 <style scoped>
 .seat-card {
   gap: 10px;
+  border-radius: var(--ls-radius-md);
+  box-shadow: none;
 }
 
 .seat-head {
@@ -91,25 +124,38 @@ function cellTitle(cell: SeatCell) {
   gap: 12px;
 }
 
+.seat-head__copy {
+  min-width: 0;
+}
+
 .seat-head__room {
   color: var(--ls-muted);
   font-weight: 600;
+}
+
+.seat-body {
+  display: grid;
+  gap: 8px;
 }
 
 .seat-legend {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   color: var(--ls-muted);
-  font-size: 11.5px;
-  flex: 0 0 auto;
+  font-size: 12px;
 }
 
 .legend-item {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.legend-item .ls-dot {
+  width: 6px;
+  height: 6px;
 }
 
 .seat-grid {
@@ -131,11 +177,10 @@ function cellTitle(cell: SeatCell) {
   border: 1px solid var(--ls-border);
   border-radius: var(--ls-radius-sm, 10px);
   background: var(--ls-panel-soft, var(--ls-surface));
-  transition: border-color 0.16s ease, transform 0.16s ease;
+  transition: border-color 0.16s ease;
 }
 
 .seat-cell:hover {
-  transform: translateY(-1px);
   border-color: var(--ls-primary);
 }
 
@@ -155,14 +200,13 @@ function cellTitle(cell: SeatCell) {
 
 .seat-cell__label {
   color: var(--ls-muted);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 10.5px;
+  font-weight: 600;
 }
 
 .seat-cell__name {
   color: var(--ls-ink);
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -203,7 +247,7 @@ function cellTitle(cell: SeatCell) {
 .seat-foot {
   margin: 0;
   color: var(--ls-muted);
-  font-size: 11px;
+  font-size: 11.5px;
 }
 
 @media (max-width: 760px) {

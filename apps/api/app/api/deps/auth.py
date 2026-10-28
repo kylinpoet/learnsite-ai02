@@ -3,7 +3,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.api.deps.db import get_db
-from app.core.security import decode_access_token, is_access_token_expired
+from app.core.security import (
+    decode_access_token,
+    decode_class_guest_token,
+    is_access_token_expired,
+)
 from app.models import User
 from app.services.staff_access import is_admin_staff
 
@@ -68,3 +72,28 @@ def require_admin(user: User = Depends(require_staff)) -> User:
             detail="Admin access required",
         )
     return user
+
+
+def require_class_guest(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict:
+    """班级旁听令牌（只读）。与 get_current_user 互斥：旁听令牌没有 user_id，
+    拿它调任何 require_student/require_staff 接口都会先在这里之外被判 401。"""
+    raw_token = credentials.credentials if credentials is not None else ""
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing guest credentials",
+        )
+    token_data = decode_class_guest_token(raw_token)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid guest token",
+        )
+    if is_access_token_expired(token_data):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Guest session expired",
+        )
+    return token_data

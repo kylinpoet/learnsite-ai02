@@ -216,6 +216,53 @@ def decode_task_runtime_token(token: str) -> dict[str, Any] | None:
         return None
 
 
+def create_class_guest_token(
+    *,
+    class_id: int,
+    class_name: str,
+    issued_at: datetime | None = None,
+    ttl_seconds: int | None = None,
+) -> tuple[str, datetime]:
+    """班级旁听令牌：只有班级上下文，没有 user_id。
+
+    刻意不带 user_id/user_type/username，`decode_access_token` 解不出它，
+    因此它无法借用任何学生端接口（那些接口都要求真实 User + student_profile）。
+    """
+    actual_issued_at = ensure_utc(issued_at or utc_now()).replace(microsecond=0)
+    actual_ttl_seconds = max(int(ttl_seconds or 7200), 300)
+    expires_at = actual_issued_at + timedelta(seconds=actual_ttl_seconds)
+    token = _encode_token(
+        {
+            "scope": "class_guest",
+            "class_id": int(class_id),
+            "class_name": class_name,
+            "issued_at": int(actual_issued_at.timestamp()),
+            "expires_at": int(expires_at.timestamp()),
+            "iat": int(actual_issued_at.timestamp()),
+            "exp": int(expires_at.timestamp()),
+        }
+    )
+    return token, expires_at
+
+
+def decode_class_guest_token(token: str) -> dict[str, Any] | None:
+    parsed = _decode_token_payload(token)
+    if parsed is None:
+        return None
+    try:
+        if str(parsed.get("scope") or "") != "class_guest":
+            return None
+        return {
+            "scope": "class_guest",
+            "class_id": int(parsed["class_id"]),
+            "class_name": str(parsed.get("class_name") or ""),
+            "issued_at": _token_datetime(parsed, "issued_at", "iat"),
+            "expires_at": _token_datetime(parsed, "expires_at", "exp"),
+        }
+    except Exception:
+        return None
+
+
 def is_access_token_expired(token_data: dict[str, Any], *, now: datetime | None = None) -> bool:
     expires_at = token_data.get("expires_at")
     if not isinstance(expires_at, datetime):

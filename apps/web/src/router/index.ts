@@ -11,6 +11,7 @@ const StaffLayout = () => import('@/layouts/staff/StaffLayout.vue');
 const StudentLoginPage = () => import('@/modules/auth/StudentLoginPage.vue');
 const StaffLoginPage = () => import('@/modules/auth/StaffLoginPage.vue');
 const RulesPage = () => import('@/modules/public-pages/RulesPage.vue');
+const GuestClassPage = () => import('@/modules/public-pages/GuestClassPage.vue');
 
 const StudentHomePage = () => import('@/modules/student-home/StudentHomePage.vue');
 const CourseDetailPage = () => import('@/modules/student-course/CourseDetailPage.vue');
@@ -72,6 +73,12 @@ const routes: RouteRecordRaw[] = [
     children: [{ path: '', component: RulesPage }],
   },
   {
+    // 班级码旁听：只读，不需要账号；不挂在学生布局下，避免出现无法使用的导航
+    path: '/class/:code',
+    component: AuthLayout,
+    children: [{ path: '', component: GuestClassPage }],
+  },
+  {
     path: '/student',
     component: StudentLayout,
     children: [
@@ -99,9 +106,10 @@ const routes: RouteRecordRaw[] = [
     path: '/staff',
     component: StaffLayout,
     children: [
-      { path: '', redirect: '/staff/classroom' },
-      { path: 'dashboard', component: StaffDashboardPage },
-      { path: 'classroom', component: ClassroomPage },
+      // 首屏就是教学总览（原 dashboard + 课堂控制合并）
+      { path: '', component: StaffDashboardPage },
+      { path: 'dashboard', redirect: '/staff' },
+      { path: 'classroom', component: ClassroomPage, meta: { skipTab: true } },
       { path: 'classroom/:sessionId', component: ClassroomPage },
       { path: 'lesson-plans', component: LessonPlanPage },
       { path: 'lesson-plans/new', component: LessonPlanPage },
@@ -168,7 +176,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.path.startsWith('/staff/admin') && !hasRole(user, 'admin')) {
-    return '/staff/classroom';
+    return '/staff';
   }
 
   if (to.path === '/login/student' && sessionExists && user?.role === 'student') {
@@ -176,7 +184,7 @@ router.beforeEach(async (to) => {
   }
 
   if (to.path === '/login/staff' && sessionExists && user?.role === 'staff') {
-    return '/staff/classroom';
+    return '/staff';
   }
 
   return true;
