@@ -208,25 +208,25 @@ function groupDisplayLabel(submission: DetailPayload['submission']) {
 
 function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
-    return '图文任务';
+    return '图文活动';
   }
   if (taskType === 'web_page') {
-    return '网页任务';
+    return '网页活动';
   }
   if (taskType === 'discussion') {
-    return '讨论任务';
+    return '讨论活动';
   }
   if (taskType === 'data_submit') {
-    return '数据提交任务';
+    return '数据提交活动';
   }
   if (taskType === 'programming') {
-    return '编程任务';
+    return '编程活动';
   }
   if (taskType === 'upload_image') {
     return '上传作品';
   }
   if (taskType === 'reading') {
-    return '阅读任务';
+    return '阅读活动';
   }
   return taskType;
 }

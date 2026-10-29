@@ -1,6 +1,6 @@
 <template>
   <div class="sw-task">
-    <StudentPageHead :title="taskDetail?.title || `任务 ${route.params.taskId}`" :sub="headSub">
+    <StudentPageHead :title="taskDetail?.title || `活动 ${route.params.taskId}`" :sub="headSub">
       <template #back>
         <button class="sw-back" type="button" @click="goToCourse">← 返回课程</button>
       </template>
@@ -38,17 +38,17 @@
       <div class="sw-split">
         <div class="sw-task__main">
           <StudentPanel
-            :title="isDataSubmitTask ? '任务内容' : '任务说明'"
+            :title="isDataSubmitTask ? '活动内容' : '活动说明'"
             :count="taskTypeLabel(taskDetail.task_type)"
           >
             <div v-if="!isDataSubmitTask" class="sw-prose">
-              <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
+              <RichTextContent :html="taskDetail.description" empty-text="当前活动还没有补充说明。" />
             </div>
 
             <div v-if="isDiscussionTask" class="sw-task__discussion">
               <n-alert
                 :closable="false"
-                :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读任务说明后回复。'"
+                :title="taskConfig.topic || '教师暂未填写讨论主题，请先阅读活动说明后回复。'"
                 type="info"
               />
               <div class="sw-task__posts">
@@ -82,10 +82,10 @@
                 :src="webTaskUrl"
                 :sandbox="taskEmbedSandboxFor(webTaskUrl)"
                 class="task-embed-frame"
-                title="网页任务"
+                title="网页活动"
               ></iframe>
-              <n-empty v-else-if="isWebTaskResourcePreparing" description="任务资源初始化中，请稍候..." />
-              <n-empty v-else description="教师暂未上传网页任务资源或资源加载失败" />
+              <n-empty v-else-if="isWebTaskResourcePreparing" description="活动资源初始化中，请稍候..." />
+              <n-empty v-else description="教师暂未上传网页活动资源或资源加载失败" />
             </div>
 
             <div v-else-if="isDataSubmitTask" class="sw-task__embed">
@@ -111,7 +111,7 @@
                 <n-tab-pane name="submit" tab="学生提交页">
                   <div class="data-submit-tab-pane">
                     <div class="sw-prose">
-                      <RichTextContent :html="taskDetail.description" empty-text="当前任务还没有补充说明。" />
+                      <RichTextContent :html="taskDetail.description" empty-text="当前活动还没有补充说明。" />
                     </div>
                     <iframe
                       v-if="dataSubmitFormUrl"
@@ -287,7 +287,7 @@
                 secondary
                 @click="openNavigationTask(taskDetail.task_navigation.next_task)"
               >
-                进入下一任务
+                进入下一活动
               </n-button>
               <n-button
                 v-if="currentSubmission?.status === 'reviewed'"
@@ -722,10 +722,10 @@ const ruleMetricLabel = computed(() => {
     return '互动方式';
   }
   if (isWebTask.value) {
-    return '任务形态';
+    return '活动形态';
   }
   if (isDataSubmitTask.value) {
-    return '任务形态';
+    return '活动形态';
   }
   return '提交规则';
 });
@@ -746,10 +746,10 @@ const ruleMetricNote = computed(() => {
     return '围绕教师主题直接回复，不需要上传附件。';
   }
   if (isWebTask.value) {
-    return '任务内容通过嵌入网页展示。';
+    return '活动内容通过嵌入网页展示。';
   }
   if (isDataSubmitTask.value) {
-    return '提交页与可视化页都可直接在当前任务中打开。';
+    return '提交页与可视化页都可直接在当前活动中打开。';
   }
   return '教师评价前，可以再次提交覆盖作品。';
 });
@@ -761,7 +761,7 @@ const assetMetricLabel = computed(() => {
     return '页面资源';
   }
   if (isDataSubmitTask.value) {
-    return '任务页面';
+    return '活动页面';
   }
   return '已保存附件';
 });
@@ -811,15 +811,15 @@ const submissionStatusNote = computed(() => {
       : '先阅读主题，再发布你的观点。';
   }
   if (isWebTask.value) {
-    return webTaskUrl.value ? '左侧已嵌入教师发布的网页任务内容。' : '教师暂未上传网页任务资源。';
+    return webTaskUrl.value ? '左侧已嵌入教师发布的网页活动内容。' : '教师暂未上传网页活动资源。';
   }
   if (isDataSubmitTask.value) {
     return dataSubmitFormUrl.value
       ? '先在提交页完成数据上报，再切换到可视化页查看结果。'
-      : '教师暂未配置完整的数据任务页面。';
+      : '教师暂未配置完整的数据活动页面。';
   }
   if (!currentSubmission.value) {
-    return taskDetail.value?.submission_scope === 'group' ? '你的小组还没有提交这项任务。' : '你还没有提交这项任务。';
+    return taskDetail.value?.submission_scope === 'group' ? '你的小组还没有提交这项活动。' : '你还没有提交这项活动。';
   }
   if (currentSubmission.value.status === 'reviewed') {
     return currentSubmission.value.submission_scope === 'group'
@@ -833,10 +833,10 @@ const submissionStatusNote = computed(() => {
 const submitButtonText = computed(() => {
   if (!taskDetail.value) return '提交作品';
   if (isDiscussionTask.value) {
-    return currentSubmission.value ? '更新讨论任务提交' : '提交讨论任务';
+    return currentSubmission.value ? '更新讨论活动提交' : '提交讨论活动';
   }
   if (isWebTask.value) {
-    return currentSubmission.value ? '更新网页任务提交' : '提交网页任务';
+    return currentSubmission.value ? '更新网页活动提交' : '提交网页活动';
   }
   if (taskDetail.value.submission_scope === 'group') {
     return currentSubmission.value ? '再次提交小组作品' : '提交小组作品';
@@ -845,7 +845,7 @@ const submitButtonText = computed(() => {
 });
 const groupDraftSummary = computed(() => {
   if (!taskDetail.value?.group_collaboration) {
-    return '当前任务不是小组协作任务。';
+    return '当前活动不是小组协作活动。';
   }
   if (!currentGroupDraft.value) {
     return '组内还没有共享草稿，可以先同步作品说明再继续讨论附件分工。';
@@ -888,10 +888,10 @@ const statusChipClass = computed(() => {
 const moreActionOptions = computed(() => {
   const options: Array<{ label: string; key: string }> = [];
   if (taskDetail.value?.task_navigation.previous_task) {
-    options.push({ label: '上一个任务', key: 'prev' });
+    options.push({ label: '上一个活动', key: 'prev' });
   }
   if (taskDetail.value?.task_navigation.next_task) {
-    options.push({ label: '下一个任务', key: 'next' });
+    options.push({ label: '下一个活动', key: 'next' });
   }
   options.push({ label: '作品互评', key: 'peer-review' });
   if (usesStandardSubmissionFlow.value && currentSubmission.value) {
@@ -1123,7 +1123,7 @@ async function ensureTaskRuntimeSession(force = false, requestedTaskId?: number)
     return true;
   } catch (error) {
     if (requestId === latestRuntimeSessionRequestId) {
-      errorMessage.value = error instanceof Error ? error.message : '任务运行时会话初始化失败';
+      errorMessage.value = error instanceof Error ? error.message : '活动运行时会话初始化失败';
     }
     return false;
   } finally {
@@ -1205,25 +1205,25 @@ function normalizeDiscussionFeedItems(payload: DiscussionFeedPayload) {
 
 function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
-    return '图文任务';
+    return '图文活动';
   }
   if (taskType === 'discussion') {
-    return '讨论任务';
+    return '讨论活动';
   }
   if (taskType === 'web_page') {
-    return '网页任务';
+    return '网页活动';
   }
   if (taskType === 'data_submit') {
-    return '数据提交任务';
+    return '数据提交活动';
   }
   if (taskType === 'programming') {
-    return '编程任务';
+    return '编程活动';
   }
   if (taskType === 'upload_image') {
     return '上传作品';
   }
   if (taskType === 'reading') {
-    return '阅读任务';
+    return '阅读活动';
   }
   return taskType;
 }
@@ -1700,7 +1700,7 @@ async function loadTask() {
     if (requestId !== latestLoadTaskRequestId) {
       return;
     }
-    errorMessage.value = error instanceof Error ? error.message : '加载任务详情失败';
+    errorMessage.value = error instanceof Error ? error.message : '加载活动详情失败';
   } finally {
     if (requestId === latestLoadTaskRequestId) {
       isLoading.value = false;
@@ -1811,7 +1811,7 @@ async function submitTask() {
     return;
   }
   if (!taskDetail.value.can_submit) {
-    const message = submitBlockedMessage.value || '当前任务暂不可提交。';
+    const message = submitBlockedMessage.value || '当前活动暂不可提交。';
     errorMessage.value = message;
     ElMessage.warning(message);
     return;
@@ -1900,7 +1900,7 @@ function buildTaskRoute(task: NavigationTask) {
 async function openNavigationTask(task: NavigationTask) {
   const targetPath = buildTaskRoute(task);
   if (!targetPath) {
-    ElMessage.warning('任务路由解析失败，请刷新页面后重试');
+    ElMessage.warning('活动路由解析失败，请刷新页面后重试');
     return;
   }
   await navigateToPath(targetPath);

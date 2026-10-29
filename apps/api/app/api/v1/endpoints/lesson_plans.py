@@ -88,6 +88,7 @@ class LessonPlanTaskPayload(BaseModel):
     config: dict[str, object] | None = None
     sort_order: int | None = Field(default=None, ge=1, le=999)
     is_required: bool = True
+    is_active: bool = True
 
 
 class LessonPlanUpsertPayload(BaseModel):
@@ -96,7 +97,12 @@ class LessonPlanUpsertPayload(BaseModel):
     content: str | None = Field(default=None, max_length=RICH_TEXT_MAX_LENGTH)
     assigned_date: date
     status: str = Field(default="draft", min_length=1, max_length=30)
+    is_hidden: bool = False
     tasks: list[LessonPlanTaskPayload] = Field(default_factory=list, min_length=1)
+
+
+class PlanVisibilityPayload(BaseModel):
+    hidden: bool = True
 
 
 class TaskTemplateUpsertPayload(BaseModel):
@@ -184,7 +190,7 @@ def normalize_task_type(task_type: str) -> str:
     if normalized not in SUPPORTED_TASK_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="任务类型不受支持",
+            detail="活动类型不受支持",
         )
     return normalized
 
@@ -216,7 +222,7 @@ def normalize_task_submission_scope(submission_scope: str, task_type: str) -> st
     if normalized not in SUPPORTED_TASK_SUBMISSION_SCOPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="任务提交方式不受支持",
+            detail="活动提交方式不受支持",
         )
     if task_type == "reading":
         return "individual"
@@ -653,6 +659,7 @@ def apply_plan_payload(plan: LessonPlan, payload: LessonPlanUpsertPayload) -> No
     plan.lesson_id = payload.lesson_id
     plan.assigned_date = payload.assigned_date
     plan.status = normalized_status
+    plan.is_hidden = payload.is_hidden
 
 
 def delete_task_related_records(task_ids: list[int], db: Session) -> None:
@@ -681,13 +688,13 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
     for index, payload_task in enumerate(payload_tasks, start=1):
         title = payload_task.title.strip()
         if not title:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"请填写任务 {index} 的标题")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"请填写活动 {index} 的标题")
         task_type = normalize_task_type(payload_task.task_type)
         task_id = payload_task.id
         preferred_new_task_id: int | None = None
         if task_id is not None:
             if task_id in seen_payload_ids:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务列表存在重复记录，请刷新后重试")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="活动列表存在重复记录，请刷新后重试")
             seen_payload_ids.add(task_id)
             existing_task = existing_by_id.get(task_id)
             if existing_task is None:
@@ -695,7 +702,7 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
                 if conflicting_task is not None:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="任务标识已被占用，请重新生成后再保存",
+                        detail="活动标识已被占用，请重新生成后再保存",
                     )
                 preferred_new_task_id = task_id
                 task_id = None
@@ -703,7 +710,7 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
         if task_id is not None:
             existing_task = existing_by_id.get(task_id)
             if existing_task is None:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="任务标识无效，请刷新后重试")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="活动标识无效，请刷新后重试")
             normalized_config = normalize_task_config(
                 task_type,
                 payload_task.config if payload_task.config is not None else parse_task_config_json(existing_task.config_json),
@@ -716,6 +723,7 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
             existing_task.config_json = json.dumps(normalized_config, ensure_ascii=False) if normalized_config else None
             existing_task.sort_order = payload_task.sort_order or index
             existing_task.is_required = payload_task.is_required
+            existing_task.is_active = payload_task.is_active
             kept_task_ids.add(existing_task.id)
             continue
 
@@ -731,6 +739,7 @@ def sync_plan_tasks(plan: LessonPlan, payload_tasks: list[LessonPlanTaskPayload]
             config_json=json.dumps(normalized_config, ensure_ascii=False) if normalized_config else None,
             sort_order=payload_task.sort_order or index,
             is_required=payload_task.is_required,
+            is_active=payload_task.is_active,
         )
         db.add(task)
         normalized_config = persist_inline_task_html_sources(task, normalized_config, db)
@@ -764,6 +773,7 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
         "id": plan.id,
         "title": plan.title,
         "status": plan.status,
+        "is_hidden": plan.is_hidden,
         "assigned_date": plan.assigned_date.isoformat(),
         "task_count": len(plan.tasks),
         "preview_image_url": preview_image_url,
@@ -777,7 +787,7 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
 
 
 def serialize_staff_plan_task_resources(task: Task) -> list[dict[str, object]]:
-    """学生端任务页会展示的关联资源，教师学生视角预览需要同源数据。"""
+    """学生端活动页会展示的关联资源，教师学生视角预览需要同源数据。"""
     items: list[dict[str, object]] = []
     for resource_link in task.resource_links:
         resource = resource_link.resource_item
@@ -812,6 +822,7 @@ def serialize_staff_plan_detail(plan: LessonPlan, request: Request | None = None
             "config": serialize_task_config(task, request),
             "sort_order": task.sort_order,
             "is_required": task.is_required,
+            "is_active": task.is_active,
             "resources": serialize_staff_plan_task_resources(task),
         }
         for task in sorted(plan.tasks, key=lambda item: (item.sort_order, item.id))
@@ -889,7 +900,7 @@ def reserve_staff_task_ids(
     reserved_ids = reserve_task_ids(payload.count, db)
     db.commit()
     return ApiResponse(
-        message="任务编号已预生成",
+        message="活动编号已预生成",
         data={"task_ids": reserved_ids},
     )
 
@@ -903,7 +914,7 @@ def create_staff_task_template(
     title = normalize_task_template_title(payload.title)
     task_title = normalize_title(payload.task_title)
     if not task_title:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请填写任务标题")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请填写活动标题")
 
     task_type = normalize_task_type(payload.task_type)
     template = TaskTemplate(
@@ -926,7 +937,7 @@ def create_staff_task_template(
     db.add(template)
     db.commit()
     db.refresh(template)
-    return ApiResponse(message="任务模板已保存", data={"template": serialize_task_template(template)})
+    return ApiResponse(message="活动模板已保存", data={"template": serialize_task_template(template)})
 
 
 @router.put("/staff/task-templates/{template_id}", response_model=ApiResponse)
@@ -938,12 +949,12 @@ def update_staff_task_template(
 ) -> ApiResponse:
     template = load_task_template_for_staff(template_id, current_staff.id, db)
     if template is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务模板不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动模板不存在")
 
     title = normalize_task_template_title(payload.title)
     task_title = normalize_title(payload.task_title)
     if not task_title:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请填写任务标题")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请填写活动标题")
 
     task_type = normalize_task_type(payload.task_type)
     template.title = title
@@ -960,7 +971,7 @@ def update_staff_task_template(
 
     db.commit()
     db.refresh(template)
-    return ApiResponse(message="任务模板已更新", data={"template": serialize_task_template(template)})
+    return ApiResponse(message="活动模板已更新", data={"template": serialize_task_template(template)})
 
 
 @router.post("/staff/task-templates/{template_id}/pin", response_model=ApiResponse)
@@ -972,13 +983,13 @@ def pin_staff_task_template(
 ) -> ApiResponse:
     template = load_task_template_for_staff(template_id, current_staff.id, db)
     if template is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务模板不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动模板不存在")
 
     template.is_pinned = payload.is_pinned
     db.commit()
     db.refresh(template)
     return ApiResponse(
-        message="任务模板置顶状态已更新",
+        message="活动模板置顶状态已更新",
         data={"template": serialize_task_template(template)},
     )
 
@@ -991,14 +1002,14 @@ def mark_staff_task_template_used(
 ) -> ApiResponse:
     template = load_task_template_for_staff(template_id, current_staff.id, db)
     if template is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务模板不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动模板不存在")
 
     template.last_used_at = datetime.now(UTC)
     template.use_count = int(template.use_count or 0) + 1
     db.commit()
     db.refresh(template)
     return ApiResponse(
-        message="任务模板最近使用已记录",
+        message="活动模板最近使用已记录",
         data={"template": serialize_task_template(template)},
     )
 
@@ -1068,11 +1079,11 @@ def delete_staff_task_template(
 ) -> ApiResponse:
     template = load_task_template_for_staff(template_id, current_staff.id, db)
     if template is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务模板不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动模板不存在")
 
     db.delete(template)
     db.commit()
-    return ApiResponse(message="任务模板已删除", data={"deleted_id": template_id})
+    return ApiResponse(message="活动模板已删除", data={"deleted_id": template_id})
 
 
 @router.get("/staff/{plan_id}", response_model=ApiResponse)
@@ -1184,10 +1195,10 @@ def publish_lesson_plan(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="暂未绑定课次的学案只能保存为草稿，请先绑定课次后再发布或开课。",
         )
-    if not plan.tasks:
+    if not any(task.is_active for task in plan.tasks):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请至少配置一个任务后再发布学案",
+            detail="请至少配置一个已启用的活动后再发布学案",
         )
 
     plan.status = "published"
@@ -1202,6 +1213,37 @@ def publish_lesson_plan(
         data={"plan": serialize_staff_plan_detail(latest_plan, request)},
     )
 
+
+@router.post("/staff/{plan_id}/visibility", response_model=ApiResponse)
+def set_lesson_plan_visibility(
+    plan_id: int,
+    payload: PlanVisibilityPayload,
+    request: Request,
+    _: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    plan = load_plan(plan_id, db)
+    if plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
+    if payload.hidden and plan.status == "active":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="学案正在上课中，请先结束课堂再下架。",
+        )
+
+    plan.is_hidden = payload.hidden
+    db.commit()
+
+    latest_plan = load_plan(plan_id, db)
+    if latest_plan is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
+
+    return ApiResponse(
+        message="学案已隐藏" if payload.hidden else "学案已恢复显示",
+        data={"plan": serialize_staff_plan_detail(latest_plan, request)},
+    )
+
+
 def load_staff_task_or_404(task_id: int, db: Session) -> Task:
     task = db.scalar(
         select(Task)
@@ -1209,7 +1251,7 @@ def load_staff_task_or_404(task_id: int, db: Session) -> Task:
         .options(selectinload(Task.lesson_plan), selectinload(Task.web_assets))
     )
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
     return task
 
 
@@ -1310,12 +1352,12 @@ def upload_task_assets(
 ) -> ApiResponse:
     normalized_slot = slot.strip().lower()
     if normalized_slot not in SUPPORTED_TASK_ASSET_SLOTS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支持的任务资源槽位")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支持的活动资源槽位")
 
     task = load_staff_task_or_404(task_id, db)
     allowed_slots = allowed_asset_slots_for_task((task.task_type or "").strip().lower())
     if normalized_slot not in allowed_slots:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务类型不支持该资源槽位")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动类型不支持该资源槽位")
 
     upload_items = [item for item in (files or []) if item.filename]
     if not upload_items:
@@ -1416,7 +1458,7 @@ def upload_task_assets(
     )
 
     return ApiResponse(
-        message="任务网页资源上传成功",
+        message="活动网页资源上传成功",
         data={
             "task_id": task_id,
             "slot": normalized_slot,
@@ -1525,6 +1567,8 @@ def student_home(
     pending_items = []
     completed_items = []
     for progress in progresses:
+        if progress.lesson_plan.is_hidden:
+            continue
         item = {
             "id": progress.lesson_plan.id,
             "title": progress.lesson_plan.title,
@@ -1842,6 +1886,8 @@ def lesson_plan_detail(
     )
     if plan is None:
         return ApiResponse(code="NOT_FOUND", message="lesson plan not found", data=None)
+    if plan.is_hidden:
+        return ApiResponse(code="NOT_FOUND", message="lesson plan not found", data=None)
 
     task_completion_map = resolve_student_task_completion_map(plan, student, db)
 
@@ -1865,6 +1911,7 @@ def lesson_plan_detail(
                     "is_completed": task_completion_map.get(task.id, False),
                 }
                 for task in sorted(plan.tasks, key=lambda item: item.sort_order)
+                if task.is_active
             ],
         }
     )

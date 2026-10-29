@@ -74,7 +74,7 @@ KNOWLEDGE_BASES = [
     {
         "id": "study-methods",
         "name": "学习方法库",
-        "description": "提供任务拆解、学习步骤、反思结构与表达建议。",
+        "description": "提供活动拆解、学习步骤、反思结构与表达建议。",
         "scopes": ["general", "lesson"],
     },
     {
@@ -85,8 +85,8 @@ KNOWLEDGE_BASES = [
     },
     {
         "id": "task-guidance",
-        "name": "任务提示库",
-        "description": "聚焦任务要求、提交方式、评分关注点与完成路径。",
+        "name": "活动提示库",
+        "description": "聚焦活动要求、提交方式、评分关注点与完成路径。",
         "scopes": ["lesson"],
     },
     {
@@ -369,7 +369,7 @@ def plan_context_payload(plan: LessonPlan, user: User, *, kind: str) -> dict:
         "recommended_knowledge_base_ids": DEFAULT_LESSON_KNOWLEDGE_BASE_IDS,
         "suggested_questions": [
             "帮我概括当前学案的学习目标",
-            "请把这节课要完成的任务拆成 3 步",
+            "请把这节课要完成的活动拆成 3 步",
             "有哪些容易出错的地方需要提前提醒",
         ],
         "identifiers": {
@@ -399,12 +399,12 @@ def task_context_payload(task: Task, user: User) -> dict:
     context["description"] = excerpt_text(task.description or plan.content)
     context["recommended_knowledge_base_ids"] = ["lesson-plan", "task-guidance", "study-methods"]
     context["suggested_questions"] = [
-        "这道任务真正要交付什么",
+        "这道活动真正要交付什么",
         "先做哪一步最合适",
         "请给我只提示不直给答案的帮助",
     ]
     context["identifiers"]["task_id"] = task.id
-    context["prompt_hint"] = context_prompt_for_user(user, "当前任务")
+    context["prompt_hint"] = context_prompt_for_user(user, "当前活动")
     return context
 
 
@@ -424,7 +424,7 @@ def session_context_payload(session: ClassroomSession, user: User) -> dict:
         if user.user_type == "staff"
         else [
             "老师这节课最希望我完成什么",
-            "我现在应该先做哪一项任务",
+            "我现在应该先做哪一项活动",
             "请给我一个不直接给答案的提示",
         ]
     )
@@ -595,7 +595,10 @@ def build_staff_lesson_agent_payload(staff: User, db: Session) -> dict:
     )
     plans = db.scalars(
         select(LessonPlan)
-        .where(LessonPlan.status.in_(("published", "active")))
+        .where(
+            LessonPlan.status.in_(("published", "active")),
+            LessonPlan.is_hidden == False,  # noqa: E712
+        )
         .options(
             selectinload(LessonPlan.lesson)
             .selectinload(CurriculumLesson.unit)
@@ -899,7 +902,7 @@ def build_system_prompt(
 
     if scope == "lesson":
         if user.user_type == "student":
-            prompt_parts.append("请解释学案与任务要求，优先给提示、步骤和检查点，不要直接代写完整答案或完整代码。")
+            prompt_parts.append("请解释学案与活动要求，优先给提示、步骤和检查点，不要直接代写完整答案或完整代码。")
         else:
             prompt_parts.append("请围绕当前课堂或学案，帮助教师组织讲解、提问、点评与分层提示。")
     else:
@@ -1299,7 +1302,7 @@ def build_preview_reply(
         if attachments:
             lines.append(f"我已收到附件：{attachment_names}。")
         if user.user_type == "student":
-            lines.append("先不要急着追求标准答案，建议你先确认任务产出、再找学案关键词、最后把自己的草稿发给我继续拆解。")
+            lines.append("先不要急着追求标准答案，建议你先确认活动产出、再找学案关键词、最后把自己的草稿发给我继续拆解。")
         else:
             lines.append("你可以继续让我围绕这份学案生成课堂追问、分层提示、板书结构或点评话术。")
     else:
@@ -1348,7 +1351,7 @@ def companion_bootstrap(
             },
             "welcome_messages": {
                 "general": "我是通用 AI 学伴，可以帮你处理平台使用、学习方法和课堂相关问题。",
-                "lesson": "我是当前课程学案 AI 学伴，会优先围绕当前课次、任务和课堂上下文来回答。",
+                "lesson": "我是当前课程学案 AI 学伴，会优先围绕当前课次、活动和课堂上下文来回答。",
             },
             "starter_questions": {
                 "general": [
@@ -1358,7 +1361,7 @@ def companion_bootstrap(
                 ],
                 "lesson": [
                     "请概括当前学案的目标",
-                    "先做哪一项任务最合适",
+                    "先做哪一项活动最合适",
                     "请给我一个不直给答案的提示",
                 ],
             },

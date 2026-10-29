@@ -1,0 +1,765 @@
+/* ===== 教师后台工作区设计层（sf-*） =====
+   方向：accent-ladder（seed 1681571933），品牌色落在 --ls-primary，只出现在小标记上：
+   唯一主操作、当前选中的对象、唯一的数据标记。面一律白底 + 1px 描边，去掉渐变、玻璃与柔和阴影。
+
+   三页（学案管理 / 课程内容 / 测验题库）只组合下面的 sf-* 结构：
+   每页一个 h1、一条统计带、一个「答案块」，其余收进抽屉或页签。
+   只影响 .staff-layout，学生端与登录页不受影响。 */
+
+.staff-layout {
+  /* 表面与线条 */
+  --sf-surface: var(--ls-elevated, #fff);
+  --sf-surface-2: color-mix(in srgb, var(--ls-ink) 3%, var(--ls-elevated, #fff));
+  --sf-surface-3: color-mix(in srgb, var(--ls-ink) 6%, var(--ls-elevated, #fff));
+  --sf-line: color-mix(in srgb, var(--ls-ink) 14%, transparent);
+  --sf-line-soft: color-mix(in srgb, var(--ls-ink) 9%, transparent);
+
+  /* 文字三级：--sf-muted 在白色与主题浅底上都达到 4.5:1 */
+  --sf-ink: var(--ls-ink);
+  --sf-text: var(--ls-text);
+  --sf-muted: color-mix(in srgb, var(--ls-muted) 86%, var(--ls-ink));
+  --sf-faint: color-mix(in srgb, var(--sf-muted) 74%, transparent);
+
+  /* 唯一主色：唯一主操作、当前选中项、一个数据标记 */
+  --sf-accent: var(--ls-primary);
+  --sf-accent-soft: color-mix(in srgb, var(--ls-primary) 12%, transparent);
+
+  /* 状态色（与状态药丸成对，正文用深色一档） */
+  --sf-pos: #247b50;
+  --sf-pos-bg: #e6f4ec;
+  --sf-pos-ink: #04250e;
+  --sf-neg: #b42318;
+  --sf-neg-bg: #fdecea;
+  --sf-neg-ink: #831c1e;
+  --sf-warn: #8a5a12;
+  --sf-warn-bg: #fdf4e3;
+  --sf-warn-ink: #7a4a10;
+
+  /* 几何：紧一档，与卡片/控件成对 */
+  --sf-r-card: 10px;
+  --sf-r-ctl: 6px;
+  --sf-gap: 12px;
+  --sf-section-gap: 20px;
+  --sf-pad: 16px;
+}
+
+/* ---------------- 页头：一个 h1 + 一行事实 + 右侧唯一的主操作 ---------------- */
+
+.sf-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 0 14px;
+  border-bottom: 1px solid var(--sf-line-soft);
+}
+
+.sf-page-head__main {
+  min-width: 0;
+}
+
+.sf-page-head h1 {
+  margin: 0;
+  color: var(--sf-ink);
+  font-family: var(--ls-font);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.02em;
+}
+
+.sf-page-head__sub {
+  margin: 6px 0 0;
+  color: var(--sf-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sf-page-head__sub strong {
+  color: var(--sf-ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-page-head__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* 返回链接：墨色，不抢标题 */
+.sf-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sf-back:hover {
+  color: var(--sf-ink);
+}
+
+/* ---------------- 统计带：一条被 1px 切开的带子，最多 4 格 ---------------- */
+
+.sf-strip {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-r-card);
+  background: var(--sf-surface);
+  overflow: hidden;
+}
+
+.sf-strip__cell {
+  position: relative;
+  min-width: 0;
+  padding: 13px 18px;
+}
+
+.sf-strip__cell + .sf-strip__cell::before {
+  content: '';
+  position: absolute;
+  top: 13px;
+  bottom: 13px;
+  left: 0;
+  width: 1px;
+  background: var(--sf-line-soft);
+}
+
+.sf-strip__label {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.sf-strip__value {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin: 5px 0 0;
+  color: var(--sf-ink);
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-strip__value small {
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.sf-strip__value.is-missing {
+  color: var(--sf-muted);
+  font-size: 17px;
+  font-weight: 400;
+}
+
+.sf-strip__note {
+  margin: 4px 0 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* ---------------- 面板：白底 + 1px 描边，没有阴影 ---------------- */
+
+.sf-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-r-card);
+  background: var(--sf-surface);
+  overflow: hidden;
+}
+
+.sf-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--sf-line-soft);
+}
+
+.sf-panel__title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  color: var(--sf-ink);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sf-panel__count {
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.sf-panel__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.sf-panel__body {
+  min-width: 0;
+  padding: 16px;
+}
+
+.sf-panel__body--flush {
+  padding: 0;
+}
+
+.sf-panel__foot {
+  padding: 12px 16px;
+  border-top: 1px solid var(--sf-line-soft);
+}
+
+/* ---------------- 栅格 ---------------- */
+
+.sf-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: var(--sf-section-gap);
+  align-items: start;
+}
+
+.sf-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sf-section-gap);
+  align-items: start;
+}
+
+/* ---------------- 工具栏：搜索在左，计数与排序在右 ---------------- */
+
+.sf-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--sf-line-soft);
+}
+
+.sf-toolbar__search {
+  flex: 1 1 240px;
+  max-width: 340px;
+  min-width: 0;
+}
+
+.sf-toolbar__right {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- 行：一行的主体 / 次要字段 / 数值 / 一个动作 ---------------- */
+
+.sf-rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 带表头的行列表：主体两行，数值列右对齐且等宽，和表头共用一套列宽 */
+.sf-rows__head {
+  display: grid;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--sf-line-soft);
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.sf-rows__head > span {
+  text-align: right;
+}
+
+.sf-rows__head > span:first-child {
+  text-align: left;
+}
+
+.sf-cols-plans {
+  grid-template-columns: minmax(0, 1fr) 72px 88px 64px;
+}
+
+.sf-cols-quizzes {
+  grid-template-columns: minmax(0, 1fr) 64px 72px 88px 56px;
+}
+
+.sf-row.sf-row--cols {
+  display: grid;
+  align-items: center;
+  gap: 16px;
+}
+
+.sf-row__num {
+  color: var(--sf-ink);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sf-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.sf-row + .sf-row {
+  border-top: 1px solid var(--sf-line-soft);
+}
+
+.sf-row--link {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.sf-row--link:hover {
+  background: var(--sf-surface-2);
+}
+
+.sf-row--link:focus-visible {
+  outline: 2px solid var(--sf-accent);
+  outline-offset: -2px;
+}
+
+/* 当前选中的对象：左侧一条品牌色标记 + 淡底 */
+.sf-row--active {
+  background: color-mix(in srgb, var(--ls-primary) 7%, var(--sf-surface));
+}
+
+.sf-row--active::before {
+  content: '';
+  align-self: stretch;
+  width: 2px;
+  margin: -12px 0 -12px -16px;
+  background: var(--sf-accent);
+}
+
+.sf-row__main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.sf-row__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  color: var(--sf-ink);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.sf-row__title-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sf-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: 4px 0 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.sf-row__meta > span {
+  white-space: nowrap;
+}
+
+.sf-row__value {
+  flex: none;
+  color: var(--sf-ink);
+  font-size: 14px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.sf-row__value small {
+  display: block;
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.sf-row__action {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ---------------- 状态药丸：淡底 + 同色深字，一行只一个状态标记 ---------------- */
+
+.sf-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: var(--sf-surface-3);
+  color: var(--sf-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.sf-pill--pos {
+  background: var(--sf-pos-bg);
+  color: var(--sf-pos-ink);
+}
+
+.sf-pill--neg {
+  background: var(--sf-neg-bg);
+  color: var(--sf-neg-ink);
+}
+
+.sf-pill--warn {
+  background: var(--sf-warn-bg);
+  color: var(--sf-warn-ink);
+}
+
+.sf-pill--accent {
+  background: var(--sf-accent-soft);
+  color: var(--ls-primary);
+}
+
+/* 已下架：低饱和警示，与草稿/进行中等生命周期状态区分开 */
+.sf-pill--hidden {
+  background: var(--sf-neg-bg);
+  color: var(--sf-neg-ink);
+}
+
+.sf-pill__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.sf-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--sf-accent);
+}
+
+/* ---------------- 分段页签：下划线式，2px，宽到标签 ---------------- */
+
+.sf-tabs {
+  display: flex;
+  gap: 22px;
+  border-bottom: 1px solid var(--sf-line-soft);
+}
+
+.sf-tabs__item {
+  position: relative;
+  padding: 9px 2px 10px;
+  border: 0;
+  background: none;
+  color: var(--sf-muted);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.sf-tabs__item:hover {
+  color: var(--sf-ink);
+}
+
+.sf-tabs__item.is-active {
+  color: var(--sf-ink);
+  font-weight: 600;
+}
+
+.sf-tabs__item.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--sf-ink);
+}
+
+.sf-tabs__count {
+  margin-left: 6px;
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------- 空态与链接 ---------------- */
+
+.sf-empty {
+  margin: 0;
+  padding: 22px 16px;
+  color: var(--sf-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.sf-empty--box {
+  padding: 22px;
+  border: 1px dashed var(--sf-line);
+  border-radius: var(--sf-r-card);
+  background: var(--sf-surface-2);
+}
+
+.sf-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ls-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sf-link:hover {
+  text-decoration: underline;
+}
+
+.sf-quiet {
+  color: var(--sf-muted);
+  font-size: 12px;
+}
+
+/* ---------------- naive 组件在这三页里的外观（去掉表头色带与斑马纹） ---------------- */
+
+.staff-layout .sf-panel .n-data-table-th {
+  background: transparent;
+  border-bottom: 1px solid var(--sf-line-soft);
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.staff-layout .sf-panel .n-data-table-td {
+  border-bottom: 1px solid var(--sf-line-soft);
+}
+
+.staff-layout .sf-panel .n-data-table-tr:last-child .n-data-table-td {
+  border-bottom: 0;
+}
+
+.staff-layout .sf-panel .n-data-table .n-data-table-base-table {
+  background: transparent;
+}
+
+/* ---------------- 断点 ---------------- */
+
+:root[data-scheme='dark'] .staff-layout {
+  --sf-pos: #5fd3a3;
+  --sf-pos-bg: rgba(95, 211, 163, 0.16);
+  --sf-pos-ink: #a6f0cd;
+  --sf-neg: #f68f83;
+  --sf-neg-bg: rgba(246, 143, 131, 0.16);
+  --sf-neg-ink: #f7b4ae;
+  --sf-warn: #f2bc62;
+  --sf-warn-bg: rgba(242, 188, 98, 0.16);
+  --sf-warn-ink: #f2cb8a;
+}
+
+@media (max-width: 1100px) {
+  .sf-split,
+  .sf-grid-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 860px) {
+  .sf-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .sf-page-head__actions {
+    justify-content: flex-start;
+  }
+
+  /* 页签在自己的行里横向滚动，不换行、不把计数挤到第二行 */
+  .sf-tabs {
+    flex-wrap: nowrap;
+    gap: 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+  }
+
+  .sf-tabs::-webkit-scrollbar {
+    height: 2px;
+  }
+
+  .sf-tabs::-webkit-scrollbar-thumb {
+    background: var(--sf-line);
+  }
+
+  .sf-tabs__item {
+    flex: none;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  .sf-panel__head {
+    flex-wrap: wrap;
+  }
+
+  /* 工具栏在窄屏换行：搜索占满一行，筛选项等宽 */
+  .sf-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .sf-toolbar__search {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  /* 提高一级特异性：页面内的 .filter-select 定宽规则会覆盖共享层 */
+  .staff-layout .sf-toolbar .filter-select,
+  .staff-layout .sf-toolbar .filter-select--wide {
+    flex: 1 1 112px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .sf-toolbar__right {
+    flex-basis: 100%;
+    margin-left: 0;
+  }
+
+  /* 总数已在页签上，窄屏不再单独占一行 */
+  .sf-toolbar__count {
+    display: none;
+  }
+
+  /* 表头在窄屏收起，数值改为带标签的一行 */
+  .sf-rows__head {
+    display: none;
+  }
+
+  .sf-row.sf-row--cols {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+  }
+
+  .sf-row.sf-row--cols .sf-row__main {
+    flex: 1 1 100%;
+  }
+
+  .sf-row.sf-row--cols .sf-row__num {
+    flex: none;
+    color: var(--sf-ink);
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .sf-row.sf-row--cols .sf-row__num::before {
+    content: attr(data-label);
+    margin-right: 4px;
+    color: var(--sf-muted);
+    font-weight: 400;
+  }
+
+  .sf-row.sf-row--cols .sf-row__action {
+    margin-left: auto;
+  }
+
+  .sf-strip {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .sf-strip__cell:nth-child(odd)::before {
+    display: none;
+  }
+
+  .sf-strip__cell:nth-child(n + 3) {
+    border-top: 1px solid var(--sf-line-soft);
+  }
+}
+
+@media (max-width: 560px) {
+  /* 手机上也保持 2 列：四格竖排会把第一行内容推到首屏以下 */
+  .sf-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* 手机上：主体占一列、操作贴右上角，数值行排到下面 */
+  .sf-row:not(.sf-row--cols) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 6px 12px;
+    padding: 13px 14px;
+  }
+
+  .sf-row__main {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  .sf-row__action {
+    grid-column: 2;
+    justify-content: flex-end;
+  }
+
+  .sf-row__value {
+    grid-column: 1 / -1;
+    text-align: left;
+  }
+
+  /* 用高度截断而不是 -webkit-box：后者会破坏 flex 的间距，字段会粘在一起 */
+  .sf-row__meta {
+    max-height: 3.3em;
+    overflow: hidden;
+  }
+}

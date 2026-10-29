@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, datetime, time
 from math import ceil
+from pathlib import Path
 from urllib.parse import quote
 
 import csv
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.api.deps.auth import require_staff
 from app.api.deps.db import get_db
 from app.core.security import hash_password
+from app.core.config import settings
 from app.models import (
     AttendanceRecord,
     ClassSeatAssignment,
@@ -66,10 +68,23 @@ from app.services.group_operation_logs import (
     serialize_group_operation_log,
 )
 from app.services.staff_access import build_staff_roles, get_accessible_class_ids, staff_can_access_class
-from app.services.system_settings import load_group_drive_upload_limits
+from app.services.system_settings import (
+    load_group_drive_upload_limits,
+    normalize_student_profile_edit_permissions,
+    read_student_profile_edit_permissions_by_class,
+    resolve_student_profile_edit_permissions,
+    write_student_profile_edit_permissions_by_class,
+)
 from app.services.student_groups import ensure_group_drive_space
 
 router = APIRouter()
+
+
+def profile_endpoint_helpers():
+    """延迟导入 profiles 端点里的资料工具，避免模块级循环导入。"""
+    from app.api.v1.endpoints import profiles as profile_endpoints
+
+    return profile_endpoints
 
 
 class SeatAssignmentSaveItem(BaseModel):
@@ -124,6 +139,21 @@ class StaffStudentResetPasswordPayload(BaseModel):
 
 class StaffStudentStatusPayload(BaseModel):
     is_active: bool
+
+
+class StaffStudentProfileNamePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=50)
+
+
+class StaffStudentProfileGenderPayload(BaseModel):
+    gender: str = Field(min_length=1, max_length=10)
+
+
+class StaffClassProfileEditPermissionsPayload(BaseModel):
+    can_edit_name: bool = True
+    can_edit_gender: bool = True
+    can_edit_photo: bool = True
+    can_edit_class: bool = True
 
 
 class LearningReportGeneratePayload(BaseModel):
@@ -626,7 +656,7 @@ def build_group_operation_log_csv(logs: list) -> str:
             "操作人",
             "操作人角色",
             "操作人学号",
-            "任务标题",
+            "活动标题",
             "文件名称",
             "版本号",
             "标题",
@@ -1777,7 +1807,10 @@ def dashboard(
 
     launchpad_plans = db.scalars(
         select(LessonPlan)
-        .where(LessonPlan.status.in_(("published", "active")))
+        .where(
+            LessonPlan.status.in_(("published", "active")),
+            LessonPlan.is_hidden == False,  # noqa: E712
+        )
         .options(
             selectinload(LessonPlan.lesson).selectinload(CurriculumLesson.unit).selectinload(CurriculumUnit.book),
             selectinload(LessonPlan.tasks),
@@ -3098,6 +3131,191 @@ def ungroup_staff_student(
     return ApiResponse(
         message=f"已将 {removed_student_name} 移出当前小组",
         data={"student_user_id": profile.user_id, "removed": True, "group_id": group.id},
+    )
+
+
+@router.put("/students/{student_user_id}/profile/name", response_model=ApiResponse)
+def update_staff_student_name_endpoint(
+    student_user_id: int,
+    payload: StaffStudentProfileNamePayload,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    profile = load_staff_student_profile_or_404(student_user_id, staff, db)
+    helpers = profile_endpoint_helpers()
+    previous_name = profile.user.display_name
+    next_name = helpers.normalize_student_name(payload.name)
+    profile.user.display_name = next_name
+    helpers.log_profile_change_audit(
+        db,
+        event_type="staff_student_name_updated",
+        actor=staff,
+        target_student=profile.user,
+        class_id=profile.class_id,
+        class_name=profile.school_class.class_name if profile.school_class else None,
+        field_key="name",
+        field_label="姓名",
+        before_value=previous_name,
+        after_value=next_name,
+        description=f"教师 {staff.display_name} 修改学生姓名。",
+    )
+    db.commit()
+    return ApiResponse(message="姓名已更新", data={"name": next_name})
+
+
+@router.put("/students/{student_user_id}/profile/gender", response_model=ApiResponse)
+def update_staff_student_gender_endpoint(
+    student_user_id: int,
+    payload: StaffStudentProfileGenderPayload,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    profile = load_staff_student_profile_or_404(student_user_id, staff, db)
+    helpers = profile_endpoint_helpers()
+    previous_gender = profile.gender
+    next_gender = helpers.normalize_gender(payload.gender)
+    profile.gender = next_gender
+    helpers.log_profile_change_audit(
+        db,
+        event_type="staff_student_gender_updated",
+        actor=staff,
+        target_student=profile.user,
+        class_id=profile.class_id,
+        class_name=profile.school_class.class_name if profile.school_class else None,
+        field_key="gender",
+        field_label="性别",
+        before_value=previous_gender,
+        after_value=next_gender,
+        description=f"教师 {staff.display_name} 修改学生性别。",
+    )
+    db.commit()
+    return ApiResponse(message="性别已更新", data={"gender": next_gender})
+
+
+@router.post("/students/{student_user_id}/profile/photo", response_model=ApiResponse)
+async def upload_staff_student_photo_endpoint(
+    student_user_id: int,
+    file: UploadFile | None = File(default=None),
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    if file is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请先选择要上传的照片")
+
+    helpers = profile_endpoint_helpers()
+    original_name = Path(file.filename or "photo").name
+    ext = Path(original_name).suffix.lstrip(".").lower()
+    if ext not in helpers.ALLOWED_PROFILE_PHOTO_EXTENSIONS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅支持 JPG/JPEG/PNG/WEBP/GIF 图片")
+    if file.content_type and not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传文件不是有效图片")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传内容为空")
+    if len(content) > helpers.MAX_PROFILE_PHOTO_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="图片大小不能超过 2MB")
+
+    profile = load_staff_student_profile_or_404(student_user_id, staff, db)
+    old_file_path = helpers.resolve_photo_path(profile)
+    target_dir = settings.storage_root / "profile_photos" / str(profile.user_id)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    file_stamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    file_name = f"avatar_{file_stamp}.{ext}"
+    (target_dir / file_name).write_bytes(content)
+
+    profile.photo_path = (Path("profile_photos") / str(profile.user_id) / file_name).as_posix()
+    helpers.log_profile_change_audit(
+        db,
+        event_type="staff_student_photo_uploaded",
+        actor=staff,
+        target_student=profile.user,
+        class_id=profile.class_id,
+        class_name=profile.school_class.class_name if profile.school_class else None,
+        field_key="photo",
+        field_label="个人相片",
+        before_value="已上传" if old_file_path is not None and old_file_path.exists() else "未上传",
+        after_value="已上传",
+        description=f"教师 {staff.display_name} 更新学生相片。",
+    )
+    db.commit()
+    return ApiResponse(message="相片已更新", data={"photo_path": profile.photo_path})
+
+
+@router.delete("/students/{student_user_id}/profile/photo", response_model=ApiResponse)
+def delete_staff_student_photo_endpoint(
+    student_user_id: int,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    profile = load_staff_student_profile_or_404(student_user_id, staff, db)
+    helpers = profile_endpoint_helpers()
+    photo_path = helpers.resolve_photo_path(profile)
+    if photo_path is not None and photo_path.exists():
+        photo_path.unlink(missing_ok=True)
+    profile.photo_path = None
+    helpers.log_profile_change_audit(
+        db,
+        event_type="staff_student_photo_deleted",
+        actor=staff,
+        target_student=profile.user,
+        class_id=profile.class_id,
+        class_name=profile.school_class.class_name if profile.school_class else None,
+        field_key="photo",
+        field_label="个人相片",
+        before_value="已上传",
+        after_value="未上传",
+        description=f"教师 {staff.display_name} 删除学生相片。",
+    )
+    db.commit()
+    return ApiResponse(message="相片已删除", data={"photo_path": None})
+
+
+@router.get("/classes/{class_id}/profile-edit-permissions", response_model=ApiResponse)
+def get_staff_class_profile_edit_permissions(
+    class_id: int,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    if not staff_can_access_class(staff, class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级")
+    school_class = db.get(SchoolClass, class_id)
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+    return ApiResponse(
+        data={
+            "class_id": class_id,
+            "class_name": school_class.class_name,
+            "permissions": resolve_student_profile_edit_permissions(class_id, db),
+        }
+    )
+
+
+@router.put("/classes/{class_id}/profile-edit-permissions", response_model=ApiResponse)
+def update_staff_class_profile_edit_permissions(
+    class_id: int,
+    payload: StaffClassProfileEditPermissionsPayload,
+    staff: User = Depends(require_staff),
+    db: Session = Depends(get_db),
+) -> ApiResponse:
+    if not staff_can_access_class(staff, class_id, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权管理该班级")
+    school_class = db.get(SchoolClass, class_id)
+    if school_class is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
+
+    normalized = normalize_student_profile_edit_permissions(payload.model_dump())
+    permissions_by_class = read_student_profile_edit_permissions_by_class(db)
+    permissions_by_class[class_id] = normalized
+    write_student_profile_edit_permissions_by_class(permissions_by_class, db)
+    db.commit()
+    return ApiResponse(
+        message=f"{school_class.class_name} 资料修改权限已更新",
+        data={
+            "class_id": class_id,
+            "class_name": school_class.class_name,
+            "permissions": resolve_student_profile_edit_permissions(class_id, db),
+        },
     )
 
 

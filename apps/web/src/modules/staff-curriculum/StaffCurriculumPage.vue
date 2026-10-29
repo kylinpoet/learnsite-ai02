@@ -1,138 +1,143 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="先确认年级、教材、单元与课次，再把学案、资源和任务关联到对应课次。"
-      eyebrow="课程体系"
-      title="教材、单元与课次绑定"
-    >
+    <StaffPageHead title="课程内容" :sub="pageSummary">
       <template #actions>
-        <n-button type="primary" @click="router.push('/staff/lesson-plans')">查看关联学案</n-button>
-        <n-button
-          v-if="authStore.isAdmin"
-          secondary
-          @click="router.push({ path: '/staff/admin/system', query: { tab: 'curriculum' } })"
-        >
-          手动导入维护
-        </n-button>
-        <n-button secondary @click="expandAllBooks">展开全部教材</n-button>
-        <n-button secondary @click="collapseAllBooks">收起全部教材</n-button>
-        <n-button secondary @click="expandAllUnits">展开全部单元</n-button>
-        <n-button secondary @click="collapseAllUnits">收起全部单元</n-button>
+        <n-button type="primary" @click="router.push('/staff/lesson-plans/new')">新建学案</n-button>
+        <n-button secondary @click="router.push('/staff/lesson-plans')">查看关联学案</n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
     <template v-else>
-      <div class="ls-row">
-        <article class="metric-tile">
-          <p class="metric-label">教材数</p>
-          <p class="metric-value">{{ books.length }}</p>
-          <p class="metric-note">当前已纳入维护的教材版本</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">单元数</p>
-          <p class="metric-value">{{ totalUnitCount }}</p>
-          <p class="metric-note">按教材汇总得到</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">课次数</p>
-          <p class="metric-value">{{ totalLessonCount }}</p>
-          <p class="metric-note">后续学案必须绑定到课次</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已关联学案</p>
-          <p class="metric-value">{{ totalPlanCount }}</p>
-          <p class="metric-note">可直接跳转到学案管理继续细化</p>
-        </article>
-      </div>
+      <StaffStatStrip :items="statItems" />
 
-      <n-empty v-if="!books.length" description="暂无课程体系数据" />
-      <n-collapse v-else v-model:expanded-names="expandedBooks">
-        <n-collapse-item
-          v-for="book in books"
-          :key="book.id"
-          :name="String(book.id)"
-          :title="`${book.name} · ${book.edition}`"
-        >
-          <div class="stack-list">
-            <section class="mini-panel">
-              <div class="info-row">
-                <strong>{{ book.subject }}</strong>
-                <span>{{ book.grade_scope }}</span>
-              </div>
-              <div class="unit-actions">
-                <n-tag round>单元 {{ book.unit_count }}</n-tag>
-                <n-tag round type="success">课次 {{ book.lesson_count }}</n-tag>
-                <n-tag round type="warning">关联学案 {{ book.plan_count }}</n-tag>
-                <n-button text type="primary" @click="expandUnits(book)">展开单元</n-button>
-                <n-button text type="primary" @click="collapseUnits(book)">收起单元</n-button>
-              </div>
-            </section>
+      <div v-if="!books.length" class="sf-empty sf-empty--box">当前还没有课程体系数据。</div>
 
-            <n-collapse
-              v-model:expanded-names="expandedUnitsByBook[String(book.id)]"
-              class="unit-collapse"
-            >
-              <n-collapse-item
-                v-for="unit in book.units"
-                :key="unit.id"
-                class="unit-collapse-item"
-                :name="String(unit.id)"
-                :title="`${unit.title} · 课次 ${unit.lesson_count}`"
-              >
-                <SaDataTable :data="unit.lessons" size="small" stripe>
-                  <SaTableColumn label="课次" min-width="90">
-                    <template #default="{ row }">第 {{ row.lesson_no }} 课</template>
-                  </SaTableColumn>
-                  <SaTableColumn label="课题" min-width="240" prop="title" />
-                  <SaTableColumn label="关联学案" min-width="100" prop="plan_count" />
-                  <SaTableColumn label="最新学案" min-width="280">
-                    <template #default="{ row }">
-                      <span v-if="row.latest_plan">
-                        {{ row.latest_plan.title }} ({{ row.latest_plan.assigned_date }})
+      <section v-else class="sf-panel">
+        <div class="sf-tabs">
+          <button
+            v-for="book in catalogBooks"
+            :key="book.id"
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': activeTab === String(book.id) }]"
+            @click="activeTab = String(book.id)"
+          >
+            {{ book.name }}
+            <span class="sf-tabs__count">{{ book.lesson_count }}</span>
+          </button>
+          <button
+            v-if="emptyBooks.length"
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': activeTab === 'pending' }]"
+            @click="activeTab = 'pending'"
+          >
+            待录入目录
+            <span class="sf-tabs__count">{{ emptyBooks.length }}</span>
+          </button>
+        </div>
+
+        <template v-if="activeTab === 'pending'">
+          <header class="sf-panel__head">
+            <h2 class="sf-panel__title">
+              待录入教材
+              <span class="sf-panel__count">这些教材还没有单元与课次，无法绑定学案</span>
+            </h2>
+          </header>
+          <div class="sf-panel__body sf-panel__body--flush">
+            <div class="sf-rows">
+              <div v-for="book in emptyBooks" :key="book.id" class="sf-row">
+                <span class="sf-row__main">
+                  <span class="sf-row__title">
+                    <span class="sf-row__title-text">{{ book.name }} · {{ book.edition }}</span>
+                  </span>
+                  <span class="sf-row__meta"><span>{{ book.subject }}</span><span>{{ book.grade_scope }}</span></span>
+                </span>
+                <span class="sf-row__action">
+                  <n-button
+                    v-if="authStore.isAdmin"
+                    text
+                    type="primary"
+                    @click="router.push({ path: '/staff/admin/system', query: { tab: 'curriculum' } })"
+                  >
+                    录入目录
+                  </n-button>
+                </span>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="selectedBook">
+          <header class="sf-panel__head">
+            <h2 class="sf-panel__title">
+              {{ selectedBook.name }} · {{ selectedBook.edition }}
+              <span class="sf-panel__count">{{ selectedBook.unit_count }} 个单元 / {{ selectedBook.lesson_count }} 个课次</span>
+            </h2>
+            <div class="sf-panel__actions">
+              <span class="sf-quiet">已关联 {{ selectedBook.plan_count }} 份学案</span>
+            </div>
+          </header>
+          <div class="sf-panel__body sf-panel__body--flush">
+            <p v-if="!selectedBook.units.length" class="sf-empty sf-empty--box">
+              {{ selectedBook.name }} 还没有录入单元与课次。录入目录后，每个课次会出现在这里，并显示是否已关联学案。
+            </p>
+
+            <div v-else class="unit-blocks">
+              <section v-for="unit in selectedBook.units" :key="unit.id" class="unit-block">
+                <header class="unit-block__head">
+                  <h3 class="unit-block__title">{{ unit.title }}</h3>
+                  <span class="sf-quiet">{{ unit.lesson_count }} 个课次</span>
+                </header>
+                <div class="sf-rows">
+                  <article v-for="lesson in unit.lessons" :key="lesson.id" class="sf-row">
+                    <span class="sf-row__main">
+                      <span class="sf-row__title">
+                        <span class="sf-row__title-text">{{ lessonLabel(lesson) }}</span>
+                        <span v-if="lesson.latest_plan" class="sf-pill sf-pill--pos">已关联</span>
                       </span>
-                      <span v-else>尚未创建学案</span>
-                    </template>
-                  </SaTableColumn>
-                  <SaTableColumn label="操作" min-width="120">
-                    <template #default="{ row }">
+                      <span class="sf-row__meta">
+                        <span v-if="lesson.latest_plan">
+                          最新学案：{{ lesson.latest_plan.title }}（{{ lesson.latest_plan.assigned_date }}）
+                        </span>
+                        <span v-else>还没有学案</span>
+                      </span>
+                    </span>
+                    <span class="sf-row__action">
                       <n-button
-                        v-if="row.latest_plan"
+                        v-if="lesson.latest_plan"
                         text
-                        type="primary"
-                        @click="router.push(`/staff/lesson-plans/${row.latest_plan.id}`)"
+                        @click="router.push(`/staff/lesson-plans/${lesson.latest_plan.id}`)"
                       >
                         查看学案
                       </n-button>
-                      <span v-else>待创建</span>
-                    </template>
-                  </SaTableColumn>
-                </SaDataTable>
-              </n-collapse-item>
-            </n-collapse>
+                      <n-button v-else text @click="router.push('/staff/lesson-plans/new')">
+                        新建学案
+                      </n-button>
+                    </span>
+                  </article>
+                </div>
+              </section>
+            </div>
           </div>
-        </n-collapse-item>
-      </n-collapse>
+        </template>
+      </section>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NCollapse, NCollapseItem, NEmpty, NSkeleton, NTag } from 'naive-ui';
+import { NAlert, NButton, NSkeleton } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 
 type CurriculumBook = {
@@ -167,57 +172,67 @@ type CurriculumBook = {
 const router = useRouter();
 const authStore = useAuthStore();
 const books = ref<CurriculumBook[]>([]);
-const expandedBooks = ref<string[]>([]);
-const expandedUnitsByBook = ref<Record<string, string[]>>({});
+const activeTab = ref('');
 const isLoading = ref(true);
 const errorMessage = ref('');
 
-const totalUnitCount = computed(() =>
-  books.value.reduce((sum, book) => sum + book.unit_count, 0)
-);
-const totalLessonCount = computed(() =>
-  books.value.reduce((sum, book) => sum + book.lesson_count, 0)
-);
-const totalPlanCount = computed(() =>
-  books.value.reduce((sum, book) => sum + book.plan_count, 0)
+const catalogBooks = computed(() => books.value.filter((book) => book.units.length > 0));
+const emptyBooks = computed(() => books.value.filter((book) => !book.units.length));
+
+const totalUnitCount = computed(() => books.value.reduce((sum, book) => sum + book.unit_count, 0));
+const totalLessonCount = computed(() => books.value.reduce((sum, book) => sum + book.lesson_count, 0));
+const totalPlanCount = computed(() => books.value.reduce((sum, book) => sum + book.plan_count, 0));
+const unboundLessonCount = computed(() =>
+  books.value.reduce(
+    (sum, book) =>
+      sum + book.units.reduce((unitSum, unit) => unitSum + unit.lessons.filter((lesson) => !lesson.latest_plan).length, 0),
+    0
+  )
 );
 
-function expandAllBooks() {
-  expandedBooks.value = books.value.map((book) => String(book.id));
-}
+const selectedBook = computed(() => books.value.find((book) => String(book.id) === activeTab.value) || null);
 
-function collapseAllBooks() {
-  expandedBooks.value = [];
-}
-
-function expandAllUnits() {
-  const next: Record<string, string[]> = {};
-  for (const book of books.value) {
-    next[String(book.id)] = book.units.map((unit) => String(unit.id));
+/** 标题下一行只写结论：数字在统计带里，这里说清是哪套教材 */
+const pageSummary = computed(() => {
+  if (!books.value.length) {
+    return '还没有课程体系数据。';
   }
-  expandedUnitsByBook.value = next;
-}
-
-function collapseAllUnits() {
-  const next: Record<string, string[]> = { ...expandedUnitsByBook.value };
-  for (const book of books.value) {
-    next[String(book.id)] = [];
+  if (!totalUnitCount.value) {
+    return '所有教材都还没录入单元与课次，先到「手动导入维护」补齐目录。';
   }
-  expandedUnitsByBook.value = next;
+  const focusBook = catalogBooks.value.find((book) =>
+    book.units.some((unit) => unit.lessons.some((lesson) => !lesson.latest_plan))
+  );
+  if (focusBook) {
+    const unbound = focusBook.units.reduce(
+      (sum, unit) => sum + unit.lessons.filter((lesson) => !lesson.latest_plan).length,
+      0
+    );
+    return `「${focusBook.name}」还有 ${unbound} 个课次没有学案，补齐后才能开课。`;
+  }
+  return '每个课次都已关联学案。';
+});
+
+const statItems = computed<StaffStatItem[]>(() => [
+  { label: '教材', value: books.value.length, unit: '套' },
+  { label: '单元', value: totalUnitCount.value, unit: '个' },
+  { label: '课次', value: totalLessonCount.value, unit: '个' },
+  {
+    label: '未关联学案',
+    value: unboundLessonCount.value,
+    unit: '个课次',
+    note: unboundLessonCount.value ? '这些课次还不能开课' : '全部课次都已关联',
+  },
+]);
+
+function selectBook(bookId: number) {
+  activeTab.value = String(bookId);
 }
 
-function expandUnits(book: CurriculumBook) {
-  expandedUnitsByBook.value = {
-    ...expandedUnitsByBook.value,
-    [String(book.id)]: book.units.map((unit) => String(unit.id)),
-  };
-}
-
-function collapseUnits(book: CurriculumBook) {
-  expandedUnitsByBook.value = {
-    ...expandedUnitsByBook.value,
-    [String(book.id)]: [],
-  };
+function lessonLabel(lesson: { lesson_no: number; title: string }) {
+  // 目录里的课题常自带「第N课」，避免与序号重复
+  const hasOwnNumber = /^第\s*\d+\s*课/.test(lesson.title.trim());
+  return hasOwnNumber ? lesson.title : `第 ${lesson.lesson_no} 课 · ${lesson.title}`;
 }
 
 async function loadCurriculum() {
@@ -230,8 +245,9 @@ async function loadCurriculum() {
   try {
     const payload = await apiGet<{ books: CurriculumBook[] }>('/curriculum/tree', authStore.token);
     books.value = payload.books;
-    expandAllBooks();
-    expandAllUnits();
+    // 默认选中第一套有目录的教材，让主区直接显示可推进的课次
+    const firstWithUnits = payload.books.find((book) => book.units.length);
+    activeTab.value = firstWithUnits ? String(firstWithUnits.id) : payload.books.length ? 'pending' : '';
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载课程体系失败';
   } finally {
@@ -243,32 +259,28 @@ onMounted(loadCurriculum);
 </script>
 
 <style scoped>
-.unit-actions {
+.unit-blocks {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 8px;
+  flex-direction: column;
 }
 
-.unit-collapse {
-  border: none;
+.unit-block + .unit-block {
+  border-top: 1px solid var(--sf-line);
 }
 
-:deep(.unit-collapse-item) {
-  margin-bottom: 10px;
-  border: 1px solid var(--ls-border);
-  border-radius: 14px;
-  background: var(--ls-card);
-  overflow: hidden;
+.unit-block__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px 8px;
+  background: var(--sf-surface-2);
 }
 
-:deep(.unit-collapse-item .n-collapse-item__header) {
-  padding: 0 14px;
+.unit-block__title {
+  margin: 0;
+  color: var(--sf-ink);
+  font-size: 13px;
   font-weight: 600;
-}
-
-:deep(.unit-collapse-item .n-collapse-item__content-inner) {
-  padding: 10px 14px 14px;
 }
 </style>

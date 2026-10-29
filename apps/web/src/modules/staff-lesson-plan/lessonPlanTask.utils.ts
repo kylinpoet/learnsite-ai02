@@ -10,7 +10,7 @@ import type {
 
 export function taskAssetSlotLabel(slot: TaskAssetSlot) {
   if (slot === 'web') {
-    return '网页任务页';
+    return '网页活动页';
   }
   if (slot === 'data_submit_form') {
     return '学生提交页';
@@ -30,28 +30,28 @@ export function defaultTaskHtmlPromptTemplateId(slot: TaskAssetSlot) {
 
 export function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
-    return '图文任务';
+    return '图文活动';
   }
   if (taskType === 'web_page') {
-    return '网页任务';
+    return '网页活动';
   }
   if (taskType === 'discussion') {
-    return '讨论任务';
+    return '讨论活动';
   }
   if (taskType === 'data_submit') {
-    return '数据提交任务';
+    return '数据提交活动';
   }
   if (taskType === 'reading') {
-    return '阅读任务';
+    return '阅读活动';
   }
   if (taskType === 'programming') {
-    return '编程任务';
+    return '编程活动';
   }
   return '上传作品';
 }
 
 export function taskEditorTabTitle(task: Pick<PlanFormTask, 'title'>, index: number) {
-  return task.title.trim() || `任务 ${index + 1}`;
+  return task.title.trim() || `活动 ${index + 1}`;
 }
 
 export function taskDescriptionGenerationKey(task: Pick<PlanFormTask, 'key'>) {
@@ -64,24 +64,24 @@ export function taskAssetGenerationKey(task: Pick<PlanFormTask, 'key'>, slot: Ta
 
 export function buildTemplateTaskTitle(templateId: TaskTemplatePresetId, sequence: number) {
   if (templateId === 'reading') {
-    return `阅读任务 ${sequence}`;
+    return `阅读活动 ${sequence}`;
   }
   if (templateId === 'rich_text') {
-    return `图文任务 ${sequence}`;
+    return `图文活动 ${sequence}`;
   }
   if (templateId === 'upload_image') {
     return `上传作品 ${sequence}`;
   }
   if (templateId === 'programming') {
-    return `编程任务 ${sequence}`;
+    return `编程活动 ${sequence}`;
   }
   if (templateId === 'discussion') {
     return `课堂讨论 ${sequence}`;
   }
   if (templateId === 'web_page') {
-    return `网页任务 ${sequence}`;
+    return `网页活动 ${sequence}`;
   }
-  return `数据提交任务 ${sequence}`;
+  return `数据提交活动 ${sequence}`;
 }
 
 export function buildWebTaskStarterHtml(title: string) {
@@ -140,18 +140,18 @@ export function buildWebTaskStarterHtml(title: string) {
   </head>
   <body>
     <main class="panel">
-      <span class="badge">网页任务</span>
+      <span class="badge">网页活动</span>
       <h1>${title}</h1>
-      <p>这里是网页任务页面。你可以继续补充交互、嵌入素材，或替换为自己上传的完整网页文件。</p>
+      <p>这里是网页活动页面。你可以继续补充交互、嵌入素材，或替换为自己上传的完整网页文件。</p>
       <ol>
         <li>在上方源码区域继续修改当前 HTML。</li>
         <li>如果页面需要多文件结构，可直接上传 ZIP、多文件或文件夹。</li>
-        <li>如需读取任务上下文，可访问 <code>window.__LEARNSITE_TASK_CONTEXT__</code>。</li>
+        <li>如需读取活动上下文，可访问 <code>window.__LEARNSITE_TASK_CONTEXT__</code>。</li>
       </ol>
       <div class="actions">
-        <button id="show-context" type="button">查看任务上下文</button>
+        <button id="show-context" type="button">查看活动上下文</button>
       </div>
-      <p id="status">点击按钮后，可在这里查看当前任务的上下文摘要。</p>
+      <p id="status">点击按钮后，可在这里查看当前活动的上下文摘要。</p>
     </main>
     <script>
       const statusElement = document.getElementById('status');
@@ -159,13 +159,13 @@ export function buildWebTaskStarterHtml(title: string) {
       document.getElementById('show-context')?.addEventListener('click', () => {
         const slot = context.slot || 'web';
         const slotLabelMap = {
-          web: '任务正文',
+          web: '活动正文',
           data_submit_form: '学生提交页',
           data_submit_visualization: '数据看板',
         };
         const taskId = context.taskId || '未生成';
         const slotLabel = slotLabelMap[slot] || slot;
-        statusElement.textContent = '任务 ID: ' + taskId + '，当前页面：' + slotLabel + '。';
+        statusElement.textContent = '活动 ID: ' + taskId + '，当前页面：' + slotLabel + '。';
       });
     <\/script>
   </body>
@@ -258,7 +258,7 @@ export function buildDataSubmitFormStarterHtml(title: string, submitApiUrl: stri
         </label>
         <button type="submit">提交数据</button>
       </form>
-      <p id="status">保存学案后，学生进入任务即可在这里提交数据。</p>
+      <p id="status">保存学案后，学生进入活动即可在这里提交数据。</p>
     </main>
     <script>
       const formElement = document.getElementById('submit-form');
@@ -457,25 +457,25 @@ export function buildTemplateTaskDescription(templateId: TaskTemplatePresetId, t
     return `<p><strong>${title}</strong>：请先阅读本节材料，完成阅读理解后再进入后续活动。</p><ul><li>先浏览导读与重点提示</li><li>记录关键信息或疑问</li><li>完成已读确认</li></ul>`;
   }
   if (templateId === 'rich_text') {
-    return `<p><strong>${title}</strong>：请根据学案要求整理你的图文成果。</p><ol><li>明确任务目标</li><li>按步骤完成图文整理</li><li>提交时补充必要说明</li></ol>`;
+    return `<p><strong>${title}</strong>：请根据学案要求整理你的图文成果。</p><ol><li>明确活动目标</li><li>按步骤完成图文整理</li><li>提交时补充必要说明</li></ol>`;
   }
   if (templateId === 'upload_image') {
     return `<p><strong>${title}</strong>：请上传本次活动作品，可附图片、文档或其他相关附件。</p><ul><li>附件命名清晰</li><li>必要时补充作品说明</li><li>确认提交版本正确</li></ul>`;
   }
   if (templateId === 'programming') {
-    return `<p><strong>${title}</strong>：请在编程任务页完成代码编写、运行与提交。</p><ul><li>阅读任务要求</li><li>完成代码实现</li><li>测试通过后再提交</li></ul>`;
+    return `<p><strong>${title}</strong>：请在编程活动页完成代码编写、运行与提交。</p><ul><li>阅读活动要求</li><li>完成代码实现</li><li>测试通过后再提交</li></ul>`;
   }
   if (templateId === 'discussion') {
     return `<p><strong>${title}</strong>：请围绕课堂主题发表观点，并结合事实、案例或同学发言进行回应。</p><ul><li>先阅读讨论主题</li><li>表达自己的判断与理由</li><li>适当回应其他同学观点</li></ul>`;
   }
   if (templateId === 'web_page') {
-    return `<p><strong>${title}</strong>：请在嵌入网页任务中完成互动操作，并按页面提示整理学习结果。</p><ul><li>阅读页面说明</li><li>完成网页中的互动任务</li><li>如有结果页面，注意核对输出内容</li></ul>`;
+    return `<p><strong>${title}</strong>：请在嵌入网页活动中完成互动操作，并按页面提示整理学习结果。</p><ul><li>阅读页面说明</li><li>完成网页中的互动活动</li><li>如有结果页面，注意核对输出内容</li></ul>`;
   }
   return `<p><strong>${title}</strong>：请在提交页完成数据填写，并在可视化页查看全班结果。</p><ol><li>填写表单并提交数据</li><li>检查提交是否成功</li><li>切换到可视化页查看统计结果</li></ol>`;
 }
 
 export function buildSuggestedTaskTemplateName(task: PlanFormTask) {
-  const base = task.title.trim() || taskTypeLabel(task.task_type) || '任务';
+  const base = task.title.trim() || taskTypeLabel(task.task_type) || '活动';
   if (base.endsWith('模板')) {
     return base.slice(0, 120);
   }

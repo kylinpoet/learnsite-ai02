@@ -31,6 +31,7 @@ const ResourcePage = () => import('@/modules/student-resource/ResourcePage.vue')
 const DrivePage = () => import('@/modules/student-drive/DrivePage.vue');
 const GroupPage = () => import('@/modules/student-group/GroupPage.vue');
 const ProfilePage = () => import('@/modules/student-profile/ProfilePage.vue');
+const PortraitPage = () => import('@/modules/student-portrait/PortraitPage.vue');
 
 const StaffDashboardPage = () => import('@/modules/staff-dashboard/StaffDashboardPage.vue');
 const ClassroomPage = () => import('@/modules/staff-classroom/ClassroomPage.vue');
@@ -105,6 +106,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'groups', component: GroupPage },
       { path: 'profile', component: ProfilePage },
       { path: 'profile/:section', component: ProfilePage },
+      { path: 'portrait', component: PortraitPage },
     ],
   },
   {

@@ -18,7 +18,7 @@
         </div>
         <code>{{ dataSubmitBindings.taskDataSubmitPromptApiPath(task) }}</code>
         <p class="section-note">
-          AI 生成网页时可以直接使用这条地址；预生成的任务 ID 会在保存学案后原样落地，不需要再替换接口。
+          AI 生成网页时可以直接使用这条地址；预生成的活动 ID 会在保存学案后原样落地，不需要再替换接口。
         </p>
         <div class="chip-row">
           <n-button secondary size="small" @click="dataSubmitBindings.copyTaskDataSubmitEndpoint(task, 'submit')">

@@ -1,6 +1,6 @@
 <template>
   <div class="sw-reading">
-    <StudentPageHead :title="taskDetail?.title || `任务 ${route.params.taskId}`" :sub="headSub">
+    <StudentPageHead :title="taskDetail?.title || `活动 ${route.params.taskId}`" :sub="headSub">
       <template #back>
         <RouterLink class="sw-back" :to="`/class/${classCode}`">← 返回本课学案</RouterLink>
       </template>
@@ -10,7 +10,7 @@
           secondary
           @click="openTask(previousTask)"
         >
-          上一个任务
+          上一个活动
         </n-button>
         <n-button
           v-if="nextTask"
@@ -18,7 +18,7 @@
           type="primary"
           @click="openTask(nextTask)"
         >
-          下一个任务
+          下一个活动
         </n-button>
       </template>
     </StudentPageHead>
@@ -37,20 +37,20 @@
           </div>
         </StudentPanel>
 
-        <StudentPanel v-if="isWebTask" title="任务页面">
+        <StudentPanel v-if="isWebTask" title="活动页面">
           <iframe
             v-if="webTaskUrl"
             :src="webTaskUrl"
             :sandbox="sandboxFor(webTaskUrl)"
             class="guest-task__embed"
-            title="网页任务"
+            title="网页活动"
           ></iframe>
           <p v-else class="sw-reading__note">
-            这个网页任务还没有上传页面文件，登录后可以在学生端查看最新内容。
+            这个网页活动还没有上传页面文件，登录后可以在学生端查看最新内容。
           </p>
         </StudentPanel>
 
-        <StudentPanel v-else-if="isInteractiveOnly" title="任务形式">
+        <StudentPanel v-else-if="isInteractiveOnly" title="活动形式">
           <p class="sw-reading__note">{{ interactiveNotice }}</p>
         </StudentPanel>
 
@@ -91,24 +91,24 @@
       </div>
 
       <aside class="sw-split__aside">
-        <StudentPanel title="任务信息">
+        <StudentPanel title="活动信息">
           <div class="guest-task__meta">
             <span class="sw-chip sw-chip--warn">旁听只读</span>
             <span class="guest-task__type">{{ taskTypeLabel(taskDetail.task_type) }}</span>
           </div>
           <p class="sw-reading__note">
-            旁听可以完整阅读任务说明与资源。提交作品、参与讨论和作品互评需要登录自己的账号。
+            旁听可以完整阅读活动说明与资源。提交作品、参与讨论和作品互评需要登录自己的账号。
           </p>
           <RouterLink class="guest-task__login" to="/login/student">去登录交作业</RouterLink>
         </StudentPanel>
 
         <StudentPanel v-if="nextTask" title="下一项">
           <p class="sw-reading__next-title">{{ nextTask.title }}</p>
-          <n-button block secondary @click="openTask(nextTask)">进入下一任务</n-button>
+          <n-button block secondary @click="openTask(nextTask)">进入下一活动</n-button>
         </StudentPanel>
 
         <StudentPanel v-else title="下一项">
-          <p class="sw-reading__next-title">这是本课的最后一个任务。</p>
+          <p class="sw-reading__next-title">这是本课的最后一个活动。</p>
           <RouterLink class="guest-task__back" :to="`/class/${classCode}`">回到本课学案</RouterLink>
         </StudentPanel>
       </aside>
@@ -182,15 +182,15 @@ const nextTask = computed(() => taskDetail.value?.task_navigation.next_task || n
 const isDiscussionTask = computed(() => taskDetail.value?.task_type === 'discussion');
 const isReadingTask = computed(() => taskDetail.value?.task_type === 'reading');
 const isWebTask = computed(() => taskDetail.value?.task_type === 'web_page');
-// 这两类任务的正文就是操作界面本身（在线编程环境、数据提交表单），旁听无法只读使用。
+// 这两类活动的正文就是操作界面本身（在线编程环境、数据提交表单），旁听无法只读使用。
 const isInteractiveOnly = computed(
   () => taskDetail.value?.task_type === 'programming' || taskDetail.value?.task_type === 'data_submit'
 );
 
 const interactiveNotice = computed(() =>
   taskDetail.value?.task_type === 'programming'
-    ? '这是一项在线编程任务，代码编辑与运行需要在学生端登录后使用；旁听只能阅读任务说明与资源。'
-    : '这是一项数据提交任务，填写与提交表单需要在学生端登录后使用；旁听只能阅读任务说明与资源。'
+    ? '这是一项在线编程活动，代码编辑与运行需要在学生端登录后使用；旁听只能阅读活动说明与资源。'
+    : '这是一项数据提交活动，填写与提交表单需要在学生端登录后使用；旁听只能阅读活动说明与资源。'
 );
 
 function encodeAssetPath(path: string) {
@@ -220,9 +220,9 @@ function sandboxFor(src: string) {
   return resolveIframeSandbox(src);
 }
 
-const descriptionTitle = computed(() => (isReadingTask.value ? '阅读内容' : '任务说明'));
+const descriptionTitle = computed(() => (isReadingTask.value ? '阅读内容' : '活动说明'));
 const descriptionEmptyText = computed(() =>
-  isReadingTask.value ? '这条阅读任务还没有正文。' : '这个任务还没有补充说明正文。'
+  isReadingTask.value ? '这条阅读活动还没有正文。' : '这个活动还没有补充说明正文。'
 );
 
 const headSub = computed(() => {
@@ -258,7 +258,7 @@ async function loadTask() {
     );
   } catch (error) {
     taskDetail.value = null;
-    errorMessage.value = error instanceof Error ? error.message : '加载任务失败，请重试';
+    errorMessage.value = error instanceof Error ? error.message : '加载活动失败，请重试';
   } finally {
     isLoading.value = false;
   }

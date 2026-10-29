@@ -1,8 +1,8 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader compact eyebrow="任务评分">
+    <SaPageHeader compact eyebrow="活动评分">
       <template #title>
-        {{ taskData?.task.title || `任务 ${route.params.taskId}` }}
+        {{ taskData?.task.title || `活动 ${route.params.taskId}` }}
       </template>
       <p class="hero-copy">
         {{ taskData?.task.course.title || '正在加载课程信息' }}
@@ -33,7 +33,7 @@
         <article class="metric-tile">
           <p class="metric-label">提交总数</p>
           <p class="metric-value">{{ taskData.summary.submission_count }}</p>
-          <p class="metric-note">本任务已收到的学生作品数量。</p>
+          <p class="metric-note">本活动已收到的学生作品数量。</p>
         </article>
         <article class="metric-tile">
           <p class="metric-label">已评阅</p>
@@ -82,7 +82,7 @@
             </div>
           </template>
 
-          <n-empty v-if="!taskData.items.length" description="这个任务还没有学生提交作品。" />
+          <n-empty v-if="!taskData.items.length" description="这个活动还没有学生提交作品。" />
 
           <n-empty v-else-if="!filteredItems.length" description="当前筛选条件下没有作品。" />
 
@@ -494,8 +494,8 @@
       <RecommendedWorksShowcase
         :items="taskData.recommended_showcase.items"
         :token="authStore.token || ''"
-        description="本任务下被评为 G 级的作品会自动进入这里，教师也可以直接查看推荐展示效果。"
-        empty-description="当前任务还没有推荐作品"
+        description="本活动下被评为 G 级的作品会自动进入这里，教师也可以直接查看推荐展示效果。"
+        empty-description="当前活动还没有推荐作品"
         title="教师端推荐作品展示"
       />
     </div>
@@ -1841,7 +1841,7 @@ function applyFocusFromRoute() {
   }
   if (focus === 'pending_submit') {
     onlyPendingSubmissions.value = false;
-    focusHintMessage.value = '已切换到“未交”快捷视图：当前页展示已提交作品，可结合课堂任务卡继续追踪未交进度。';
+    focusHintMessage.value = '已切换到“未交”快捷视图：当前页展示已提交作品，可结合课堂活动卡继续追踪未交进度。';
     return;
   }
   focusHintMessage.value = '';
@@ -2079,7 +2079,7 @@ async function loadTaskDetail(preferredSelectedId: number | null = selectedSubmi
     await nextTick();
     clearBatchSelection();
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载任务评分页失败';
+    errorMessage.value = error instanceof Error ? error.message : '加载活动评分页失败';
   } finally {
     isLoading.value = false;
   }

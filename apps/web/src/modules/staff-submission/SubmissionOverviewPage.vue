@@ -2,7 +2,7 @@
   <div class="page-stack">
     <SaPageHeader
       compact
-      description="汇总所有已有学生提交的任务，优先处理未评阅的作品。"
+      description="汇总所有已有学生提交的活动，优先处理未评阅的作品。"
       eyebrow="作品评分"
       title="教师作品总览"
     >
@@ -27,14 +27,14 @@
     <div v-else class="page-stack">
       <div class="ls-row ls-row--5">
         <article class="metric-tile">
-          <p class="metric-label">任务数</p>
+          <p class="metric-label">活动数</p>
           <p class="metric-value">{{ overview?.summary.task_count || 0 }}</p>
-          <p class="metric-note">当前已有学生提交记录的任务总数。</p>
+          <p class="metric-note">当前已有学生提交记录的活动总数。</p>
         </article>
         <article class="metric-tile">
           <p class="metric-label">作品总数</p>
           <p class="metric-value">{{ overview?.summary.submission_count || 0 }}</p>
-          <p class="metric-note">教师可进入任务页查看作品说明和附件。</p>
+          <p class="metric-note">教师可进入活动页查看作品说明和附件。</p>
         </article>
         <article class="metric-tile">
           <p class="metric-label">已评阅</p>
@@ -70,11 +70,11 @@
         <SaPanel>
           <template #header>
             <div class="info-row">
-              <span>任务提交与平均分</span>
+              <span>活动提交与平均分</span>
               <span class="table-note">柱为提交数（深色已评阅），折线为平均分</span>
             </div>
           </template>
-          <n-empty v-if="!overview?.items.length" description="当前还没有可对比的任务。" />
+          <n-empty v-if="!overview?.items.length" description="当前还没有可对比的活动。" />
           <AppChart v-else :height="260" :option="taskSubmissionOption" />
         </SaPanel>
       </div>
@@ -133,13 +133,13 @@
         <template #header>
           <div class="toolbar-row">
             <div class="info-row">
-              <span>任务列表</span>
+              <span>活动列表</span>
               <n-tag round type="info">
                 平均分 {{ overview?.summary.average_score ?? '--' }}
               </n-tag>
             </div>
             <div class="filter-row">
-              <span class="filter-label">仅看未评阅任务</span>
+              <span class="filter-label">仅看未评阅活动</span>
               <n-switch v-model:value="onlyPendingTasks" />
               <n-select
                 v-model:value="selectedCourse"
@@ -171,12 +171,12 @@
 
         <n-empty
           v-if="!overview?.items.length"
-          description="当前还没有学生提交的作品任务。"
+          description="当前还没有学生提交的作品活动。"
         />
 
         <n-empty
           v-else-if="!filteredItems.length"
-          description="当前筛选条件下没有待处理任务。"
+          description="当前筛选条件下没有待处理活动。"
         />
 
         <SaDataTable
@@ -188,7 +188,7 @@
           @row-click="handleRowClick"
         >
           <SaTableColumn label="课程" min-width="220" prop="course_title" />
-          <SaTableColumn label="任务" min-width="220" prop="task_title" />
+          <SaTableColumn label="活动" min-width="220" prop="task_title" />
           <SaTableColumn label="所属课次" min-width="200">
             <template #default="{ row }">
               <div>

@@ -213,7 +213,7 @@ def format_overview_as_prompt_text(overview: dict) -> str:
 
     submission = overview["submission"]
     lines.append(
-        "任务提交："
+        "活动提交："
         f"总提交 {submission['total']} 次，已评分 {submission['reviewed']} 次，"
         f"待评分 {submission['pending_review']} 次，教师推荐 {submission['recommended']} 次"
     )

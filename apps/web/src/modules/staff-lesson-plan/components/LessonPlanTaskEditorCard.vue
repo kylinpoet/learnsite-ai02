@@ -1,10 +1,11 @@
 <template>
-  <article class="task-editor-card">
+  <article :class="['task-editor-card', { 'task-editor-card--inactive': !task.is_active }]">
     <div class="task-card-toolbar">
       <div class="chip-row">
-        <strong>任务 {{ index + 1 }}</strong>
+        <strong>活动 {{ index + 1 }}</strong>
         <n-tag round type="info">{{ taskTypeLabel(task.task_type) }}</n-tag>
         <n-tag round type="success">顺序 {{ index + 1 }} / {{ taskCount }}</n-tag>
+        <n-tag v-if="!task.is_active" round type="warning">已停用</n-tag>
       </div>
       <div class="chip-row">
         <n-button :disabled="index === 0" secondary size="small" @click="moveTaskRow(task.key, -1)">
@@ -29,10 +30,10 @@
     </div>
 
     <div class="task-form-grid">
-      <n-form-item label="任务标题">
+      <n-form-item label="活动标题">
         <n-input v-model:value="task.title" maxlength="120" placeholder="例如：活动一、信息检索与表达" />
       </n-form-item>
-      <n-form-item label="任务类型">
+      <n-form-item label="活动类型">
         <n-select
           v-model:value="task.task_type"
           class="full-width"
@@ -40,13 +41,23 @@
           @update:value="handleTaskTypeChange(task)"
         />
       </n-form-item>
-      <n-form-item label="任务要求">
+      <n-form-item label="活动要求">
         <n-switch v-model:value="task.is_required">
           <template #checked>必做</template>
           <template #unchecked>选做</template>
         </n-switch>
       </n-form-item>
+      <n-form-item label="活动状态">
+        <n-switch v-model:value="task.is_active">
+          <template #checked>已启用</template>
+          <template #unchecked>已停用</template>
+        </n-switch>
+      </n-form-item>
     </div>
+
+    <p v-if="!task.is_active" class="section-note task-inactive-note">
+      停用后学生端不再显示这个活动，也无法通过链接直达；教师端仍可编辑，重新启用即可恢复。
+    </p>
 
     <n-form-item label="提交方式">
       <n-radio-group v-model:value="task.submission_scope" :disabled="isTaskScopeFixed(task.task_type)">
@@ -56,7 +67,7 @@
       <p class="section-note">
         {{
           isTaskScopeFixed(task.task_type)
-            ? '当前任务类型固定为个人提交，用于保证课堂流程和数据结构稳定。'
+            ? '当前活动类型固定为个人提交，用于保证课堂流程和数据结构稳定。'
             : '可按需要切换为个人提交或小组共同提交。'
         }}
       </p>
@@ -140,13 +151,13 @@ defineProps<{
 }>();
 
 const taskTypeOptions = [
-  { label: '阅读任务', value: 'reading' },
-  { label: '图文任务', value: 'rich_text' },
+  { label: '阅读活动', value: 'reading' },
+  { label: '图文活动', value: 'rich_text' },
   { label: '上传作品', value: 'upload_image' },
-  { label: '编程任务', value: 'programming' },
-  { label: '网页任务', value: 'web_page' },
-  { label: '讨论任务', value: 'discussion' },
-  { label: '数据提交任务', value: 'data_submit' },
+  { label: '编程活动', value: 'programming' },
+  { label: '网页活动', value: 'web_page' },
+  { label: '讨论活动', value: 'discussion' },
+  { label: '数据提交活动', value: 'data_submit' },
 ];
 </script>
 
@@ -198,6 +209,19 @@ const taskTypeOptions = [
 
 .full-width {
   width: 100%;
+}
+
+.task-editor-card--inactive {
+  opacity: 0.72;
+  border-left: 3px solid var(--ls-accent);
+}
+
+.task-inactive-note {
+  margin: 0 0 4px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--ls-primary-soft);
+  font-size: 12px;
 }
 
 @media (max-width: 768px) {

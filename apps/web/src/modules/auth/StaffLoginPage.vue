@@ -19,8 +19,8 @@
               <span>切换课堂模式，推送当前学案给班级。</span>
             </div>
             <div class="staff-capability-item">
-              <strong>学案与任务</strong>
-              <span>按教材课次创建、发布并回看任务进度。</span>
+              <strong>学案与活动</strong>
+              <span>按教材课次创建、发布并回看活动进度。</span>
             </div>
             <div class="staff-capability-item">
               <strong>作品与测验</strong>

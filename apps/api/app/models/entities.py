@@ -675,6 +675,8 @@ class LessonPlan(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(120), nullable=False)
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="published")
+    # 下架开关：与 status 生命周期正交，只控制学生/访客端是否可见
+    is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     lesson: Mapped[CurriculumLesson | None] = relationship(back_populates="lesson_plans")
@@ -695,6 +697,8 @@ class Task(TimestampMixin, Base):
     config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_required: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # 活动启停：停用后学生端不可见、直链不可访问，教师端灰显可编辑
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     lesson_plan: Mapped[LessonPlan] = relationship(back_populates="tasks")
     submissions: Mapped[list[Submission]] = relationship(back_populates="task")
@@ -1029,3 +1033,25 @@ class LearningReport(TimestampMixin, Base):
     school_class: Mapped[SchoolClass] = relationship(foreign_keys=[class_id])
     teacher: Mapped[User] = relationship(foreign_keys=[teacher_id])
     lesson_plan: Mapped[LessonPlan | None] = relationship(foreign_keys=[lesson_plan_id])
+
+
+class PortraitTemplate(TimestampMixin, Base):
+    """学生画像模板：定义画像展示哪些维度、各维度的名称与评级阈值。
+
+    画像内容由学生已有数据实时计算，模板只描述「看什么、多少算优秀」。
+    owner_staff_id 为空表示系统预置模板，教师可复制后再改。
+    """
+
+    __tablename__ = "portrait_templates"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    owner_staff_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # 维度配置：{"dimensions": [{"key": ..., "label": ..., "enabled": bool, "excellent": int, "pass": int}]}
+    config_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    owner_staff: Mapped[User | None] = relationship(foreign_keys=[owner_staff_id])
+

@@ -9,6 +9,7 @@ import {
   Images,
   Keyboard,
   MessageSquareText,
+  Sparkles,
   Trophy,
   UserRound,
   UsersRound,
@@ -39,6 +40,7 @@ const navItems = [
   { label: '课程资源', to: '/student/resources', icon: markRaw(BookOpenText) },
   { label: '共享网盘', to: '/student/drive', icon: markRaw(FolderOpen) },
   { label: '小组协作', to: '/student/groups', icon: markRaw(UsersRound) },
+  { label: '我的画像', to: '/student/portrait', icon: markRaw(Sparkles) },
   { label: '我的档案', to: '/student/profile', icon: markRaw(UserRound) },
 ];
 
@@ -56,17 +58,17 @@ const studentPageItems: StudentPageItem[] = [
     matches: [(path) => /^\/student\/courses\/[^/]+$/.test(path)],
   },
   {
-    label: '阅读任务',
+    label: '阅读活动',
     icon: markRaw(BookOpenText),
     matches: [(path) => /^\/student\/courses\/[^/]+\/readings\/[^/]+$/.test(path)],
   },
   {
-    label: '学习任务',
+    label: '学习活动',
     icon: markRaw(FileText),
     matches: [(path) => /^\/student\/courses\/[^/]+\/tasks\/[^/]+$/.test(path)],
   },
   {
-    label: '编程任务',
+    label: '编程活动',
     icon: markRaw(Code2),
     matches: [(path) => /^\/student\/courses\/[^/]+\/programs\/[^/]+$/.test(path)],
   },
@@ -106,6 +108,11 @@ const studentPageItems: StudentPageItem[] = [
     label: '小组协作',
     icon: markRaw(UsersRound),
     matches: [(path) => path.startsWith('/student/groups')],
+  },
+  {
+    label: '我的画像',
+    icon: markRaw(Sparkles),
+    matches: [(path) => path.startsWith('/student/portrait')],
   },
   {
     label: '我的档案',

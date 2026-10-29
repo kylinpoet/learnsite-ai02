@@ -523,7 +523,7 @@ function isAbortError(error: unknown) {
 }
 
 function contextKindLabel(kind: CompanionContext['kind']) {
-  if (kind === 'task') return '当前任务';
+  if (kind === 'task') return '当前活动';
   if (kind === 'session') return '当前课堂';
   if (kind === 'plan') return '当前学案';
   return '当前课程';
@@ -612,7 +612,7 @@ function toggleKnowledgeBase(id: string) {
 function welcomeMessage(scope: Scope) {
   const fallback =
     scope === 'lesson'
-      ? '我是当前课程学案 AI 帮，会围绕当前课程、任务和课堂上下文来帮助你。'
+      ? '我是当前课程学案 AI 帮，会围绕当前课程、活动和课堂上下文来帮助你。'
       : '我是通用 AI 帮，可以帮助你处理平台使用、学习方法和课堂相关问题。';
   return bootstrap.value?.welcome_messages[scope]?.trim() || fallback;
 }

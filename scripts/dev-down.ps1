@@ -5,94 +5,84 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$repoRootRegex = [Regex]::Escape($repoRoot)
+. (Join-Path $PSScriptRoot "dev-common.ps1")
 
-function Get-MatchingProcesses {
-    param([scriptblock]$Predicate)
-
-    return Get-CimInstance Win32_Process |
-        Where-Object {
-            $commandLine = $_.CommandLine
-            if ([string]::IsNullOrWhiteSpace($commandLine)) {
-                return $false
-            }
-
-            return (& $Predicate $_ $commandLine)
-        } |
-        Sort-Object ProcessId -Unique
-}
+$expectedProcessNames = @("python", "python3", "pythonw", "node")
 
 function Stop-ProcessTree {
     param(
-        [object[]]$Processes,
+        [int]$ProcessId,
         [string]$Label
     )
 
-    foreach ($process in $Processes) {
-        if (-not (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue)) {
-            continue
-        }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $process) {
+        return
+    }
 
-        Write-Host "Stopping $Label PID $($process.ProcessId)" -ForegroundColor Yellow
-        Start-Process -FilePath "$env:SystemRoot\System32\taskkill.exe" `
-            -ArgumentList "/PID", "$($process.ProcessId)", "/T", "/F" `
-            -WindowStyle Hidden `
-            -Wait | Out-Null
+    Write-Host "Stopping $Label PID $ProcessId ($($process.ProcessName))" -ForegroundColor Yellow
+    Start-Process -FilePath "$env:SystemRoot\System32\taskkill.exe" `
+        -ArgumentList "/PID", "$ProcessId", "/T", "/F" `
+        -WindowStyle Hidden `
+        -Wait | Out-Null
 
-        if (Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue) {
-            Stop-Process -Id $process.ProcessId -Force -ErrorAction SilentlyContinue
-        }
+    if (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
     }
 }
 
 function Show-PortStatus {
     param([int]$Port)
 
-    $connection = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-        Where-Object { $_.State -eq "Listen" } |
-        Select-Object -First 1
-
-    if ($null -eq $connection) {
+    $processId = Get-ListeningProcessId -Port $Port
+    if ($null -eq $processId) {
         Write-Host "Port $Port is now free." -ForegroundColor Green
         return
     }
 
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($connection.OwningProcess)" -ErrorAction SilentlyContinue
-    $commandLine = if ($null -eq $process) { "unknown command line" } else { $process.CommandLine }
-    Write-Warning "Port $Port is still occupied by PID $($connection.OwningProcess): $commandLine"
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    $processName = if ($null -eq $process) { "unknown" } else { $process.ProcessName }
+    Write-Warning "Port $Port is still occupied by PID $processId ($processName)."
 }
 
-$windowProcesses = Get-MatchingProcesses {
-    param($Process, $CommandLine)
+# dev-up.ps1 records the console window PID of everything it launches. Killing that
+# window takes its whole process tree with it (uvicorn, the vite dev server).
+foreach ($record in (Get-DevWindowRecords)) {
+    $process = Get-Process -Id $record.ProcessId -ErrorAction SilentlyContinue
+    if ($null -eq $process) {
+        continue
+    }
 
-    return $Process.Name -eq "cmd.exe" -and (
-        $CommandLine -match "title LearnSite API $ApiPort" -or
-        $CommandLine -match "title LearnSite Web $WebPort"
-    )
+    # Guard against PID reuse: only kill a cmd.exe that started at the recorded moment.
+    if ($process.ProcessName -ne "cmd" -or $process.StartTime.Ticks -ne $record.StartedAtTicks) {
+        continue
+    }
+
+    Stop-ProcessTree -ProcessId $record.ProcessId -Label "$($record.Role) window"
 }
 
-Stop-ProcessTree -Processes $windowProcesses -Label "window"
+# Servers started outside dev-up.ps1 (npm run dev:api, a manual vite) are only
+# reachable through the port they listen on.
+foreach ($port in @($ApiPort, $WebPort)) {
+    $processId = Get-ListeningProcessId -Port $port
+    if ($null -eq $processId) {
+        continue
+    }
 
-$apiProcesses = Get-MatchingProcesses {
-    param($Process, $CommandLine)
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -eq $process) {
+        continue
+    }
 
-    return $CommandLine -match "uvicorn app\.main:app" -and
-        $CommandLine -match "--port $ApiPort" -and
-        $CommandLine -match "--app-dir apps/api"
+    if ($expectedProcessNames -notcontains $process.ProcessName) {
+        Write-Warning "Port $port is held by PID $processId ($($process.ProcessName)). Left untouched."
+        continue
+    }
+
+    Stop-ProcessTree -ProcessId $processId -Label "listener on port $port"
 }
 
-Stop-ProcessTree -Processes $apiProcesses -Label "API"
-
-$webProcesses = Get-MatchingProcesses {
-    param($Process, $CommandLine)
-
-    return $CommandLine -match "vite" -and
-        $CommandLine -match "--port $WebPort" -and
-        $CommandLine -match $repoRootRegex
-}
-
-Stop-ProcessTree -Processes $webProcesses -Label "Web"
+Remove-DevStateFile
 
 Start-Sleep -Seconds 1
 

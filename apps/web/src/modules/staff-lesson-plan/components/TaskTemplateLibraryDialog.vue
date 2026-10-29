@@ -2,20 +2,20 @@
   <n-modal
     v-model:show="dialogVisible"
     preset="card"
-    title="自定义任务模板库"
+    title="自定义活动模板库"
     style="width: min(760px, 96vw)"
   >
     <div v-if="loading" class="task-template-library task-template-library--loading">
       正在加载自定义模板...
     </div>
-    <n-empty v-else-if="!templates.length" description="还没有保存过自定义任务模板" />
+    <n-empty v-else-if="!templates.length" description="还没有保存过自定义活动模板" />
     <template v-else>
       <div class="task-template-library-toolbar">
         <n-input
           v-model:value="keywordValue"
           clearable
           class="task-template-library-toolbar__search"
-          placeholder="搜索模板名称、分组、预设任务名或说明"
+          placeholder="搜索模板名称、分组、预设活动名或说明"
         />
         <n-select
           v-model:value="groupNameValue"
@@ -185,7 +185,7 @@
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
-                <span>预设任务名：{{ templateItem.task_title }}</span>
+                <span>预设活动名：{{ templateItem.task_title }}</span>
               </div>
               <div class="chip-row">
                 <n-tag round type="error">置顶</n-tag>
@@ -247,7 +247,7 @@
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
-                <span>预设任务名：{{ templateItem.task_title }}</span>
+                <span>预设活动名：{{ templateItem.task_title }}</span>
               </div>
               <div class="chip-row">
                 <n-tag round>最近使用</n-tag>
@@ -357,7 +357,7 @@
             <div class="info-row">
               <div class="task-template-library__head">
                 <strong>{{ templateItem.title }}</strong>
-                <span>预设任务名：{{ templateItem.task_title }}</span>
+                <span>预设活动名：{{ templateItem.task_title }}</span>
               </div>
               <div class="chip-row">
                 <n-tag v-if="templateItem.is_pinned" round type="error">置顶</n-tag>

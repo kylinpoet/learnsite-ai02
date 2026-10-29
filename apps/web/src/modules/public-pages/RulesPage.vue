@@ -1,7 +1,7 @@
 <template>
   <section class="page-stack">
     <SaPageHeader
-      description="请在进入课程与任务前阅读课堂守则，保持专注、有序、友善的学习氛围。"
+      description="请在进入课程与活动前阅读课堂守则，保持专注、有序、友善的学习氛围。"
       eyebrow="课堂规则"
       title="课堂守则"
     >
@@ -14,8 +14,8 @@
 
     <SaPanel>
       <ol class="rule-list">
-        <li>按时签到，进入课堂后先查看本节课任务。</li>
-        <li>完成阅读与说明后再进入作品提交或代码任务。</li>
+        <li>按时签到，进入课堂后先查看本节课活动。</li>
+        <li>完成阅读与说明后再进入作品提交或代码活动。</li>
         <li>互评时要友善、真实、有依据。</li>
         <li>使用 AI 助手时只作为学习辅助，不直接代替作业。</li>
       </ol>

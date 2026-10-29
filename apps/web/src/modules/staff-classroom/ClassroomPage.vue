@@ -81,7 +81,7 @@
         </article>
 
         <article class="realtime-card">
-          <p class="realtime-card__label">任务完成度</p>
+          <p class="realtime-card__label">活动完成度</p>
           <p class="realtime-card__big">
             {{ completedCount }}<span class="realtime-card__suffix">/ {{ studentCount }} 人全部完成</span>
           </p>
@@ -102,7 +102,7 @@
           <p class="realtime-card__note">
             {{ session.plan.unit_title }} · 开课 {{ formatDateTime(session.started_at) }}
           </p>
-          <p class="realtime-card__note">共 {{ session.task_count }} 个任务</p>
+          <p class="realtime-card__note">共 {{ session.task_count }} 个活动</p>
           <div class="realtime-links">
             <button class="link-button" type="button" @click="openPlanEditor">学案详情</button>
             <button class="link-button" type="button" @click="openAttendance">本班考勤</button>
@@ -110,7 +110,7 @@
         </article>
       </div>
 
-      <!-- 主栏座位与任务进度；课堂操作常驻右栏，不再向下占用主栏高度 -->
+      <!-- 主栏座位与活动进度；课堂操作常驻右栏，不再向下占用主栏高度 -->
       <div class="ls-page realtime-grid">
         <div class="ls-main">
           <CompactSeatMap
@@ -121,11 +121,11 @@
             :updated-text="seatFootText"
           />
 
-          <SaPanel title="任务进度">
+          <SaPanel title="活动进度">
             <template #actions>
-              <span class="section-note">阅读任务看已读确认，提交任务看已交/已评</span>
+              <span class="section-note">阅读活动看已读确认，提交活动看已交/已评</span>
             </template>
-            <n-empty v-if="!session.tasks.length" description="当前学案还没有任务" />
+            <n-empty v-if="!session.tasks.length" description="当前学案还没有活动" />
             <div v-else class="task-list">
               <article v-for="task in session.tasks" :key="task.id" class="task-item">
                 <div class="task-item__head">
@@ -421,7 +421,7 @@ const pageTitle = computed(() => {
 });
 
 const headerDescription = computed(() => {
-  if (!session.value) return '这里显示当前课堂的签到、任务进度与座位状态。';
+  if (!session.value) return '这里显示当前课堂的签到、活动进度与座位状态。';
   const status = session.value.status === 'active' ? '正在上课' : '课堂已结束';
   return `${status} · ${session.value.plan.unit_title} · 开课 ${formatDateTime(session.value.started_at)}`;
 });
@@ -539,7 +539,7 @@ function openPlanEditor() {
   void router.push(`/staff/lesson-plans/${session.value.plan.id}`);
 }
 
-/** 学生视角预览：教师对照查看学生打开任务时看到的页面 */
+/** 学生视角预览：教师对照查看学生打开活动时看到的页面 */
 async function loadStudentPreview() {
   const current = session.value;
   if (!current || !authStore.token) return;

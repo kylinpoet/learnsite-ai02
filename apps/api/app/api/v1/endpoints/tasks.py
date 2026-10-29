@@ -101,12 +101,14 @@ def load_task(task_id: int, db: Session) -> Task:
         )
     )
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
     return task
 
 
 def student_can_access_task(student: User, task: Task, db: Session) -> bool:
     if student.user_type != "student":
+        return False
+    if not task.is_active or task.lesson_plan.is_hidden:
         return False
     progress_exists = db.scalar(
         select(StudentLessonPlanProgress.id).where(
@@ -951,7 +953,10 @@ def serialize_recommended_showcase(submissions: list[Submission]) -> dict:
 
 
 def serialize_task_navigation(task: Task) -> dict:
-    plan_tasks = sorted(task.lesson_plan.tasks, key=lambda item: (item.sort_order, item.id))
+    plan_tasks = sorted(
+        (item for item in task.lesson_plan.tasks if item.is_active),
+        key=lambda item: (item.sort_order, item.id),
+    )
     current_index = next(
         (index for index, plan_task in enumerate(plan_tasks) if plan_task.id == task.id),
         0,
@@ -1409,7 +1414,7 @@ def task_discussion_feed(
     task = load_task(task_id, db)
     ensure_user_can_access_task(user, task, db, allow_staff=True)
     if (task.task_type or "").strip().lower() != "discussion":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是讨论活动")
 
     config = parse_task_config(task)
     topic = str(config.get("topic") or "").strip() or task.title
@@ -1454,7 +1459,7 @@ def create_task_discussion_post(
     task = load_task(task_id, db)
     ensure_student_can_access_task(student, task, db)
     if (task.task_type or "").strip().lower() != "discussion":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是讨论任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是讨论活动")
 
     content = normalize_discussion_content(payload.content)
     if content is None:
@@ -1529,7 +1534,7 @@ def submit_task_data_payload(
 ) -> ApiResponse:
     task = load_task(task_id, db)
     if (task.task_type or "").strip().lower() != "data_submit":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是数据提交活动")
 
     config = parse_task_config(task)
     expected_token = str(config.get("endpoint_token") or "").strip()
@@ -1589,7 +1594,7 @@ def data_submit_records(
     if not allows_runtime_preview_without_assignment(request, task, user):
         ensure_user_can_access_task(user, task, db, allow_staff=True)
     if (task.task_type or "").strip().lower() != "data_submit":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是数据提交任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是数据提交活动")
 
     config = parse_task_config(task)
     expected_token = str(config.get("endpoint_token") or "").strip()
@@ -1676,7 +1681,7 @@ def mark_task_as_read(
     task = load_task(task_id, db)
     ensure_student_can_access_task(student, task, db)
     if task.task_type != "reading":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有阅读任务支持已读确认")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="只有阅读活动支持已读确认")
 
     read_record = load_task_read_record(task.id, student.id, db)
     if read_record is None:
@@ -1714,14 +1719,14 @@ def group_task_draft_history(
     task = load_task(task_id, db)
     ensure_student_can_access_task(student, task, db)
     if not is_group_submission_task(task):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是小组共同提交任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是小组共同提交活动")
 
 
     _, group_membership = load_task_submission_for_student(task, student, db)
     if group_membership is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="当前任务需要以小组为单位协作，请先完成分组后再查看共享草稿历史",
+            detail="当前活动需要以小组为单位协作，请先完成分组后再查看共享草稿历史",
         )
 
     history_items = load_group_task_draft_history(task.id, group_membership.group_id, db)
@@ -1745,7 +1750,7 @@ def update_group_task_draft(
     task = load_task(task_id, db)
     ensure_student_can_access_task(student, task, db)
     if not is_group_submission_task(task):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前任务不是小组共同提交任务")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前活动不是小组共同提交活动")
 
     capability_context = build_student_classroom_context(student, db, request)
     ensure_feature_access(capability_context, "group_discussion")
@@ -1754,7 +1759,7 @@ def update_group_task_draft(
     if group_membership is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="当前任务需要以小组为单位协作，请先完成分组后再编辑",
+            detail="当前活动需要以小组为单位协作，请先完成分组后再编辑",
         )
     if submission is not None and submission.submit_status == "reviewed":
         raise HTTPException(
@@ -1837,7 +1842,7 @@ async def submit_task(
     if is_group_submission_task(task) and group_membership is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="当前任务需要以小组为单位提交，请先完成分组后再提交",
+            detail="当前活动需要以小组为单位提交，请先完成分组后再提交",
         )
     has_existing_files = submission is not None and bool(submission.files)
 

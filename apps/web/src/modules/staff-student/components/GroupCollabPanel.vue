@@ -214,7 +214,7 @@
                 <n-input
                   v-model:value="logFilters.keyword"
                   clearable
-                  placeholder="搜索标题、任务、文件"
+                  placeholder="搜索标题、活动、文件"
                   size="small"
                   @keyup.enter="loadLogs"
                 />

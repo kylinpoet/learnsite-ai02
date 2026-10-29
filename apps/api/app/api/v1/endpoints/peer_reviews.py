@@ -69,7 +69,7 @@ def load_task_bundle(task_id: int, db: Session) -> tuple[Task, list[Submission],
         )
     )
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
 
     submissions = db.scalars(
         select(Submission)
@@ -200,7 +200,7 @@ def build_peer_review_payload(task: Task, submissions: list[Submission], votes: 
             "message": (
                 ""
                 if has_own_submission
-                else "请先在当前任务页提交自己的作品，再查看同学作品并参与互评。"
+                else "请先在当前活动页提交自己的作品，再查看同学作品并参与互评。"
             ),
         },
         "my_submission": (
@@ -303,7 +303,7 @@ def vote_for_submission(
     vote_limit = build_vote_limit(len(submissions), True)
     used_count = sum(1 for vote in votes if vote.reviewer_student_id == student.id)
     if used_count >= vote_limit:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前任务的推荐次数已经用完")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="当前活动的推荐次数已经用完")
 
     db.add(
         PeerReviewVote(

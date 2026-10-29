@@ -825,7 +825,7 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
     handleTaskTemplateDragEnd();
     taskTemplateLibraryVisible.value = true;
     void loadCustomTaskTemplates().catch((error) => {
-      const message = error instanceof Error ? error.message : '加载任务模板失败';
+      const message = error instanceof Error ? error.message : '加载活动模板失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
     });
@@ -882,7 +882,7 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
 
     const sourceTask = taskTemplateSourceTask.value;
     if (!sourceTask) {
-      ElMessage.error('未找到要保存的任务');
+      ElMessage.error('未找到要保存的活动');
       return;
     }
     if (!taskTemplateForm.value.title.trim()) {
@@ -897,7 +897,7 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
         title: taskTemplateForm.value.title.trim(),
         group_name: normalizeTaskTemplateGroupNameValue(taskTemplateForm.value.group_name) || null,
         summary: richTextToPlainText(taskTemplateForm.value.summary).trim() || null,
-        task_title: sourceTask.title.trim() || options.taskTypeLabel(sourceTask.task_type) || '未命名任务',
+        task_title: sourceTask.title.trim() || options.taskTypeLabel(sourceTask.task_type) || '未命名活动',
         task_type: sourceTask.task_type,
         submission_scope: options.normalizeTaskSubmissionScope(sourceTask.task_type, sourceTask.submission_scope),
         task_description: options.normalizeHtmlValue(sourceTask.description, 'visual'),
@@ -926,9 +926,9 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
       updateCustomTaskTemplateInState(response.template);
       sourceTask.linked_template_id = response.template.id;
       taskTemplateDialogVisible.value = false;
-      ElMessage.success(overwriteTargetId !== null ? '模板已覆盖保存' : '任务已保存为自定义模板');
+      ElMessage.success(overwriteTargetId !== null ? '模板已覆盖保存' : '活动已保存为自定义模板');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '保存任务模板失败';
+      const message = error instanceof Error ? error.message : '保存活动模板失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
     } finally {
@@ -996,15 +996,15 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
 
     try {
       await ElMessageBox.confirm(
-        `确认删除模板“${template.title}”吗？删除后不会影响已经创建的学案任务。`,
-        '删除任务模板',
+        `确认删除模板“${template.title}”吗？删除后不会影响已经创建的学案活动。`,
+        '删除活动模板',
         { type: 'warning' }
       );
     } catch (error) {
       if (options.isDialogCancelled(error)) {
         return;
       }
-      const message = error instanceof Error ? error.message : '删除任务模板失败';
+      const message = error instanceof Error ? error.message : '删除活动模板失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
       return;
@@ -1018,9 +1018,9 @@ export function useTaskTemplateLibrary(options: UseTaskTemplateLibraryOptions) {
         options.authToken.value
       );
       await loadCustomTaskTemplates();
-      ElMessage.success('任务模板已删除');
+      ElMessage.success('活动模板已删除');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '删除任务模板失败';
+      const message = error instanceof Error ? error.message : '删除活动模板失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
     } finally {

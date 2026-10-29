@@ -1,7 +1,7 @@
 """班级旁听（只读）接口。
 
 只拿着班级码进来的访客没有任何学生身份，因此这里刻意只读、只返回「这一节课在讲什么」：
-班级名、当前学案、任务清单与关联资源。提交、互评、网盘、测验、签到一律不开放。
+班级名、当前学案、活动清单与关联资源。提交、互评、网盘、测验、签到一律不开放。
 """
 
 from __future__ import annotations
@@ -50,12 +50,15 @@ def load_focus_plan(school_class_id: int, db: Session) -> LessonPlan | None:
         .order_by(ClassroomSession.started_at.desc(), ClassroomSession.id.desc())
         .limit(1)
     ).first()
-    if session is not None and session.lesson_plan is not None:
+    if session is not None and session.lesson_plan is not None and not session.lesson_plan.is_hidden:
         return session.lesson_plan
 
     return db.scalars(
         select(LessonPlan)
-        .where(LessonPlan.status.in_(("published", "active")))
+        .where(
+            LessonPlan.status.in_(("published", "active")),
+            LessonPlan.is_hidden == False,  # noqa: E712
+        )
         .options(
             selectinload(LessonPlan.tasks)
             .selectinload(Task.resource_links)
@@ -70,8 +73,11 @@ def load_focus_plan(school_class_id: int, db: Session) -> LessonPlan | None:
 
 
 def _guest_task_navigation(plan: LessonPlan, task: Task) -> dict:
-    """旁听也要能翻上一个 / 下一个任务，和学生端一致。"""
-    ordered = sorted(plan.tasks, key=lambda item: (item.sort_order, item.id))
+    """旁听也要能翻上一个 / 下一个活动，和学生端一致。"""
+    ordered = sorted(
+        (item for item in plan.tasks if item.is_active),
+        key=lambda item: (item.sort_order, item.id),
+    )
     index = next((position for position, item in enumerate(ordered) if item.id == task.id), 0)
 
     def serialize_nav_item(target: Task | None) -> dict | None:
@@ -96,14 +102,14 @@ def _guest_task_config(task: Task) -> dict:
 
 
 def _guest_task_topic(task: Task) -> str:
-    """讨论任务的主题写在 config_json 里，旁听只取这一个字段，不暴露提交配置。"""
+    """讨论活动的主题写在 config_json 里，旁听只取这一个字段，不暴露提交配置。"""
     if task.task_type != "discussion":
         return ""
     return str(_guest_task_config(task).get("topic") or "")
 
 
 def _guest_web_entry_path(task: Task) -> str:
-    """网页任务的入口文件：旁听可以直接只读浏览这个页面。"""
+    """网页活动的入口文件：旁听可以直接只读浏览这个页面。"""
     if task.task_type != "web_page":
         return ""
     return str(_guest_task_config(task).get("entry_path") or "")
@@ -115,10 +121,10 @@ def guest_task_detail(
     guest: dict = Depends(require_class_guest),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    """旁听查看任务页：说明、阅读正文、关联资源与上下任务导航。
+    """旁听查看活动页：说明、阅读正文、关联资源与上下活动导航。
 
     旁听身份不能提交、不能看别人的作品、不能参与讨论，所以这里刻意不返回
-    提交状态、小组、讨论帖与推荐作品——只回答「这个任务要做什么」。
+    提交状态、小组、讨论帖与推荐作品——只回答「这个活动要做什么」。
     """
     school_class = db.get(SchoolClass, int(guest["class_id"]))
     if school_class is None:
@@ -128,11 +134,11 @@ def guest_task_detail(
     task = None
     if plan is not None:
         for item in plan.tasks:
-            if item.id == task_id:
+            if item.id == task_id and item.is_active:
                 task = item
                 break
     if task is None or plan is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
 
     has_web_assets = (
         db.scalar(
@@ -209,7 +215,7 @@ def _resolve_guest_task(db: Session, class_id: int, task_id: int) -> tuple[Schoo
     if plan is None:
         return None
     for item in plan.tasks:
-        if item.id == task_id:
+        if item.id == task_id and item.is_active:
             return school_class, item
     return None
 
@@ -222,15 +228,15 @@ def guest_task_asset(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """旁听只读打开网页任务的静态资源。
+    """旁听只读打开网页活动的静态资源。
 
-    只开放网页任务（web）的静态文件：数据提交页是提交入口，旁听不该看到，
+    只开放网页活动（web）的静态文件：数据提交页是提交入口，旁听不该看到，
     也不在这里注入任何带提交令牌的运行时上下文。
     """
     guest = _guest_task_from_request(request)
     resolved = _resolve_guest_task(db, int(guest["class_id"]), task_id)
     if resolved is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
     _, task = resolved
 
     normalized_slot = slot.strip().lower()
@@ -287,7 +293,10 @@ def guest_class_overview(
     resources: list[dict] = []
     if plan is not None:
         seen_resource_ids: set[int] = set()
-        for task in sorted(plan.tasks, key=lambda item: (item.sort_order, item.id)):
+        for task in sorted(
+            (item for item in plan.tasks if item.is_active),
+            key=lambda item: (item.sort_order, item.id),
+        ):
             tasks.append(
                 {
                     "id": task.id,

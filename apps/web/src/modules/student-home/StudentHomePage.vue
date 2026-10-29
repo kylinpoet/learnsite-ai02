@@ -24,14 +24,14 @@
           </p>
           <ol class="sw-path sw-now__path">
             <li class="sw-path__step is-now"><span class="sw-path__mark">1</span>学案</li>
-            <li class="sw-path__step"><span class="sw-path__mark">2</span>任务</li>
+            <li class="sw-path__step"><span class="sw-path__mark">2</span>活动</li>
             <li class="sw-path__step"><span class="sw-path__mark">3</span>提交</li>
             <li class="sw-path__step"><span class="sw-path__mark">4</span>评阅</li>
           </ol>
         </div>
         <div class="sw-now__actions">
           <n-button type="primary" size="large" @click="goToFirstPendingCourse">开始学习</n-button>
-          <p class="sw-now__hint">打开后按任务顺序完成</p>
+          <p class="sw-now__hint">打开后按活动顺序完成</p>
         </div>
       </section>
 

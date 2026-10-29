@@ -4,7 +4,7 @@
       <article class="sp-metric">
         <p class="sp-metric__label">当前状态</p>
         <p class="sp-metric__value">预览中</p>
-        <p class="sp-metric__note">学生打开任务时从这里开始作答与提交。</p>
+        <p class="sp-metric__note">学生打开活动时从这里开始作答与提交。</p>
       </article>
       <article class="sp-metric">
         <p class="sp-metric__label">{{ ruleLabel }}</p>
@@ -23,13 +23,13 @@
         <SaPanel>
           <template #header>
             <div class="sp-info-row">
-              <span>{{ isDataSubmit ? '任务内容' : '任务说明' }}</span>
+              <span>{{ isDataSubmit ? '活动内容' : '活动说明' }}</span>
               <n-tag round size="small">{{ taskTypeLabel(task.taskType) }}</n-tag>
             </div>
           </template>
 
           <div v-if="!isDataSubmit" class="sp-description">
-            <RichTextContent :html="task.description" empty-text="当前任务还没有补充说明。" />
+            <RichTextContent :html="task.description" empty-text="当前活动还没有补充说明。" />
           </div>
 
           <n-divider v-if="!isDataSubmit" />
@@ -41,7 +41,7 @@
             </div>
             <n-alert
               :closable="false"
-              :title="task.topic || '教师暂未填写讨论主题，学生阅读任务说明后回复。'"
+              :title="task.topic || '教师暂未填写讨论主题，学生阅读活动说明后回复。'"
               type="info"
             />
             <p class="sp-hint">预览模式不加载真实讨论内容，也不允许发布回复。</p>
@@ -49,35 +49,35 @@
 
           <div v-else-if="isWebTask" class="sp-section">
             <div class="sp-section__head">
-              <h3>任务页面</h3>
-              <span>教师发布的网页内容会直接嵌入到学生任务页中。</span>
+              <h3>活动页面</h3>
+              <span>教师发布的网页内容会直接嵌入到学生活动页中。</span>
             </div>
             <iframe
               v-if="task.frames.web.mode === 'src'"
               :src="task.frames.web.value"
               :sandbox="frameSandbox(task.frames.web.value)"
               class="sp-embed-frame"
-              title="网页任务"
+              title="网页活动"
             ></iframe>
             <iframe
               v-else-if="task.frames.web.mode === 'srcdoc'"
               :srcdoc="task.frames.web.value"
               sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
               class="sp-embed-frame"
-              title="网页任务"
+              title="网页活动"
             ></iframe>
-            <n-empty v-else description="教师暂未上传网页任务资源" />
+            <n-empty v-else description="教师暂未上传网页活动资源" />
           </div>
 
           <div v-else-if="isDataSubmit" class="sp-section">
             <div class="sp-section__head">
-              <h3>数据提交任务</h3>
+              <h3>数据提交活动</h3>
               <span>学生先在提交页完成数据上报，再切换到可视化页查看结果。</span>
             </div>
             <n-tabs v-model:value="dataSubmitTab">
               <n-tab-pane name="submit" tab="学生提交页">
                 <div class="sp-section">
-                  <RichTextContent :html="task.description" empty-text="当前任务还没有补充说明。" />
+                  <RichTextContent :html="task.description" empty-text="当前活动还没有补充说明。" />
                   <iframe
                     v-if="task.frames.submit.mode === 'src'"
                     :src="task.frames.submit.value"
@@ -137,7 +137,7 @@
             <n-descriptions-item label="提交方式">
               {{ task.submissionScope === 'group' ? '小组共同提交' : '个人提交' }}
             </n-descriptions-item>
-            <n-descriptions-item label="任务要求">{{ task.isRequired ? '必做' : '选做' }}</n-descriptions-item>
+            <n-descriptions-item label="活动要求">{{ task.isRequired ? '必做' : '选做' }}</n-descriptions-item>
           </n-descriptions>
           <div class="sp-comment">
             <p class="sp-comment__title">教师评语</p>
@@ -149,10 +149,10 @@
           <RichTextContent :html="planContent" empty-text="当前学案还没有补充导读内容。" />
         </SaPanel>
 
-        <SaPanel v-if="task.resources.length" title="任务资源">
+        <SaPanel v-if="task.resources.length" title="活动资源">
           <template #header>
             <div class="sp-info-row">
-              <span>任务资源</span>
+              <span>活动资源</span>
               <n-tag round size="small" type="info">{{ task.resources.length }} 项</n-tag>
             </div>
           </template>
@@ -205,8 +205,8 @@ const usesSubmissionForm = computed(() => !isDataSubmit.value);
 
 const ruleLabel = computed(() => {
   if (isDiscussion.value) return '互动方式';
-  if (isWebTask.value) return '任务形态';
-  if (isDataSubmit.value) return '任务形态';
+  if (isWebTask.value) return '活动形态';
+  if (isDataSubmit.value) return '活动形态';
   return '提交规则';
 });
 const ruleValue = computed(() => {
@@ -217,15 +217,15 @@ const ruleValue = computed(() => {
 });
 const ruleNote = computed(() => {
   if (isDiscussion.value) return '围绕教师主题直接回复，不需要上传附件。';
-  if (isWebTask.value) return '任务内容通过嵌入网页展示。';
-  if (isDataSubmit.value) return '提交页与可视化页都在当前任务中打开。';
+  if (isWebTask.value) return '活动内容通过嵌入网页展示。';
+  if (isDataSubmit.value) return '提交页与可视化页都在当前活动中打开。';
   return '教师评价前，学生可以再次提交覆盖作品。';
 });
 
 const assetLabel = computed(() => {
   if (isDiscussion.value) return '讨论回复';
   if (isWebTask.value) return '页面资源';
-  if (isDataSubmit.value) return '任务页面';
+  if (isDataSubmit.value) return '活动页面';
   return '已保存附件';
 });
 const assetValue = computed(() => {
@@ -240,7 +240,7 @@ const assetValue = computed(() => {
 });
 const assetNote = computed(() => {
   if (isDiscussion.value) return '预览模式不加载讨论回复。';
-  if (isWebTask.value) return '网页任务会直接嵌入展示。';
+  if (isWebTask.value) return '网页活动会直接嵌入展示。';
   if (isDataSubmit.value) return '提交页与可视化页都可直接打开。';
   return '学生提交后在这里看到附件数量。';
 });

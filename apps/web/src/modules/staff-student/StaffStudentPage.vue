@@ -99,6 +99,9 @@
               <n-tag v-if="students.selected_class" round>
                 {{ students.selected_class.class_name }}
               </n-tag>
+              <n-button secondary size="small" :disabled="!filters.classId" @click="permissionDialogVisible = true">
+                资料修改权限
+              </n-button>
             </div>
             <div class="batch-row">
               <n-tag round type="info">已选 {{ selectedStudentIds.length }} 人</n-tag>
@@ -167,9 +170,11 @@
           <SaTableColumn label="最近提交" min-width="160">
             <template #default="{ row }">{{ formatDateTime(row.latest_submission_at) }}</template>
           </SaTableColumn>
-          <SaTableColumn label="操作" fixed="right" min-width="300">
+          <SaTableColumn label="操作" fixed="right" min-width="420">
             <template #default="{ row }">
               <div class="cell-actions">
+                <n-button text type="primary" @click="openStudentPortrait(row)">学生画像</n-button>
+                <n-button text type="primary" @click="openProfileEdit(row)">编辑资料</n-button>
                 <n-button text type="primary" @click="openResetPassword(row)">重置密码</n-button>
                 <n-button text type="primary" @click="openStudentSubmissions(row)">作品记录</n-button>
                 <n-button :disabled="!row.current_group_id" text @click="removeFromGroup(row)">
@@ -502,7 +507,7 @@
           <GroupCollabPanel :class-id="students.selected_class_id ?? null" />
         </n-tab-pane>
 
-        <n-tab-pane display-directive="if" name="group-progress" tab="小组任务进度">
+        <n-tab-pane display-directive="if" name="group-progress" tab="小组活动进度">
           <GroupTaskProgressPanel :class-id="students.selected_class_id ?? null" />
         </n-tab-pane>
       </n-tabs>
@@ -522,7 +527,7 @@
             row-key="submission_id"
             stripe
           >
-            <SaTableColumn label="任务" min-width="200" prop="task_title" />
+            <SaTableColumn label="活动" min-width="200" prop="task_title" />
             <SaTableColumn label="学案" min-width="220" prop="plan_title" />
             <SaTableColumn label="状态" min-width="100">
               <template #default="{ row }">
@@ -542,6 +547,19 @@
         </div>
       </n-drawer-content>
     </n-drawer>
+
+    <StudentPortraitDrawer v-model:show="portraitDrawerVisible" :student="portraitStudent" />
+    <StudentProfileEditDialog
+      v-model:show="profileEditVisible"
+      :student="profileEditStudent"
+      @saved="handleProfileSaved"
+    />
+    <ProfilePermissionDialog
+      v-model:show="permissionDialogVisible"
+      :class-id="filters.classId ?? null"
+      :class-name="students?.selected_class?.class_name || ''"
+      @saved="handleProfileSaved"
+    />
   </div>
 </template>
 
@@ -564,6 +582,9 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import GroupCollabPanel from './components/GroupCollabPanel.vue';
 import GroupTaskProgressPanel from './components/GroupTaskProgressPanel.vue';
+import ProfilePermissionDialog from './components/ProfilePermissionDialog.vue';
+import StudentPortraitDrawer, { type PortraitStudentRef } from './components/StudentPortraitDrawer.vue';
+import StudentProfileEditDialog, { type EditableStudent } from './components/StudentProfileEditDialog.vue';
 import SaDataTable from '@/components/sa/SaDataTable.vue';
 import SaPageHeader from '@/components/sa/SaPageHeader.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
@@ -814,6 +835,11 @@ const filters = ref({
 const submissionDrawerVisible = ref(false);
 const isLoadingStudentSubmissions = ref(false);
 const studentSubmissions = ref<StudentSubmissionPayload | null>(null);
+const portraitDrawerVisible = ref(false);
+const portraitStudent = ref<PortraitStudentRef | null>(null);
+const profileEditVisible = ref(false);
+const profileEditStudent = ref<EditableStudent | null>(null);
+const permissionDialogVisible = ref(false);
 const hasSelectedStudents = computed(() => selectedStudentIds.value.length > 0);
 
 const classAccountOption = computed(() => {
@@ -1707,6 +1733,29 @@ async function openStudentSubmissions(row: StudentItem) {
   } finally {
     isLoadingStudentSubmissions.value = false;
   }
+}
+
+function openStudentPortrait(row: StudentItem) {
+  portraitStudent.value = {
+    user_id: row.user_id,
+    display_name: row.display_name,
+    student_no: row.student_no,
+    class_id: filters.value.classId ?? null,
+  };
+  portraitDrawerVisible.value = true;
+}
+
+function openProfileEdit(row: StudentItem) {
+  profileEditStudent.value = {
+    user_id: row.user_id,
+    display_name: row.display_name,
+    gender: row.gender,
+  };
+  profileEditVisible.value = true;
+}
+
+async function handleProfileSaved() {
+  await loadStudents();
 }
 
 onMounted(() => {

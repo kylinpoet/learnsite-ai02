@@ -11,6 +11,7 @@ import './styles/base.css';
 import './styles/layout.css';
 import './styles/assistant.css';
 import './styles/student-workspace.css';
+import './styles/staff-workspace.css';
 
 const app = createApp(App);
 const pinia = createPinia();

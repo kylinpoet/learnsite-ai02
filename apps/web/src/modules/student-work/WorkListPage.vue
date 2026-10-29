@@ -75,7 +75,7 @@
             </template>
           </SaTableColumn>
         </SaDataTable>
-        <StudentEmpty v-else text="还没有作品记录。完成一次任务提交后，这里会显示每份作品的评阅状态和得分。" />
+        <StudentEmpty v-else text="还没有作品记录。完成一次活动提交后，这里会显示每份作品的评阅状态和得分。" />
       </StudentPanel>
     </template>
   </div>

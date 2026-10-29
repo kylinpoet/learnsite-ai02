@@ -31,9 +31,9 @@ const props = withDefaults(
     placeholder?: string;
   }>(),
   {
-    label: '任务说明',
+    label: '活动说明',
     minHeight: 220,
-    placeholder: '填写任务目标、步骤与提交要求。',
+    placeholder: '填写活动目标、步骤与提交要求。',
   }
 );
 </script>

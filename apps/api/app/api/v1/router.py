@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     health,
     lesson_plans,
     peer_reviews,
+    portraits,
     profiles,
     quizzes,
     resources,
@@ -33,6 +34,7 @@ api_router.include_router(groups.router, prefix="/groups", tags=["groups"])
 api_router.include_router(tasks.router, prefix="/tasks", tags=["tasks"])
 api_router.include_router(submissions.router, prefix="/submissions", tags=["submissions"])
 api_router.include_router(peer_reviews.router, prefix="/peer-reviews", tags=["peer-reviews"])
+api_router.include_router(portraits.router, prefix="/portraits", tags=["portraits"])
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])
 api_router.include_router(quizzes.router, prefix="/quizzes", tags=["quizzes"])
 api_router.include_router(typing.router, prefix="/typing", tags=["typing"])

@@ -2,8 +2,8 @@
   <div class="ls-stack ls-stack--md">
     <div class="progress-head">
       <div>
-        <p class="ls-card__title">小组任务进度</p>
-        <p class="ls-card__sub">只看「小组共同提交」任务：哪些组还没开始、哪些已提交、哪些已评阅。</p>
+        <p class="ls-card__title">小组活动进度</p>
+        <p class="ls-card__sub">只看「小组共同提交」活动：哪些组还没开始、哪些已提交、哪些已评阅。</p>
       </div>
       <div class="ls-chip-row">
         <n-select
@@ -33,7 +33,7 @@
     <template v-else-if="payload">
       <div class="summary-bar">
         <div class="summary-item">
-          <span class="ls-label">小组任务</span>
+          <span class="ls-label">小组活动</span>
           <span class="ls-num">{{ payload.summary.task_count }}</span>
         </div>
         <div class="summary-item">
@@ -53,7 +53,7 @@
         </div>
       </div>
 
-      <n-empty v-if="!payload.tasks.length" description="当前学案还没有设置小组共同提交任务" />
+      <n-empty v-if="!payload.tasks.length" description="当前学案还没有设置小组共同提交活动" />
 
       <template v-else>
         <div class="progress-grid">
@@ -88,7 +88,7 @@
             <div>
               <p class="ls-card__title">{{ task.task_title }}</p>
               <p class="ls-card__sub">
-                {{ task.task_type === 'programming' ? '编程任务' : '上传任务' }} · 小组共同提交 · 已提交
+                {{ task.task_type === 'programming' ? '编程活动' : '上传活动' }} · 小组共同提交 · 已提交
                 {{ task.submitted_count }}/{{ payload.summary.group_count }} · 已评阅 {{ task.reviewed_count }}
               </p>
             </div>
@@ -225,7 +225,7 @@ async function loadProgress() {
     );
   } catch (error) {
     payload.value = null;
-    errorMessage.value = error instanceof Error ? error.message : '加载小组任务进度失败';
+    errorMessage.value = error instanceof Error ? error.message : '加载小组活动进度失败';
   } finally {
     loading.value = false;
   }

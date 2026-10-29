@@ -9,15 +9,15 @@
     <template v-if="sourceTask">
       <n-alert
         :closable="false"
-        title="模板会保留任务结构与源码，不会带出运行时资源"
+        title="模板会保留活动结构与源码，不会带出运行时资源"
         type="info"
       >
-        已上传的网页资源、数据提交接口地址和运行时令牌不会跟随模板保存；当前填写的 HTML 源码会保留，复用后可再次一键保存为任务页面。
+        已上传的网页资源、数据提交接口地址和运行时令牌不会跟随模板保存；当前填写的 HTML 源码会保留，复用后可再次一键保存为活动页面。
       </n-alert>
       <n-form class="task-template-form" label-placement="top">
-        <n-form-item label="来源任务">
+        <n-form-item label="来源活动">
           <div class="task-template-source">
-            <strong>{{ sourceTask.title || '未命名任务' }}</strong>
+            <strong>{{ sourceTask.title || '未命名活动' }}</strong>
             <div class="chip-row">
               <n-tag round type="info">{{ taskTypeLabel(sourceTask.task_type) }}</n-tag>
               <n-tag round :type="sourceTask.submission_scope === 'group' ? 'warning' : 'success'">
@@ -44,7 +44,7 @@
             placeholder="请选择要覆盖的自定义模板"
             :render-option="renderTemplateOption"
           />
-          <p class="section-note">覆盖后会更新模板内容、标题和说明，但不会影响已创建的学案任务。</p>
+          <p class="section-note">覆盖后会更新模板内容、标题和说明，但不会影响已创建的学案活动。</p>
         </n-form-item>
         <n-form-item label="模板分组">
           <n-select
@@ -54,7 +54,7 @@
             filterable
             tag
             :options="groupNameOptions"
-            placeholder="例如：讨论活动、数据任务、网页互动"
+            placeholder="例如：讨论活动、数据活动、网页互动"
           />
         </n-form-item>
         <n-form-item label="模板置顶">
@@ -191,7 +191,7 @@ const templateOptionMeta = computed(() => {
   for (const templateItem of props.customTemplates) {
     map.set(
       templateItem.id,
-      `${props.taskTypeLabel(templateItem.task_type)} · 预设任务名：${templateItem.task_title}`
+      `${props.taskTypeLabel(templateItem.task_type)} · 预设活动名：${templateItem.task_title}`
     );
   }
   return map;

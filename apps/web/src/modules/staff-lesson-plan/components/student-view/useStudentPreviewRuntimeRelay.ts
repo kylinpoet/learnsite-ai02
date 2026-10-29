@@ -24,11 +24,11 @@ type TaskRuntimeResponseMessage = {
 };
 
 type UseStudentPreviewRuntimeRelayOptions = {
-  /** 允许转发的任务 id 集合，避免预览页面访问到别的任务 */
+  /** 允许转发的活动 id 集合，避免预览页面访问到别的活动 */
   allowedTaskIds: Ref<number[]>;
   /** 教师令牌，转发时代入 Authorization */
   token: Ref<string | null | undefined>;
-  /** 学生端任务接口前缀，默认 /api/v1/tasks */
+  /** 学生端活动接口前缀，默认 /api/v1/tasks */
   apiBaseUrl?: string;
 };
 
@@ -81,7 +81,7 @@ async function encodeBody(response: Response) {
 }
 
 /**
- * 学生端网页/数据提交页面在 iframe 内会用 postMessage 把任务域请求交回父页面执行。
+ * 学生端网页/数据提交页面在 iframe 内会用 postMessage 把活动域请求交回父页面执行。
  * 教师预览需要扮演“父页面”，否则页面里的接口请求会一直挂起。
  * 这里只转发读取类请求，写操作一律拒绝，保证预览不会产生学生提交记录。
  */

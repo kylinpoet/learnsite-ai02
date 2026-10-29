@@ -32,6 +32,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     content_mode: 'visual' as 'visual' | 'source',
     assigned_date: new Date().toISOString().slice(0, 10),
     status: 'draft',
+    is_hidden: false,
     tasks: [] as PlanFormTask[],
   });
 
@@ -180,12 +181,13 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       description_mode: 'visual',
       config: createEmptyTaskConfig(),
       is_required: true,
+      is_active: true,
       linked_template_id: null,
     };
   }
 
   function duplicateTaskTitle(title: string) {
-    const normalized = title.trim() || '任务';
+    const normalized = title.trim() || '活动';
     const nextTitle = `${normalized}（副本）`;
     return nextTitle.slice(0, 120);
   }
@@ -214,6 +216,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content_mode: planForm.value.content_mode,
       assigned_date: planForm.value.assigned_date,
       status: planForm.value.status,
+      is_hidden: planForm.value.is_hidden,
       tasks: planForm.value.tasks.map((task) => clonePlanFormTask(task)),
       editor_active_tab: editorActiveTab.value,
       active_task_editor_key: activeTaskEditorKey.value,
@@ -316,6 +319,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
                   : 'visual',
               config: normalizeTaskConfigState(task.task_type, task.config),
               is_required: task.is_required !== false,
+              is_active: task.is_active !== false,
               linked_template_id: typeof task.linked_template_id === 'number' ? task.linked_template_id : null,
             };
             options.ensureDataSubmitTaskConfig(normalizedTask);
@@ -331,6 +335,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
         state.content_mode === 'source' || shouldUseSourceMode(state.content) ? 'source' : 'visual',
       assigned_date: state.assigned_date || new Date().toISOString().slice(0, 10),
       status: state.status || 'draft',
+      is_hidden: state.is_hidden === true,
       tasks: nextTasks,
     };
     editorActiveTab.value = state.editor_active_tab === 'tasks' ? 'tasks' : 'content';
@@ -365,6 +370,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
               description_mode: shouldUseSourceMode(task.description) ? 'source' : 'visual',
               config: normalizeTaskConfigState(task.task_type, task.config),
               is_required: task.is_required,
+              is_active: task.is_active !== false,
               linked_template_id: null,
             };
             options.ensureDataSubmitTaskConfig(nextTask);
@@ -379,6 +385,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content_mode: shouldUseSourceMode(plan.content) ? 'source' : 'visual',
       assigned_date: plan.assigned_date,
       status: plan.status,
+      is_hidden: plan.is_hidden === true,
       tasks,
     };
     editorActiveTab.value = 'content';
@@ -394,6 +401,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content_mode: 'visual',
       assigned_date: new Date().toISOString().slice(0, 10),
       status: 'draft',
+      is_hidden: false,
       tasks: [initialTask],
     };
     editorActiveTab.value = 'content';

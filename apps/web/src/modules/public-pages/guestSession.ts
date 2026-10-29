@@ -8,7 +8,7 @@ export type GuestTokenPayload = {
 };
 
 // 旁听页之间跳转时复用同一个令牌：班级码只在第一次换令牌，
-// 否则每翻一个任务都要重新 POST 一次 /auth/class/guest。
+// 否则每翻一个活动都要重新 POST 一次 /auth/class/guest。
 const tokenCache = new Map<string, GuestTokenPayload>();
 
 export async function ensureGuestToken(code: string): Promise<GuestTokenPayload> {

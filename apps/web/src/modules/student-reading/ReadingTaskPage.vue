@@ -1,7 +1,7 @@
 <template>
   <div class="sw-reading">
     <StudentPageHead
-      :title="taskDetail?.title || `阅读任务 ${route.params.taskId}`"
+      :title="taskDetail?.title || `阅读活动 ${route.params.taskId}`"
       :sub="headSub"
     >
       <template #back>
@@ -19,7 +19,7 @@
       <div class="sw-reading__main">
         <StudentPanel title="阅读内容">
           <div class="sw-reading__prose">
-            <RichTextContent :html="taskDetail.description" empty-text="这条阅读任务还没有正文。" />
+            <RichTextContent :html="taskDetail.description" empty-text="这条阅读活动还没有正文。" />
           </div>
         </StudentPanel>
 
@@ -75,7 +75,7 @@
             {{ isRead ? '已确认读完' : '标记为已读' }}
           </n-button>
           <p class="sw-reading__note">
-            确认只记录阅读时间，不会生成作品提交；后续任务仍需分别完成。
+            确认只记录阅读时间，不会生成作品提交；后续活动仍需分别完成。
           </p>
         </StudentPanel>
 
@@ -86,12 +86,12 @@
             secondary
             @click="openNavigationTask(taskDetail.task_navigation.next_task!)"
           >
-            进入下一任务
+            进入下一活动
           </n-button>
         </StudentPanel>
 
         <StudentPanel v-else title="下一项">
-          <p class="sw-reading__next-title">这是本课的最后一个任务。</p>
+          <p class="sw-reading__next-title">这是本课的最后一个活动。</p>
           <n-button block secondary @click="goToCourse">回到课程</n-button>
         </StudentPanel>
       </aside>
@@ -246,7 +246,7 @@ async function loadReadingTask() {
     }
     taskDetail.value = payload;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载阅读任务失败';
+    errorMessage.value = error instanceof Error ? error.message : '加载阅读活动失败';
   } finally {
     isLoading.value = false;
   }

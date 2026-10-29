@@ -76,7 +76,7 @@ def _next_id(db, model) -> int:
 
 
 def _create_live_class() -> dict:
-    """建一个班 + 3 名学生 + 2 任务学案 + 进行中会话 + 2 条签到 + 3 条提交。"""
+    """建一个班 + 3 名学生 + 2 活动学案 + 进行中会话 + 2 条签到 + 3 条提交。"""
     now = datetime.now().replace(microsecond=0)
     today = date.today()
     with SessionLocal() as db:
@@ -140,7 +140,7 @@ def _create_live_class() -> dict:
         first_task = Task(
             id=_next_id(db, Task),
             plan_id=plan.id,
-            title="任务一",
+            title="活动一",
             task_type="upload",
             submission_scope="individual",
             sort_order=1,
@@ -148,7 +148,7 @@ def _create_live_class() -> dict:
         second_task = Task(
             id=_next_id(db, Task) + 1,
             plan_id=plan.id,
-            title="任务二",
+            title="活动二",
             task_type="upload",
             submission_scope="individual",
             sort_order=2,

@@ -19,7 +19,7 @@
         <article class="auth-note-card student-note-card">
           <p class="auth-note-card__kicker">登录后可继续</p>
           <ul class="auth-feature-list">
-            <li>老师推送学案后，阅读、提交作品和编程任务会自动衔接到同一学习路径。</li>
+            <li>老师推送学案后，阅读、提交作品和编程活动会自动衔接到同一学习路径。</li>
             <li>登录成功即完成今日签到，座位按机房电脑自动识别。</li>
           </ul>
         </article>

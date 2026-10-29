@@ -122,7 +122,7 @@ const planMeta = computed(() => {
   const parts = [
     plan.book_name,
     plan.unit_title,
-    `${plan.task_count} 个任务`,
+    `${plan.task_count} 个活动`,
     plan.pending_count ? `待完成 ${plan.pending_count} 人` : null,
   ];
   return parts.filter((item): item is string => Boolean(item)).join(' · ');

@@ -1,13 +1,13 @@
 import type { TaskHtmlPromptTemplateOption, TaskTemplatePresetOption } from './lessonPlan.types';
 
 export const taskTemplatePresetOptions: TaskTemplatePresetOption[] = [
-  { id: 'rich_text', label: '图文任务', description: '适合布置说明、展示、总结类图文内容任务。' },
-  { id: 'discussion', label: '讨论任务', description: '用于课堂讨论、观点表达与同伴互动回复。' },
-  { id: 'web_page', label: '网页任务', description: '支持直接编写或上传 HTML 网页作为任务页面。' },
-  { id: 'data_submit', label: '数据提交任务', description: '自动生成提交接口，并支持提交页与可视化页。' },
-  { id: 'reading', label: '阅读任务', description: '适合导读、自学、预习与阅读理解类任务。' },
+  { id: 'rich_text', label: '图文活动', description: '适合布置说明、展示、总结类图文内容活动。' },
+  { id: 'discussion', label: '讨论活动', description: '用于课堂讨论、观点表达与同伴互动回复。' },
+  { id: 'web_page', label: '网页活动', description: '支持直接编写或上传 HTML 网页作为活动页面。' },
+  { id: 'data_submit', label: '数据提交活动', description: '自动生成提交接口，并支持提交页与可视化页。' },
+  { id: 'reading', label: '阅读活动', description: '适合导读、自学、预习与阅读理解类活动。' },
   { id: 'upload_image', label: '作品上传', description: '用于上传图片、文档或其他学习成果附件。' },
-  { id: 'programming', label: '编程任务', description: '适合 Python 等编程练习、实验与作品提交。' },
+  { id: 'programming', label: '编程活动', description: '适合 Python 等编程练习、实验与作品提交。' },
 ];
 
 export const taskHtmlPromptTemplateOptions: TaskHtmlPromptTemplateOption[] = [
@@ -16,7 +16,7 @@ export const taskHtmlPromptTemplateOptions: TaskHtmlPromptTemplateOption[] = [
     slot: 'web',
     label: '交互导览页',
     description: '生成带步骤说明、按钮交互和结果提示的学习网页。',
-    prompt: '页面包含标题、任务说明、操作步骤、互动按钮和简洁反馈，适合学生边看边做。',
+    prompt: '页面包含标题、活动说明、操作步骤、互动按钮和简洁反馈，适合学生边看边做。',
   },
   {
     id: 'web_lab_workspace',
@@ -29,7 +29,7 @@ export const taskHtmlPromptTemplateOptions: TaskHtmlPromptTemplateOption[] = [
     id: 'web_game_challenge',
     slot: 'web',
     label: '闯关挑战页',
-    description: '适合做游戏化练习、关卡挑战或即时反馈任务。',
+    description: '适合做游戏化练习、关卡挑战或即时反馈活动。',
     prompt: '页面带有闯关氛围、分步挑战和即时反馈，视觉更活泼但保持课堂可用性。',
   },
   {
@@ -50,7 +50,7 @@ export const taskHtmlPromptTemplateOptions: TaskHtmlPromptTemplateOption[] = [
     id: 'data_submit_form_survey',
     slot: 'data_submit_form',
     label: '问卷采集页',
-    description: '适合调查问卷、课堂反馈与信息采集任务。',
+    description: '适合调查问卷、课堂反馈与信息采集活动。',
     prompt: '页面更像课堂问卷，重视填写体验和提交反馈，字段排版紧凑清晰。',
   },
   {

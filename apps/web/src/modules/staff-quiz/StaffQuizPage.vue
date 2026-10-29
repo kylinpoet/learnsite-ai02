@@ -1,104 +1,142 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="建题库、维护题目、按班级发布测验。"
-      eyebrow="测验题库"
-      title="教师题库与课堂测验发布"
-    >
+    <StaffPageHead title="测验题库" :sub="pageSummary">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadBootstrap()">刷新数据</n-button>
-        <n-button secondary @click="resetForms">重置表单</n-button>
+        <n-button type="primary" @click="openQuizCreate">发布测验</n-button>
+        <n-button secondary @click="openBankCreate">新建题库</n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="12" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="10" animated /></div>
+    </div>
 
     <template v-else-if="bootstrap">
-      <div class="ls-row">
-        <article class="metric-tile">
-          <p class="metric-label">可管班级</p>
-          <p class="metric-value">{{ bootstrap.classes.length }}</p>
-          <p class="metric-note">当前账号可发布测验的班级数</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">题库数量</p>
-          <p class="metric-value">{{ bootstrap.banks.length }}</p>
-          <p class="metric-note">包含系统内置和教师自建题库</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">题目数量</p>
-          <p class="metric-value">{{ totalQuestionCount }}</p>
-          <p class="metric-note">当前可用于组卷的总题数</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已发布测验</p>
-          <p class="metric-value">{{ quizListMeta.overall_total }}</p>
-          <p class="metric-note">按当前账号可见班级统计</p>
-        </article>
-      </div>
+      <StaffStatStrip :items="statItems" />
 
-      <SaPanel>
-        <template #header>
-          <div class="section-head">
-            <div>
-              <h3>测验参与与平均分</h3>
-              <p class="section-note">柱为参与人数，折线为平均分（满分 100），便于横向对比已发布测验的掌握情况。</p>
+      <section class="sf-panel">
+        <div class="sf-tabs page-tabs">
+          <button
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': activeTab === 'quizzes' }]"
+            @click="activeTab = 'quizzes'"
+          >
+            已发布测验
+            <span class="sf-tabs__count">{{ quizListMeta.total }}</span>
+          </button>
+          <button
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': activeTab === 'banks' }]"
+            @click="activeTab = 'banks'"
+          >
+            题库与题目
+            <span class="sf-tabs__count">{{ bootstrap.banks.length }}</span>
+          </button>
+        </div>
+
+        <!-- 已发布测验：页面要回答的第一个问题 -->
+        <template v-if="activeTab === 'quizzes'">
+          <div class="sf-toolbar">
+            <n-input
+              v-model:value="quizFilterKeyword"
+              class="sf-toolbar__search"
+              clearable
+              placeholder="搜索测验标题 / 说明"
+            />
+            <n-select
+              v-model:value="quizFilterClassId"
+              :options="quizClassFilterOptions"
+              class="filter-select"
+              clearable
+              placeholder="班级"
+            />
+            <n-select
+              v-model:value="quizFilterStatus"
+              :options="quizStatusFilterOptions"
+              class="filter-select"
+              placeholder="状态"
+            />
+            <n-select
+              v-model:value="quizSortMode"
+              :options="quizSortOptions"
+              class="filter-select filter-select--wide"
+              placeholder="排序"
+            />
+            <div class="sf-toolbar__right">
+              <span class="sf-toolbar__count">{{ quizListMeta.total }} / {{ quizListMeta.overall_total }} 场</span>
             </div>
           </div>
+
+          <p v-if="!quizRows.length && !isQuizTableLoading" class="sf-empty">
+            {{
+              quizListMeta.overall_total
+                ? '当前筛选条件下没有测验。'
+                : '还没有发布过测验。到「题库与题目」勾选题目，再点右上角发布测验。'
+            }}
+          </p>
+
+          <div v-else>
+            <div class="sf-rows__head sf-cols-quizzes">
+              <span>测验</span>
+              <span>题数</span>
+              <span>参与</span>
+              <span>平均分</span>
+              <span>操作</span>
+            </div>
+            <div class="sf-rows">
+            <article v-for="quiz in quizRows" :key="quiz.id" class="sf-row sf-row--cols sf-cols-quizzes">
+              <div class="sf-row__main">
+                <p class="sf-row__title">
+                  <span class="sf-row__title-text">{{ quiz.title }}</span>
+                  <span :class="['sf-pill', quizStatusPillClass(quiz.status)]">{{ quizStatusLabel(quiz.status) }}</span>
+                </p>
+                <p class="sf-row__meta">
+                  <span>{{ quiz.class_name }}</span>
+                  <span>{{ formatDateTime(quiz.updated_at) }}</span>
+                  <span v-if="quiz.description">{{ quiz.description }}</span>
+                </p>
+              </div>
+
+              <span class="sf-row__num" data-label="题数">{{ quiz.question_count }}</span>
+              <span class="sf-row__num" data-label="参与">{{ quiz.attempt_count }}</span>
+              <span class="sf-row__num" data-label="平均分">{{ quiz.average_score ?? '--' }}</span>
+
+              <div class="sf-row__action">
+                <n-dropdown
+                  :options="quizRowActions(quiz)"
+                  placement="bottom-end"
+                  trigger="click"
+                  @select="(key: string) => handleQuizRowAction(key, quiz)"
+                >
+                  <n-button quaternary circle size="small" aria-label="更多操作">···</n-button>
+                </n-dropdown>
+              </div>
+            </article>
+            </div>
+          </div>
+
+          <div v-if="quizPaginationTotal > 0" class="quiz-pagination">
+            <n-pagination
+              v-model:page="quizPage"
+              v-model:page-size="quizPageSize"
+              :item-count="quizPaginationTotal"
+              :page-sizes="quizPageSizeOptionsList"
+              :show-quick-jumper="!isNarrow"
+              :show-size-picker="!isNarrow"
+            >
+              <template #prefix="{ itemCount }">共 {{ itemCount }} 条</template>
+            </n-pagination>
+          </div>
         </template>
-        <n-empty v-if="!quizRows.length" description="当前还没有已发布测验可以统计。" />
-        <AppChart v-else :height="300" :option="quizPerformanceOption" />
-      </SaPanel>
 
-      <div class="content-grid grid-8-16">
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>新建题库</h3>
-                <p class="section-note">先建立一个题库，再向其中添加题目。</p>
-              </div>
-            </div>
-          </template>
-
-          <n-form label-placement="top">
-            <n-form-item label="题库名称">
-              <n-input v-model:value="bankForm.title" :maxlength="120" placeholder="例如：七年级人工智能基础题库" />
-            </n-form-item>
-            <n-form-item label="题库说明">
-              <n-input
-                v-model:value="bankForm.description"
-                :maxlength="1000"
-                :rows="4"
-                placeholder="说明这套题库服务的单元、课次或课堂主题"
-                type="textarea"
-              />
-            </n-form-item>
-            <n-button :loading="creatingBank" type="primary" @click="submitBank">
-              保存题库
-            </n-button>
-          </n-form>
-        </SaPanel>
-
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>题库列表</h3>
-                <p class="section-note">用于后续出题和组卷，点击后可直接作为默认题库。</p>
-              </div>
-              <n-tag round type="info">共 {{ filteredBanks.length }} / {{ bootstrap.banks.length }} 个题库</n-tag>
-            </div>
-          </template>
-
-          <div class="filter-row">
+        <!-- 题库与题目：维护题目，并在这里勾选下一场测验要用到的题 -->
+        <template v-else>
+          <div class="sf-toolbar">
             <n-input
               v-model:value="bankFilterKeyword"
+              class="sf-toolbar__search"
               clearable
               placeholder="搜索题库名 / 说明 / 创建人"
             />
@@ -108,392 +146,113 @@
               class="filter-select"
               placeholder="题库类型"
             />
+            <div class="sf-toolbar__right">
+              <span>已选 {{ selectedQuestionIds.length }} 题</span>
+              <n-button
+                :disabled="!selectedQuestionIds.length"
+                size="small"
+                type="primary"
+                @click="openQuizCreate"
+              >
+                用这些题发布
+              </n-button>
+            </div>
           </div>
 
-          <n-empty
-            v-if="!filteredBanks.length"
-            :description="bootstrap.banks.length ? '当前筛选条件下没有题库' : '当前还没有题库'"
-          />
+          <p v-if="!bootstrap.banks.length" class="sf-empty">
+            还没有题库。先新建一个题库，再往里添加题目。
+          </p>
 
-          <div v-else class="bank-list">
-            <article
-              v-for="bank in filteredBanks"
-              :key="bank.id"
-              class="bank-card"
-              :class="{ 'bank-card-active': activeBankId === bank.id }"
-              @click="selectBank(bank.id)"
-            >
-              <div class="bank-card__top">
-                <div>
-                  <h4>{{ bank.title }}</h4>
-                  <p class="bank-card__meta">
-                    {{ bank.owner_name }} · {{ bank.scope_type === 'system' ? '系统题库' : '教师题库' }}
+          <template v-else>
+            <div class="sf-tabs bank-tabs">
+              <button
+                v-for="bank in filteredBanks"
+                :key="bank.id"
+                type="button"
+                :class="['sf-tabs__item', { 'is-active': activeBankId === bank.id }]"
+                @click="selectBank(bank.id)"
+              >
+                {{ bank.title }}
+                <span class="sf-tabs__count">{{ bank.question_count }}</span>
+              </button>
+            </div>
+
+            <p v-if="!filteredBanks.length" class="sf-empty">当前筛选条件下没有题库。</p>
+
+            <template v-else-if="activeBank">
+              <header class="sf-panel__head bank-head">
+                <div class="bank-head__main">
+                  <h2 class="sf-panel__title">
+                    题目
+                    <span class="sf-panel__count">{{ activeBankQuestions.length }} 道</span>
+                  </h2>
+                  <p class="bank-head__meta">
+                    {{ activeBank.owner_name }} · {{ activeBank.scope_type === 'system' ? '系统题库' : '教师题库' }}
+                    <template v-if="activeBank.description"> · {{ activeBank.description }}</template>
                   </p>
                 </div>
-                <div class="bank-card__actions">
-                  <n-tag round>{{ bank.question_count }} 题</n-tag>
-                  <n-space v-if="bank.scope_type === 'staff'" size="small">
+                <div class="sf-panel__actions">
+                  <template v-if="activeBank.scope_type === 'staff'">
+                    <n-button text type="primary" @click="openBankEditor(activeBank)">编辑题库</n-button>
                     <n-button
-                      :disabled="deletingBankId === bank.id"
-                      text
-                      type="primary"
-                      @click.stop="openBankEditor(bank)"
-                    >
-                      编辑
-                    </n-button>
-                    <n-button
-                      :loading="deletingBankId === bank.id"
+                      :loading="deletingBankId === activeBank.id"
                       text
                       type="error"
-                      @click.stop="deleteBank(bank)"
+                      @click="deleteBank(activeBank)"
                     >
-                      删除
+                      删除题库
                     </n-button>
-                  </n-space>
+                  </template>
+                  <n-button size="small" type="primary" @click="openQuestionCreate">添加题目</n-button>
                 </div>
-              </div>
-              <p class="bank-card__desc">{{ bank.description || '暂无题库说明。' }}</p>
-            </article>
-          </div>
-        </SaPanel>
-      </div>
+              </header>
 
-      <div class="content-grid grid-8-16">
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>添加题目</h3>
-                <p class="section-note">当前仅支持单选题，必须有且仅有一个正确答案。</p>
-              </div>
-              <n-tag round type="success">{{ activeBank?.title || '请先选题库' }}</n-tag>
-            </div>
-          </template>
+              <p v-if="!activeBankQuestions.length" class="sf-empty">
+                这个题库还没有题目。点「添加题目」录入第一道单选题。
+              </p>
 
-          <n-form label-placement="top">
-            <n-form-item label="所属题库">
-              <n-select
-                v-model:value="questionForm.bank_id"
-                :options="bankSelectOptions"
-                class="full-width"
-                filterable
-                placeholder="请选择题库"
-              />
-            </n-form-item>
-
-            <n-form-item label="题目内容">
-              <n-input
-                v-model:value="questionForm.content"
-                :maxlength="4000"
-                :rows="4"
-                placeholder="输入题干，例如：人工智能应用设计时首先要明确什么？"
-                type="textarea"
-              />
-            </n-form-item>
-
-            <div class="form-inline-grid">
-              <n-form-item label="难度">
-                <n-select v-model:value="questionForm.difficulty" :options="difficultyOptions" class="full-width" />
-              </n-form-item>
-              <n-form-item label="正确答案">
-                <n-radio-group v-model:value="questionForm.correct_key">
-                  <n-radio-button
-                    v-for="item in questionForm.options"
-                    :key="item.option_key"
-                    :label="item.option_key"
-                    :value="item.option_key"
-                  />
-                </n-radio-group>
-              </n-form-item>
-            </div>
-
-            <div class="option-editor">
-              <div class="section-head">
-                <strong>选项编辑</strong>
-                <n-button
-                  :disabled="questionForm.options.length >= 8"
-                  text
-                  type="primary"
-                  @click="appendOption"
+              <div v-else class="sf-rows">
+                <label
+                  v-for="question in activeBankQuestions"
+                  :key="question.id"
+                  :class="['sf-row', 'question-row', { 'is-selected': selectedQuestionIds.includes(question.id) }]"
                 >
-                  添加选项
-                </n-button>
-              </div>
-
-              <div class="option-editor__list">
-                <div
-                  v-for="(item, index) in questionForm.options"
-                  :key="item.option_key"
-                  class="option-editor__row"
-                >
-                  <n-input v-model:value="item.option_key" class="option-key" disabled />
-                  <n-input
-                    v-model:value="item.option_text"
-                    :maxlength="500"
-                    placeholder="请输入选项内容"
+                  <n-checkbox
+                    :checked="selectedQuestionIds.includes(question.id)"
+                    @update:checked="toggleQuestionSelection(question.id)"
                   />
-                  <n-button
-                    :disabled="questionForm.options.length <= 2"
-                    text
-                    type="error"
-                    @click="removeOption(index)"
-                  >
-                    删除
-                  </n-button>
-                </div>
-              </div>
-            </div>
-
-            <n-form-item label="解析">
-              <n-input
-                v-model:value="questionForm.explanation"
-                :maxlength="2000"
-                :rows="3"
-                placeholder="可选，学生提交后用于展示解析"
-                type="textarea"
-              />
-            </n-form-item>
-
-            <n-button :loading="creatingQuestion" type="primary" @click="submitQuestion">
-              保存题目
-            </n-button>
-          </n-form>
-        </SaPanel>
-
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>当前题库题目</h3>
-                <p class="section-note">可直接勾选题目用于发布测验。</p>
-              </div>
-              <n-tag round type="warning">{{ activeBankQuestions.length }} 题</n-tag>
-            </div>
-          </template>
-
-          <n-empty v-if="!activeBankQuestions.length" description="当前题库还没有题目" />
-
-          <div v-else class="question-bank-list">
-            <label
-              v-for="question in activeBankQuestions"
-              :key="question.id"
-              class="question-bank-item"
-            >
-              <n-checkbox
-                :checked="selectedQuestionIds.includes(question.id)"
-                @update:checked="toggleQuestionSelection(question.id)"
-              />
-              <div class="question-bank-item__body">
-                <div class="question-bank-item__head">
-                  <div class="chip-row">
-                    <n-tag round>{{ question.difficulty }}</n-tag>
-                    <n-tag round type="info">ID {{ question.id }}</n-tag>
+                  <div class="sf-row__main">
+                    <p class="sf-row__title">
+                      <span class="sf-row__title-text">{{ question.content }}</span>
+                      <span class="sf-pill">{{ question.difficulty }}</span>
+                      <span class="sf-pill sf-pill--pos">答案 {{ correctOptionKey(question) }}</span>
+                    </p>
+                    <p class="question-row__options">
+                      <span
+                        v-for="option in question.options"
+                        :key="option.id"
+                        :class="['question-row__option', { 'is-correct': option.is_correct }]"
+                      >
+                        {{ option.key }}. {{ option.text }}
+                      </span>
+                    </p>
                   </div>
-                  <n-space v-if="activeBankCanEdit" size="small">
-                    <n-button
-                      :disabled="deletingQuestionId === question.id"
-                      text
-                      type="primary"
-                      @click.stop="openQuestionEditor(question)"
+                  <div v-if="activeBankCanEdit" class="sf-row__action" @click.stop>
+                    <n-dropdown
+                      :options="questionRowActions(question)"
+                      placement="bottom-end"
+                      trigger="click"
+                      @select="(key: string) => handleQuestionRowAction(key, question)"
                     >
-                      编辑
-                    </n-button>
-                    <n-button
-                      :loading="deletingQuestionId === question.id"
-                      text
-                      type="error"
-                      @click.stop="deleteQuestion(question.id)"
-                    >
-                      删除
-                    </n-button>
-                  </n-space>
-                </div>
-                <p class="question-bank-item__content">{{ question.content }}</p>
-                <p class="section-note">
-                  {{
-                    question.options
-                      .map((option) => `${option.key}. ${option.text}${option.is_correct ? '（正确）' : ''}`)
-                      .join('  ')
-                  }}
-                </p>
+                      <n-button quaternary circle size="small" aria-label="题目操作">···</n-button>
+                    </n-dropdown>
+                  </div>
+                </label>
               </div>
-            </label>
-          </div>
-        </SaPanel>
-      </div>
-
-      <div class="content-grid grid-8-16">
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>发布课堂测验</h3>
-                <p class="section-note">从左侧题库勾题后，选择班级即可立即发布。</p>
-              </div>
-            </div>
+            </template>
           </template>
-
-          <n-form label-placement="top">
-            <n-form-item label="测验标题">
-              <n-input v-model:value="quizForm.title" :maxlength="120" placeholder="例如：809 班课堂测验：网络与搜索" />
-            </n-form-item>
-            <n-form-item label="测验说明">
-              <n-input
-                v-model:value="quizForm.description"
-                :maxlength="1000"
-                :rows="4"
-                placeholder="说明本次测验主题、范围和使用场景"
-                type="textarea"
-              />
-            </n-form-item>
-            <n-form-item label="发布班级">
-              <n-select
-                v-model:value="quizForm.class_id"
-                :options="classSelectOptions"
-                class="full-width"
-                filterable
-                placeholder="请选择班级"
-              />
-            </n-form-item>
-            <n-form-item label="已选题目">
-              <div class="selected-question-box">
-                <p class="selected-question-box__summary">
-                  当前已选 {{ selectedQuestionIds.length }} 题
-                </p>
-                <div v-if="selectedQuestionIds.length" class="chip-row">
-                  <n-tag
-                    v-for="questionId in selectedQuestionIds"
-                    :key="questionId"
-                    closable
-                    round
-                    @close="removeSelectedQuestion(questionId)"
-                  >
-                    题目 {{ questionId }}
-                  </n-tag>
-                </div>
-                <p v-else class="section-note">请先在上方题库列表勾选题目。</p>
-              </div>
-            </n-form-item>
-
-            <n-button :loading="creatingQuiz" type="primary" @click="submitQuiz">
-              发布测验
-            </n-button>
-          </n-form>
-        </SaPanel>
-
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>已发布测验</h3>
-                <p class="section-note">展示当前账号可见班级的测验发布情况与参与概览。</p>
-              </div>
-              <n-tag round type="info">共 {{ quizListMeta.total }} / {{ quizListMeta.overall_total }} 条</n-tag>
-            </div>
-          </template>
-
-          <div class="filter-row filter-row--quiz">
-            <n-input
-              v-model:value="quizFilterKeyword"
-              clearable
-              placeholder="搜索测验标题 / 说明"
-            />
-            <n-select
-              v-model:value="quizFilterClassId"
-              :options="quizClassFilterOptions"
-              class="filter-select"
-              clearable
-              placeholder="按班级筛选"
-            />
-            <n-select
-              v-model:value="quizFilterStatus"
-              :options="quizStatusFilterOptions"
-              class="filter-select"
-              placeholder="状态筛选"
-            />
-            <n-select
-              v-model:value="quizSortMode"
-              :options="quizSortOptions"
-              class="filter-select"
-              placeholder="排序方式"
-            />
-          </div>
-
-          <n-spin v-if="!quizRows.length" :show="isQuizTableLoading">
-            <n-empty
-              :description="quizListMeta.overall_total ? '当前筛选条件下没有测验' : '当前还没有发布测验'"
-            />
-          </n-spin>
-
-          <SaDataTable v-else :data="quizRows" :loading="isQuizTableLoading" row-key="id" stripe>
-            <SaTableColumn label="测验标题" min-width="220" prop="title" />
-            <SaTableColumn label="班级" min-width="100" prop="class_name" />
-            <SaTableColumn label="状态" min-width="100">
-              <template #default="{ row }">
-                <n-tag :type="quizStatusTagType(row.status)" round>
-                  {{ quizStatusLabel(row.status) }}
-                </n-tag>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="题数" min-width="80" prop="question_count" />
-            <SaTableColumn label="参与人数" min-width="100" prop="attempt_count" />
-            <SaTableColumn label="平均分" min-width="100">
-              <template #default="{ row }">
-                {{ row.average_score ?? '--' }}
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="更新时间" min-width="180">
-              <template #default="{ row }">
-                {{ formatDateTime(row.updated_at) }}
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="操作" min-width="220">
-              <template #default="{ row }">
-                <n-space size="small">
-                  <n-button
-                    :disabled="updatingQuizStatusId === row.id || deletingQuizId === row.id"
-                    text
-                    type="primary"
-                    @click="openQuizEditor(row)"
-                  >
-                    编辑
-                  </n-button>
-                  <n-button
-                    :disabled="deletingQuizId === row.id"
-                    :loading="updatingQuizStatusId === row.id"
-                    text
-                    type="primary"
-                    @click="toggleQuizStatus(row)"
-                  >
-                    {{ row.status === 'active' ? '停用' : '启用' }}
-                  </n-button>
-                  <n-button
-                    :loading="deletingQuizId === row.id"
-                    text
-                    type="error"
-                    @click="deleteQuiz(row)"
-                  >
-                    删除
-                  </n-button>
-                </n-space>
-              </template>
-            </SaTableColumn>
-          </SaDataTable>
-
-          <div v-if="quizPaginationTotal > 0" class="quiz-pagination">
-            <n-pagination
-              v-model:page="quizPage"
-              v-model:page-size="quizPageSize"
-              :item-count="quizPaginationTotal"
-              :page-sizes="quizPageSizeOptionsList"
-              show-quick-jumper
-              show-size-picker
-            >
-              <template #prefix="{ itemCount }">共 {{ itemCount }} 条</template>
-            </n-pagination>
-          </div>
-        </SaPanel>
-      </div>
+        </template>
+      </section>
     </template>
 
     <n-modal
@@ -692,6 +451,158 @@
         </n-space>
       </template>
     </n-modal>
+
+    <n-drawer v-model:show="bankCreateVisible" :width="drawerWidth" placement="right">
+      <n-drawer-content closable title="新建题库">
+        <n-form label-placement="top">
+          <n-form-item label="题库名称">
+            <n-input v-model:value="bankForm.title" :maxlength="120" placeholder="例如：七年级人工智能基础题库" />
+          </n-form-item>
+          <n-form-item label="题库说明">
+            <n-input
+              v-model:value="bankForm.description"
+              :maxlength="1000"
+              :rows="4"
+              placeholder="说明这套题库服务的单元、课次或课堂主题"
+              type="textarea"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="closeBankCreate">取消</n-button>
+            <n-button :loading="creatingBank" type="primary" @click="submitBank">保存题库</n-button>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-drawer v-model:show="questionCreateVisible" :width="drawerWidthWide" placement="right">
+      <n-drawer-content closable title="添加题目">
+        <n-form label-placement="top">
+          <n-form-item label="所属题库">
+            <n-select
+              v-model:value="questionForm.bank_id"
+              :options="bankSelectOptions"
+              class="full-width"
+              filterable
+              placeholder="请选择题库"
+            />
+          </n-form-item>
+
+          <n-form-item label="题目内容">
+            <n-input
+              v-model:value="questionForm.content"
+              :maxlength="4000"
+              :rows="4"
+              placeholder="输入题干，例如：人工智能应用设计时首先要明确什么？"
+              type="textarea"
+            />
+          </n-form-item>
+
+          <div class="form-inline-grid">
+            <n-form-item label="难度">
+              <n-select v-model:value="questionForm.difficulty" :options="difficultyOptions" class="full-width" />
+            </n-form-item>
+            <n-form-item label="正确答案">
+              <n-radio-group v-model:value="questionForm.correct_key">
+                <n-radio-button
+                  v-for="item in questionForm.options"
+                  :key="item.option_key"
+                  :label="item.option_key"
+                  :value="item.option_key"
+                />
+              </n-radio-group>
+            </n-form-item>
+          </div>
+
+          <div class="option-editor">
+            <div class="option-editor__head">
+              <strong>选项</strong>
+              <n-button :disabled="questionForm.options.length >= 8" text type="primary" @click="appendOption">
+                添加选项
+              </n-button>
+            </div>
+            <div class="option-editor__list">
+              <div v-for="(item, index) in questionForm.options" :key="item.option_key" class="option-editor__row">
+                <n-input v-model:value="item.option_key" class="option-key" disabled />
+                <n-input v-model:value="item.option_text" :maxlength="500" placeholder="选项内容" />
+                <n-button
+                  :disabled="questionForm.options.length <= 2"
+                  text
+                  type="error"
+                  @click="removeOption(index)"
+                >
+                  删除
+                </n-button>
+              </div>
+            </div>
+          </div>
+
+          <n-form-item label="解析">
+            <n-input
+              v-model:value="questionForm.explanation"
+              :maxlength="2000"
+              :rows="3"
+              placeholder="可选，学生提交后用于展示解析"
+              type="textarea"
+            />
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="closeQuestionCreate">取消</n-button>
+            <n-button :loading="creatingQuestion" type="primary" @click="submitQuestion">保存题目</n-button>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-drawer v-model:show="quizCreateVisible" :width="drawerWidthWide" placement="right">
+      <n-drawer-content closable title="发布课堂测验">
+        <n-form label-placement="top">
+          <n-form-item label="测验标题">
+            <n-input v-model:value="quizForm.title" :maxlength="120" placeholder="例如：809 班课堂测验：网络与搜索" />
+          </n-form-item>
+          <n-form-item label="测验说明">
+            <n-input
+              v-model:value="quizForm.description"
+              :maxlength="1000"
+              :rows="3"
+              placeholder="说明本次测验主题、范围和使用场景"
+              type="textarea"
+            />
+          </n-form-item>
+          <n-form-item label="发布班级">
+            <n-select
+              v-model:value="quizForm.class_id"
+              :options="classSelectOptions"
+              class="full-width"
+              filterable
+              placeholder="请选择班级"
+            />
+          </n-form-item>
+          <n-form-item label="题目">
+            <n-select
+              v-model:value="selectedQuestionIds"
+              :max-tag-count="2"
+              :options="quizQuestionOptions"
+              class="full-width"
+              filterable
+              multiple
+              placeholder="从题库里选择题目"
+            />
+            <p class="drawer-note">当前已选 {{ selectedQuestionIds.length }} 题；题目可在「题库与题目」页签里勾选。</p>
+          </n-form-item>
+        </n-form>
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="closeQuizCreate">取消</n-button>
+            <n-button :loading="creatingQuiz" type="primary" @click="submitQuiz">发布测验</n-button>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
@@ -700,6 +611,9 @@ import {
   NAlert,
   NButton,
   NCheckbox,
+  NDrawer,
+  NDrawerContent,
+  NDropdown,
   NEmpty,
   NForm,
   NFormItem,
@@ -711,22 +625,15 @@ import {
   NSelect,
   NSkeleton,
   NSpace,
-  NSpin,
-  NTag,
 } from 'naive-ui';
-import { computed, defineAsyncComponent, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
 import { createDebouncedAbortableRequestRunner } from '@/utils/debouncedAbortableRequest';
-
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type QuizSortMode = 'updated_desc' | 'updated_asc' | 'attempt_desc' | 'attempt_asc';
 type QuizStatusFilter = '' | 'active' | 'inactive';
@@ -902,7 +809,6 @@ function saveQuizListPreferences(payload: QuizListPreferences) {
 }
 
 const authStore = useAuthStore();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const initialQuizListPreferences = loadQuizListPreferences();
 
 const isLoading = ref(true);
@@ -1059,41 +965,129 @@ const quizClassFilterOptions = computed(() =>
 const quizListMeta = computed<QuizListMeta>(() => bootstrap.value?.quiz_list || defaultQuizListMeta);
 const quizPaginationTotal = computed(() => quizListMeta.value.total);
 
-const quizPerformanceOption = computed(() => {
-  const quizzes = (bootstrap.value?.quizzes || []).slice(0, 12);
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 42 }),
-    xAxis: axisX(quizzes.map((item) => item.title), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 76, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: [
-      axisY({ name: '参与人数', nameTextStyle: { color: tokens.value.muted } }),
-      axisY({ name: '平均分', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
-    ],
-    series: [
-      {
-        name: '参与人数',
-        type: 'bar',
-        barMaxWidth: 30,
-        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
-        data: quizzes.map((item) => item.attempt_count),
-      },
-      {
-        name: '平均分',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        symbolSize: 7,
-        connectNulls: true,
-        lineStyle: { color: palette.value[1] },
-        itemStyle: { color: palette.value[1] },
-        data: quizzes.map((item) => (item.average_score === null ? null : Number(item.average_score.toFixed(1)))),
-      },
-    ],
-  });
+const totalQuizCount = computed(() => quizListMeta.value.overall_total);
+const activeQuizCount = computed(
+  () => (bootstrap.value?.quizzes || []).filter((quiz) => quiz.status === 'active').length
+);
+
+/** 标题下一行只写结论：数字在统计带里，这里不重复 */
+const pageSummary = computed(() => {
+  if (!bootstrap.value) {
+    return '';
+  }
+  if (!totalQuestionCount.value) {
+    return '题库还是空的。先新建题库并录入题目，才能组卷发布。';
+  }
+  if (!totalQuizCount.value) {
+    return `题库里有 ${totalQuestionCount.value} 道题，还没有发布过测验。`;
+  }
+  const quizzes = bootstrap.value.quizzes || [];
+  const attempted = quizzes.filter((quiz) => quiz.attempt_count > 0).length;
+  if (!attempted) {
+    return `${totalQuizCount.value} 场测验已发布，还没有学生作答。`;
+  }
+  return `${attempted} / ${totalQuizCount.value} 场测验已有学生作答。`;
 });
+
+const statItems = computed<StaffStatItem[]>(() => [
+  { label: '可管班级', value: bootstrap.value?.classes.length ?? 0, unit: '个' },
+  { label: '题库', value: bootstrap.value?.banks.length ?? 0, unit: '个' },
+  { label: '题目', value: totalQuestionCount.value, unit: '道' },
+  {
+    label: '已发布测验',
+    value: totalQuizCount.value,
+    unit: '场',
+    note: activeQuizCount.value ? `${activeQuizCount.value} 场进行中` : undefined,
+  },
+]);
+
+const activeTab = ref<'quizzes' | 'banks'>('quizzes');
+/** 窄屏把分页的跳页与每页条数收起来，避免换行 */
+const isNarrow = ref(typeof window !== 'undefined' ? window.innerWidth < 640 : false);
+const syncIsNarrow = () => {
+  isNarrow.value = window.innerWidth < 640;
+};
+const bankCreateVisible = ref(false);
+const questionCreateVisible = ref(false);
+const quizCreateVisible = ref(false);
+const drawerWidth = 460;
+const drawerWidthWide = 'min(720px, 94vw)';
+
+function openBankCreate() {
+  bankForm.title = '';
+  bankForm.description = '';
+  bankCreateVisible.value = true;
+}
+
+function closeBankCreate() {
+  bankCreateVisible.value = false;
+}
+
+function openQuestionCreate() {
+  resetQuestionForm();
+  questionCreateVisible.value = true;
+}
+
+function closeQuestionCreate() {
+  questionCreateVisible.value = false;
+  resetQuestionForm();
+}
+
+function openQuizCreate() {
+  quizCreateVisible.value = true;
+}
+
+function closeQuizCreate() {
+  quizCreateVisible.value = false;
+}
+
+/** 状态药丸：进行中为正、停用为中性 */
+function quizStatusPillClass(status: string) {
+  return status === 'active' ? 'sf-pill--pos' : '';
+}
+
+function quizRowActions(quiz: StaffQuizRecord) {
+  return [
+    { label: '编辑', key: 'edit' },
+    { label: quiz.status === 'active' ? '停用' : '启用', key: 'toggle' },
+    { label: '删除', key: 'delete' },
+  ];
+}
+
+function handleQuizRowAction(key: string, quiz: StaffQuizRecord) {
+  if (key === 'edit') {
+    openQuizEditor(quiz);
+    return;
+  }
+  if (key === 'toggle') {
+    void toggleQuizStatus(quiz);
+    return;
+  }
+  if (key === 'delete') {
+    void deleteQuiz(quiz);
+  }
+}
+
+function correctOptionKey(question: StaffBankQuestion) {
+  return question.options.find((option) => option.is_correct)?.key || '--';
+}
+
+function questionRowActions(_question: StaffBankQuestion) {
+  return [
+    { label: '编辑', key: 'edit' },
+    { label: '删除', key: 'delete' },
+  ];
+}
+
+function handleQuestionRowAction(key: string, question: StaffBankQuestion) {
+  if (key === 'edit') {
+    openQuestionEditor(question);
+    return;
+  }
+  if (key === 'delete') {
+    void deleteQuestion(question.id);
+  }
+}
 
 watch(
   [quizFilterKeyword, quizFilterClassId, quizFilterStatus, quizSortMode, quizPage, quizPageSize],
@@ -1197,16 +1191,6 @@ function quizStatusLabel(status: string) {
   return status;
 }
 
-function quizStatusTagType(status: string) {
-  if (status === 'active') {
-    return 'success';
-  }
-  if (status === 'inactive') {
-    return 'info';
-  }
-  return 'warning';
-}
-
 function selectBank(bankId: number) {
   activeBankId.value = bankId;
   questionForm.bank_id = bankId;
@@ -1242,19 +1226,6 @@ function resetQuizEditorForm() {
   quizEditorForm.description = '';
   quizEditorForm.class_id = null;
   quizEditorForm.question_ids = [];
-}
-
-function resetForms() {
-  bankForm.title = '';
-  bankForm.description = '';
-  closeBankEditor();
-  resetQuestionForm();
-  closeQuestionEditor();
-  closeQuizEditor();
-  quizForm.title = '';
-  quizForm.description = '';
-  quizForm.class_id = null;
-  selectedQuestionIds.value = [];
 }
 
 function openBankEditor(bank: StaffBankRecord) {
@@ -1449,6 +1420,7 @@ async function submitBank() {
     await loadBootstrap({ withLoading: false });
     bankForm.title = '';
     bankForm.description = '';
+    closeBankCreate();
     ElMessage.success('题库已创建');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '创建题库失败');
@@ -1570,6 +1542,7 @@ async function submitQuestion() {
       activeBankId.value = questionForm.bank_id;
     }
     resetQuestionForm();
+    closeQuestionCreate();
     ElMessage.success('题目已保存');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '保存题目失败');
@@ -1697,6 +1670,8 @@ async function submitQuiz() {
     quizForm.description = '';
     quizForm.class_id = null;
     selectedQuestionIds.value = [];
+    closeQuizCreate();
+    activeTab.value = 'quizzes';
     ElMessage.success('测验已发布');
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '发布测验失败');
@@ -1824,121 +1799,119 @@ async function toggleQuizStatus(quiz: StaffBootstrapPayload['quizzes'][number]) 
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', syncIsNarrow);
   await loadBootstrap();
   resetQuestionForm();
   quizQueryWatcherReady.value = true;
 });
 
 onUnmounted(() => {
+  window.removeEventListener('resize', syncIsNarrow);
   bootstrapRequestRunner.cancel();
 });
 </script>
 
 <style scoped>
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
+.page-stack {
+  width: min(1680px, 100%);
+  margin: 0 auto;
 }
 
-.content-grid {
-  display: grid;
-  gap: 16px;
-  align-items: start;
+/* 页面页签与题库页签：都与面板同宽 */
+.page-tabs {
+  padding: 0 16px;
 }
 
-.grid-8-16 {
-  grid-template-columns: minmax(0, 8fr) minmax(0, 16fr);
-}
-
-.grid-half {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-}
-
-.grid-11-13 {
-  grid-template-columns: minmax(0, 11fr) minmax(0, 13fr);
-}
-
-.full-width {
-  width: 100%;
-}
-
-.section-head h3 {
-  margin: 0 0 4px;
-}
-
-.filter-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 180px 160px;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.filter-row--quiz {
-  grid-template-columns: minmax(0, 1.4fr) 150px 140px 190px;
+.bank-tabs {
+  padding: 0 16px;
+  background: var(--sf-surface-2);
 }
 
 .filter-select {
-  width: 100%;
+  width: 132px;
+  flex: none;
+}
+
+.filter-select--wide {
+  width: 176px;
 }
 
 .quiz-pagination {
-  margin-top: 14px;
   display: flex;
   justify-content: flex-end;
+  padding: 12px 16px;
+  border-top: 1px solid var(--sf-line-soft);
 }
 
-.bank-list,
-.question-bank-list {
-  display: grid;
-  gap: 12px;
+@media (max-width: 640px) {
+  .quiz-pagination {
+    justify-content: center;
+    padding: 10px 8px;
+  }
+
+  .quiz-pagination :deep(.n-pagination) {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
 
-.bank-card {
-  padding: 16px;
-  border-radius: 18px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-card);
-  cursor: pointer;
-  transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
-}
-
-.bank-card:hover,
-.bank-card-active {
-  transform: translateY(-1px);
-  border-color: rgba(74, 135, 255, 0.45);
-  box-shadow: 0 14px 24px rgba(69, 108, 171, 0.12);
-}
-
-.bank-card__top {
-  display: flex;
+/* 题库抬头：题库名 + 归属 + 已选提示 */
+.bank-head {
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.bank-card__actions {
-  display: grid;
-  justify-items: end;
-  gap: 6px;
+.bank-head__main {
+  min-width: 0;
 }
 
-.bank-card__top h4 {
-  margin: 0 0 6px;
+.bank-head__meta {
+  margin: 4px 0 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
-.bank-card__meta,
-.bank-card__desc {
-  margin: 0;
-  color: var(--ls-muted);
+/* 题目行：勾选框 + 题干 + 一行选项 + 操作 */
+.question-row {
+  align-items: flex-start;
+  cursor: pointer;
 }
 
-.bank-card__desc {
-  margin-top: 10px;
-  line-height: 1.7;
+.question-row.is-selected {
+  background: color-mix(in srgb, var(--ls-primary) 6%, var(--sf-surface));
+}
+
+.question-row__options {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+
+.question-row__option {
+  margin-right: 12px;
+  white-space: nowrap;
+}
+
+.question-row__option.is-correct {
+  color: var(--sf-pos);
+  font-weight: 600;
+}
+
+
+
+/* 抽屉里的表单 */
+.full-width {
+  width: 100%;
 }
 
 .form-inline-grid {
@@ -1949,80 +1922,47 @@ onUnmounted(() => {
 
 .option-editor {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   margin-bottom: 18px;
+}
+
+.option-editor__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
 .option-editor__list {
   display: grid;
-  gap: 10px;
+  gap: 8px;
 }
 
 .option-editor__row {
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
 }
 
 .option-key {
-  max-width: 82px;
+  max-width: 56px;
 }
 
-.question-bank-item {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: flex-start;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px solid var(--ls-border);
-  background: var(--ls-card);
-}
-
-.question-bank-item__body {
-  display: grid;
-  gap: 10px;
-}
-
-.question-bank-item__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.question-bank-item__content {
-  margin: 0;
-  font-weight: 600;
-  line-height: 1.7;
-}
-
-.selected-question-box {
-  width: 100%;
-  min-height: 90px;
-  padding: 14px;
-  border-radius: 16px;
-  border: 1px dashed var(--ls-border);
-  background: var(--ls-panel-soft);
-  display: grid;
-  gap: 10px;
-}
-
-.selected-question-box__summary {
-  margin: 0;
-  font-weight: 700;
+.drawer-note {
+  margin: 6px 0 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 @media (max-width: 900px) {
-  .grid-8-16,
-  .grid-half,
-  .grid-11-13,
-  .filter-row,
-  .form-inline-grid,
-  .option-editor__row {
-    grid-template-columns: 1fr;
+  .filter-select,
+  .filter-select--wide {
+    width: auto;
+  }
+
+  .form-inline-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div class="sw-program">
-    <StudentPageHead :title="taskDetail?.title || `代码任务 ${route.params.taskId}`" :sub="headSub">
+    <StudentPageHead :title="taskDetail?.title || `代码活动 ${route.params.taskId}`" :sub="headSub">
       <template #back>
         <button class="sw-back" type="button" @click="goToCourse">← 返回课程</button>
       </template>
@@ -63,9 +63,9 @@
             </div>
           </StudentPanel>
 
-          <StudentPanel title="任务说明">
+          <StudentPanel title="活动说明">
             <div class="sw-prose">
-              <RichTextContent :html="taskDetail.description" empty-text="当前代码任务还没有补充说明。" />
+              <RichTextContent :html="taskDetail.description" empty-text="当前代码活动还没有补充说明。" />
             </div>
           </StudentPanel>
 
@@ -261,7 +261,7 @@
         :items="taskDetail.recommended_showcase.items"
         :token="authStore.token || ''"
         description="优秀代码作品会在这里集中展示，方便同学参考结构、说明方式和附件组织。"
-        empty-description="当前代码任务还没有推荐作品。"
+        empty-description="当前代码活动还没有推荐作品。"
         title="推荐代码作品"
       />
 
@@ -560,10 +560,10 @@ const statusChipClass = computed(() => {
 const moreActionOptions = computed(() => {
   const options: Array<{ label: string; key: string }> = [];
   if (taskDetail.value?.task_navigation.previous_task) {
-    options.push({ label: '上一个任务', key: 'prev' });
+    options.push({ label: '上一个活动', key: 'prev' });
   }
   if (taskDetail.value?.task_navigation.next_task) {
-    options.push({ label: '下一个任务', key: 'next' });
+    options.push({ label: '下一个活动', key: 'next' });
   }
   options.push({ label: '作品互评', key: 'peer-review' });
   if (currentSubmission.value) {
@@ -615,7 +615,7 @@ const submissionStatusLabel = computed(() => {
 });
 const submissionStatusNote = computed(() => {
   if (!currentSubmission.value) {
-    return taskDetail.value?.submission_scope === 'group' ? '你的小组还没有提交这项代码任务。' : '你还没有提交这项代码任务。';
+    return taskDetail.value?.submission_scope === 'group' ? '你的小组还没有提交这项代码活动。' : '你还没有提交这项代码活动。';
   }
   if (currentSubmission.value.status === 'reviewed') {
     return '教师已经完成评价，本次提交入口会关闭。';
@@ -646,7 +646,7 @@ const draftFootnote = computed(() => {
   if (editorOrigin.value === 'submission') {
     return '已载入最近一次提交的代码与说明。';
   }
-  return '已载入任务起始代码，可在此基础上继续完成。';
+  return '已载入活动起始代码，可在此基础上继续完成。';
 });
 const submitButtonText = computed(() => {
   if (!taskDetail.value) {
@@ -659,7 +659,7 @@ const submitButtonText = computed(() => {
 });
 const groupDraftSummary = computed(() => {
   if (!taskDetail.value?.group_collaboration) {
-    return '当前任务不是小组共同编辑任务。';
+    return '当前活动不是小组共同编辑活动。';
   }
   if (!currentGroupDraft.value) {
     return '组内还没有共享草稿，可以先同步代码和实现说明，再由组员继续补充。';
@@ -693,7 +693,7 @@ function buildStarterCode(payload: ProgrammingTaskPayload) {
     '# 提交时系统会自动生成 .py 附件',
     '',
     'def main():',
-    '    print("请在这里完成任务")',
+    '    print("请在这里完成活动")',
     '',
     '',
     'if __name__ == "__main__":',
@@ -1033,7 +1033,7 @@ async function loadSubmittedCode(payload: ProgrammingTaskPayload) {
       fileId: codeFile.id,
     };
   } catch {
-    ElMessage.warning('任务详情已加载，但未能读取最近提交的代码文件。');
+    ElMessage.warning('活动详情已加载，但未能读取最近提交的代码文件。');
     return { code: '', fileId: null };
   }
 }
@@ -1255,7 +1255,7 @@ async function loadTask() {
     }
     await hydrateTaskDetail(payload);
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '加载代码任务失败';
+    errorMessage.value = error instanceof Error ? error.message : '加载代码活动失败';
   } finally {
     isLoading.value = false;
   }
@@ -1309,7 +1309,7 @@ async function submitTask() {
     return;
   }
   if (!taskDetail.value.can_submit) {
-    const message = submitBlockedMessage.value || '当前编程任务暂不可提交。';
+    const message = submitBlockedMessage.value || '当前编程活动暂不可提交。';
     errorMessage.value = message;
     ElMessage.warning(message);
     return;

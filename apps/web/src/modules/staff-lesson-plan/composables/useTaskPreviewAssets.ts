@@ -628,7 +628,7 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
       throw new Error('请先登录教师账号');
     }
     if (!options.canUploadTaskAssets(task)) {
-      throw new Error('请先保存学案，再上传任务页面资源');
+      throw new Error('请先保存学案，再上传活动页面资源');
     }
     if (!files.length) {
       throw new Error('请选择要上传的文件');
@@ -662,7 +662,7 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
       }
       options.mergeTaskConfigFromServer(task, response.config);
       options.revealTaskPreview(task, slot);
-      ElMessage.success('任务页面资源已更新');
+      ElMessage.success('活动页面资源已更新');
     } finally {
       uploadingTaskAssetKey.value = null;
     }
@@ -688,7 +688,7 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
     try {
       await uploadTaskAssets(task, slot, selectedFiles, paths);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '上传任务资源失败';
+      const message = error instanceof Error ? error.message : '上传活动资源失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
     } finally {
@@ -713,9 +713,9 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
   async function uploadTaskHtmlSource(task: PlanFormTask, slot: TaskAssetSlot) {
     try {
       await persistTaskHtmlSource(task, slot);
-      ElMessage.success('HTML 源码已保存为任务页面');
+      ElMessage.success('HTML 源码已保存为活动页面');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '保存任务页面失败';
+      const message = error instanceof Error ? error.message : '保存活动页面失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
     }
@@ -736,13 +736,13 @@ export function useTaskPreviewAssets(options: UseTaskPreviewAssetsOptions) {
       options.revealTaskPreview(task, slot);
       if (options.canUploadTaskAssets(task)) {
         await persistTaskHtmlSource(task, slot);
-        ElMessage.success('任务页面已生成并同步到资源文件');
+        ElMessage.success('活动页面已生成并同步到资源文件');
       } else {
-        ElMessage.success('任务页面源码已生成，可直接在下方预览；保存学案后再上传为正式页面资源。');
+        ElMessage.success('活动页面源码已生成，可直接在下方预览；保存学案后再上传为正式页面资源。');
       }
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '生成任务页面失败';
+      const message = error instanceof Error ? error.message : '生成活动页面失败';
       options.errorMessage.value = message;
       ElMessage.error(message);
       return false;

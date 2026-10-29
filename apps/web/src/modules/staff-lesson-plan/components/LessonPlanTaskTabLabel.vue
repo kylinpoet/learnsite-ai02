@@ -21,7 +21,7 @@
       draggable="false"
       role="button"
       tabindex="0"
-      aria-label="关闭任务标签"
+      aria-label="关闭活动标签"
       @click.stop="removeTaskRow(task.key)"
       @keydown.enter.prevent.stop="removeTaskRow(task.key)"
       @keydown.space.prevent.stop="removeTaskRow(task.key)"

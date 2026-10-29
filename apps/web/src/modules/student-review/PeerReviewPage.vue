@@ -1,8 +1,8 @@
 <template>
   <div class="sw-review">
-    <StudentPageHead :title="pageData?.task.title || `任务 ${route.params.taskId}`" :sub="headSub">
+    <StudentPageHead :title="pageData?.task.title || `活动 ${route.params.taskId}`" :sub="headSub">
       <template #back>
-        <button class="sw-back" type="button" @click="goToTask">← 返回任务</button>
+        <button class="sw-back" type="button" @click="goToTask">← 返回活动</button>
       </template>
       <template #actions>
         <n-button secondary @click="goToCourse">返回课程</n-button>
@@ -350,7 +350,7 @@ const voteStatusText = computed(() => {
     return '你已经推荐过这份作品了，可以继续查看其他同学的作品。';
   }
   if (pageData.value.summary.votes_remaining <= 0) {
-    return '当前任务的推荐次数已经用完。';
+    return '当前活动的推荐次数已经用完。';
   }
   return `你还可以推荐 ${pageData.value.summary.votes_remaining} 份作品。`;
 });

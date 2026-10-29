@@ -2,6 +2,7 @@ export type PlanSummary = {
   id: number;
   title: string;
   status: string;
+  is_hidden: boolean;
   assigned_date: string;
   task_count: number;
   preview_image_url?: string | null;
@@ -30,6 +31,7 @@ export type PlanDetail = PlanSummary & {
     config: Record<string, unknown> | null;
     sort_order: number;
     is_required: boolean;
+    is_active: boolean;
     /** 学生端会一起展示的关联资源，供教师学生视角预览对照 */
     resources?: Array<Record<string, unknown>>;
   }>;
@@ -99,6 +101,7 @@ export type PlanFormTask = {
   description_mode: 'visual' | 'source';
   config: TaskConfigState;
   is_required: boolean;
+  is_active: boolean;
   linked_template_id: number | null;
 };
 
@@ -111,6 +114,7 @@ export type LessonPlanDraftState = {
   content_mode: 'visual' | 'source';
   assigned_date: string;
   status: string;
+  is_hidden: boolean;
   tasks: PlanFormTask[];
   editor_active_tab: PlanEditorTab;
   active_task_editor_key: string;

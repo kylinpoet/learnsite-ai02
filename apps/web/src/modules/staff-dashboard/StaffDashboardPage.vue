@@ -396,7 +396,7 @@ const submissionInfo = computed(() => {
     counts[stageOf(student)] += 1;
   }
   const session = dashboard.value?.current_session;
-  // 只认「当前选中班级」的会话，避免把别的班的任务数算进来
+  // 只认「当前选中班级」的会话，避免把别的班的活动数算进来
   const scopedSession =
     session && (!focusClassId.value || session.class.id === focusClassId.value) ? session : null;
   return {

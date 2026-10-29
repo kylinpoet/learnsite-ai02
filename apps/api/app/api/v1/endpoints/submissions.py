@@ -552,7 +552,7 @@ def build_submission_archive_folder(submission: Submission) -> str:
     profile = student.student_profile
     student_no = profile.student_no if profile else student.username
     task_part = sanitize_archive_part(
-        f"任务{submission.task.id}_{submission.task.title}",
+        f"活动{submission.task.id}_{submission.task.title}",
         f"task_{submission.task.id}",
     )
     student_part = sanitize_archive_part(
@@ -567,7 +567,7 @@ def build_batch_archive_filename(submissions: list[Submission]) -> str:
     if len(task_ids) == 1 and submissions:
         task = submissions[0].task
         archive_name = sanitize_archive_part(
-            f"任务{task.id}_{task.title}_{len(submissions)}份作品附件",
+            f"活动{task.id}_{task.title}_{len(submissions)}份作品附件",
             f"task_{task.id}_attachments",
         )
     else:
@@ -806,11 +806,11 @@ def teacher_task_submissions(
 ) -> ApiResponse:
     task = load_task_for_staff(task_id, db)
     if task is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="活动不存在")
 
     submissions = sorted(filter_task_submissions_for_staff(task, staff, db), key=latest_submission_time, reverse=True)
     if not submissions and task.submissions and not is_admin_staff(staff):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该任务作品")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该活动作品")
     recommended_submissions = [item for item in submissions if is_recommended_submission(item)]
     scored_items = [item.score for item in submissions if item.score is not None]
     latest_time = latest_submission_time(submissions[0]) if submissions else None

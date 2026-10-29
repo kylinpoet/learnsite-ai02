@@ -39,7 +39,7 @@ export type LaunchpadClass = {
   checked_in_count: number;
 };
 
-/** 开课台可选的学案：带教材单元与任务量，便于开课前核对 */
+/** 开课台可选的学案：带教材单元与活动量，便于开课前核对 */
 export type LaunchpadPlan = {
   id: number;
   title: string;

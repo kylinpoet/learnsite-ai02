@@ -320,7 +320,7 @@ def class_guest_login(
     request: Request,
     db: Session = Depends(get_db),
 ) -> ApiResponse[ClassGuestPayload]:
-    """只输班级码 → 只读旁听令牌。没有学生身份，只能看本班学案与任务清单。"""
+    """只输班级码 → 只读旁听令牌。没有学生身份，只能看本班学案与活动清单。"""
     school_class = _resolve_class_or_404(payload.class_code, request, db)
     token, expires_at = create_class_guest_token(
         class_id=school_class.id,

@@ -92,7 +92,7 @@ CLASSROOM_SWITCH_CONFIG = [
     {
         "key": "programming_control",
         "label": "编程控制",
-        "description": "课堂内允许进入编程任务控制区。",
+        "description": "课堂内允许进入编程活动控制区。",
         "default_enabled": True,
     },
     {
@@ -261,7 +261,10 @@ def save_roll_call_history(session_id: int, history: list[dict], db: Session) ->
 
 
 def build_task_progress_snapshot(session: ClassroomSession, db: Session) -> list[dict]:
-    tasks = sorted(session.lesson_plan.tasks, key=lambda item: (item.sort_order, item.id))
+    tasks = sorted(
+        (task for task in session.lesson_plan.tasks if task.is_active),
+        key=lambda item: (item.sort_order, item.id),
+    )
     if not tasks:
         return []
 
@@ -522,7 +525,10 @@ def classroom_launchpad(
     ).all()
     plans = db.scalars(
         select(LessonPlan)
-        .where(LessonPlan.status.in_(("published", "active")))
+        .where(
+            LessonPlan.status.in_(("published", "active")),
+            LessonPlan.is_hidden == False,  # noqa: E712
+        )
         .options(
             selectinload(LessonPlan.lesson)
             .selectinload(CurriculumLesson.unit)
@@ -593,8 +599,8 @@ def create_session(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
     if plan.status == "draft":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="请先发布学案，再执行开课")
-    if not plan.tasks:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前学案还没有任务，不能开课")
+    if not any(task.is_active for task in plan.tasks):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前学案还没有已启用的活动，不能开课")
 
     now = datetime.now()
     created_progress_count = 0

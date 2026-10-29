@@ -7,8 +7,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+. (Join-Path $PSScriptRoot "dev-common.ps1")
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$repoRootRegex = [Regex]::Escape($repoRoot)
 $apiPython = Join-Path $repoRoot "apps\api\.venv\Scripts\python.exe"
 $viteCmd = Join-Path $repoRoot "node_modules\.bin\vite.cmd"
 $webDir = Join-Path $repoRoot "apps\web"
@@ -26,57 +27,51 @@ function Require-Path {
     }
 }
 
-function Get-ListeningConnection {
-    param([int]$Port)
-
-    return Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue |
-        Where-Object { $_.State -eq "Listen" } |
-        Select-Object -First 1
-}
-
-function Get-CommandLine {
-    param([int]$ProcessId)
-
-    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction SilentlyContinue
-    if ($null -eq $process) {
-        return ""
-    }
-
-    return $process.CommandLine
-}
-
 function Get-PortState {
     param(
         [int]$Port,
         [string]$ServiceName,
-        [scriptblock]$OwnedByLearnSite
+        [string[]]$ExpectedProcessNames,
+        [scriptblock]$HealthProbe
     )
 
-    $connection = Get-ListeningConnection -Port $Port
-    if ($null -eq $connection) {
+    $processId = Get-ListeningProcessId -Port $Port
+    if ($null -eq $processId) {
         return "start"
     }
 
-    $commandLine = Get-CommandLine -ProcessId $connection.OwningProcess
-    if (& $OwnedByLearnSite $commandLine) {
-        Write-Host "[$ServiceName] Port $Port is already served by LearnSite. Skipping duplicate launch." -ForegroundColor Yellow
-        Write-Host "[$ServiceName] PID $($connection.OwningProcess): $commandLine" -ForegroundColor DarkYellow
-        return "skip"
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    if ($null -eq $process) {
+        throw "[$ServiceName] Port $Port is in LISTENING state but its owning PID $processId could not be inspected."
     }
 
-    $summary = if ([string]::IsNullOrWhiteSpace($commandLine)) { "unknown command line" } else { $commandLine }
-    throw "[$ServiceName] Port $Port is already occupied by another process (PID $($connection.OwningProcess)).`n$summary"
+    if ($ExpectedProcessNames -notcontains $process.ProcessName) {
+        throw "[$ServiceName] Port $Port is already occupied by another process (PID $processId, $($process.ProcessName)).`nStop that process or rerun dev-up.ps1 with a different port."
+    }
+
+    if (& $HealthProbe) {
+        Write-Host "[$ServiceName] Port $Port is already served by LearnSite (PID $processId, $($process.ProcessName)). Skipping duplicate launch." -ForegroundColor Yellow
+    } else {
+        Write-Warning "[$ServiceName] Port $Port is held by $($process.ProcessName) (PID $processId) that did not answer its health probe. Treating it as a previous LearnSite instance and skipping the duplicate launch. Run scripts\dev-down.cmd first if it is stale."
+    }
+
+    return "skip"
 }
 
 function Start-VisibleWindow {
     param(
+        [string]$Role,
         [string]$Title,
         [string]$WorkingDirectory,
         [string]$CommandLine
     )
 
     $fullCommand = "title $Title && cd /d `"$WorkingDirectory`" && $CommandLine"
-    Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $fullCommand -WorkingDirectory $WorkingDirectory | Out-Null
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/k", $fullCommand -WorkingDirectory $WorkingDirectory -PassThru
+
+    # The window PID is recorded because a console window title cannot be looked up
+    # again without WMI, which dev-down.ps1 must cope with.
+    Set-DevWindowRecord -Role $Role -WindowProcessId $process.Id -StartedAtTicks $process.StartTime.Ticks
 }
 
 function Wait-ForPort {
@@ -87,7 +82,7 @@ function Wait-ForPort {
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     while ((Get-Date) -lt $deadline) {
-        if ($null -ne (Get-ListeningConnection -Port $Port)) {
+        if ($null -ne (Get-ListeningProcessId -Port $Port)) {
             return $true
         }
         Start-Sleep -Milliseconds 500
@@ -100,36 +95,22 @@ Require-Path -Path $apiPython -Hint "Create the backend virtual environment firs
 Require-Path -Path $viteCmd -Hint "Install frontend dependencies first: npm install"
 Require-Path -Path $webDir -Hint "The frontend workspace folder is missing."
 
-$apiState = Get-PortState -Port $ApiPort -ServiceName "API" -OwnedByLearnSite {
-    param($CommandLine)
-
-    if ([string]::IsNullOrWhiteSpace($CommandLine)) {
-        return $false
-    }
-
-    return $CommandLine -match "uvicorn app\.main:app" -and
-        $CommandLine -match "--port $ApiPort" -and
-        $CommandLine -match "--app-dir apps/api"
+$apiState = Get-PortState -Port $ApiPort -ServiceName "API" -ExpectedProcessNames @("python", "python3", "pythonw") -HealthProbe {
+    Test-HttpBodyContains -Port $ApiPort -Path "/api/v1/openapi.json" -Pattern '"openapi"\s*:'
 }
 
-$webState = Get-PortState -Port $WebPort -ServiceName "Web" -OwnedByLearnSite {
-    param($CommandLine)
-
-    if ([string]::IsNullOrWhiteSpace($CommandLine)) {
-        return $false
-    }
-
-    return $CommandLine -match "vite" -and $CommandLine -match $repoRootRegex
+$webState = Get-PortState -Port $WebPort -ServiceName "Web" -ExpectedProcessNames @("node") -HealthProbe {
+    Test-HttpBodyContains -Port $WebPort -Path "/" -Pattern '@vite/client'
 }
 
 if ($apiState -eq "start") {
     $apiCommand = "`"$apiPython`" -m uvicorn app.main:app --host $ApiHost --port $ApiPort --app-dir apps/api --reload --reload-dir apps/api/app"
-    Start-VisibleWindow -Title $apiTitle -WorkingDirectory $repoRoot -CommandLine $apiCommand
+    Start-VisibleWindow -Role "api" -Title $apiTitle -WorkingDirectory $repoRoot -CommandLine $apiCommand
 }
 
 if ($webState -eq "start") {
     $webCommand = "`"$viteCmd`" --host $WebHost --port $WebPort"
-    Start-VisibleWindow -Title $webTitle -WorkingDirectory $webDir -CommandLine $webCommand
+    Start-VisibleWindow -Role "web" -Title $webTitle -WorkingDirectory $webDir -CommandLine $webCommand
 }
 
 if ($apiState -eq "start" -and -not (Wait-ForPort -Port $ApiPort)) {
@@ -140,8 +121,8 @@ if ($webState -eq "start" -and -not (Wait-ForPort -Port $WebPort)) {
     Write-Warning "[Web] Port $WebPort was not detected within 20 seconds. Check the '$webTitle' window for startup errors."
 }
 
-$apiReady = $null -ne (Get-ListeningConnection -Port $ApiPort)
-$webReady = $null -ne (Get-ListeningConnection -Port $WebPort)
+$apiReady = $null -ne (Get-ListeningProcessId -Port $ApiPort)
+$webReady = $null -ne (Get-ListeningProcessId -Port $WebPort)
 $apiStatus = if ($apiReady) { "[OK]" } else { "[CHECK WINDOW]" }
 $webStatus = if ($webReady) { "[OK]" } else { "[CHECK WINDOW]" }
 

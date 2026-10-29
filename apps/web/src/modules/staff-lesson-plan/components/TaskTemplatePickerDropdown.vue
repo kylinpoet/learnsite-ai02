@@ -94,7 +94,7 @@ const options = computed<DropdownOption[]>(() => {
   items.push({
     key: 'custom-header',
     disabled: true,
-    label: renderOptionContent('自定义模板', '保存过的任务模板会出现在这里，可直接复用。'),
+    label: renderOptionContent('自定义模板', '保存过的活动模板会出现在这里，可直接复用。'),
   });
 
   if (props.dropdownPinnedCustomTaskTemplates.length) {
@@ -143,7 +143,7 @@ const options = computed<DropdownOption[]>(() => {
       items.push(
         templateOption(
           templateItem,
-          `${props.taskTypeLabel(templateItem.task_type)} · 预设任务名：${templateItem.task_title}`
+          `${props.taskTypeLabel(templateItem.task_type)} · 预设活动名：${templateItem.task_title}`
         )
       );
     }

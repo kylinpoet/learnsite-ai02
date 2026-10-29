@@ -57,7 +57,7 @@ function escapeHtml(value: string) {
     .replace(/"/g, '&quot;');
 }
 
-/** 学生端任务页在描述为空时会展示服务端生成的默认说明，预览保持同样文案 */
+/** 学生端活动页在描述为空时会展示服务端生成的默认说明，预览保持同样文案 */
 function buildFallbackTaskDescription(planTitle: string, taskTitle: string, lessonLabel: string) {
   return [
     `<p>请围绕《${escapeHtml(planTitle)}》中的“${escapeHtml(taskTitle)}”完成学习作品。</p>`,
@@ -203,7 +203,7 @@ function buildFormTaskFrame(input: {
   assetBindings: TaskAssetEditorBindings;
 }): StudentPreviewFrame {
   const { task, slot, assetBindings } = input;
-  // 已保存的任务一律走服务端页面，和学生在任务页里看到的一致，
+  // 已保存的活动一律走服务端页面，和学生在活动页里看到的一致，
   // 且 iframe 的写请求会被预览中继拦掉，不会产生真实提交。
   if (task.id) {
     if (!input.assets.length || !input.entryPath.trim()) {
@@ -212,7 +212,7 @@ function buildFormTaskFrame(input: {
     const assetUrl = assetBindings.taskAssetPreviewUrl(task, slot);
     return frameFromParts({ mode: 'src', value: assetUrl });
   }
-  // 尚未保存的新任务退回内联源码预览，便于教师在看学生页面的同时检查当前编辑内容。
+  // 尚未保存的新活动退回内联源码预览，便于教师在看学生页面的同时检查当前编辑内容。
   if (assetBindings.hasTaskInlinePreview(task, slot)) {
     return frameFromParts({ mode: 'srcdoc', value: assetBindings.taskInlinePreviewSrcdoc(task, slot) });
   }

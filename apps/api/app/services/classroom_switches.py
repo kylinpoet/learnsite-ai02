@@ -24,8 +24,8 @@ CLASSROOM_SWITCH_KEYS = tuple(DEFAULT_SESSION_SWITCHES.keys())
 DEFAULT_SWITCH_DISABLED_MESSAGES: dict[str, str] = {
     "drive": "课堂暂时关闭了个人网盘，请按教师指引操作。",
     "group_drive": "课堂暂时关闭了小组网盘，请稍后再试。",
-    "group_discussion": "课堂暂时关闭了小组讨论，请先完成个人学习任务。",
-    "programming_control": "当前课堂暂未开放编程任务入口，请等待教师开启。",
+    "group_discussion": "课堂暂时关闭了小组讨论，请先完成个人学习活动。",
+    "programming_control": "当前课堂暂未开放编程活动入口，请等待教师开启。",
     "ip_lock": "当前课堂已启用 IP 锁定，请在指定机位登录后重试。",
 }
 

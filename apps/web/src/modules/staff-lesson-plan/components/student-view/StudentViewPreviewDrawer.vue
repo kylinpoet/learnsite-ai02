@@ -69,7 +69,7 @@
               >
                 <template #tab>
                   <span class="sp-tab-label">
-                    <span class="sp-tab-label__title">任务{{ index + 1 }}</span>
+                    <span class="sp-tab-label__title">活动{{ index + 1 }}</span>
                     <span class="sp-tab-label__flag">{{ task.isRequired ? '必做' : '选做' }}</span>
                   </span>
                 </template>
@@ -81,8 +81,8 @@
                 />
               </n-tab-pane>
 
-              <n-tab-pane v-if="!plan.tasks.length" name="empty" tab="任务清单（0）">
-                <n-empty description="当前学案还没有任务" />
+              <n-tab-pane v-if="!plan.tasks.length" name="empty" tab="活动清单（0）">
+                <n-empty description="当前学案还没有活动" />
               </n-tab-pane>
             </n-tabs>
           </div>

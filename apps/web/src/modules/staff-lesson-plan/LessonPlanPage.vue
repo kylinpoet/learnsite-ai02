@@ -1,171 +1,127 @@
 <template>
   <div class="page-stack lesson-plan-page">
-    <SaPageHeader
-      compact
-      eyebrow="教师学案管理"
-      :title="pageTitle"
-      description="按课程体系创建学案、配置任务并发布；发布后可直接把这份学案推送给班级开课。"
+    <StaffPageHead
+      v-if="!isEditorRoute"
+      title="学案管理"
+      :sub="planListSummary"
     >
       <template #actions>
-        <div class="lesson-plan-hero__actions">
-          <div class="lesson-plan-hero__buttons">
-            <n-button v-if="!isEditorRoute" type="primary" @click="openCreateDialog">新建学案</n-button>
-            <n-button v-else secondary type="primary" @click="goToPlanList">返回学案清单</n-button>
-            <n-button v-if="isEditorRoute" secondary @click="openStudentPreview">预览学生端</n-button>
-            <n-button secondary @click="router.push('/staff/curriculum')">查看课程体系</n-button>
-            <n-button v-if="!isEditorRoute" secondary @click="selectPlan(plans[0]?.id || null)">
-              编辑最新学案
-            </n-button>
-          </div>
-        </div>
+        <n-button type="primary" @click="openCreateDialog">新建学案</n-button>
+        <n-button secondary @click="router.push('/staff/curriculum')">查看课程体系</n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
+
+    <StaffPageHead v-else :sub="heroSummarySubtitle" :title="pageTitle">
+      <template #back>
+        <button class="sf-back" type="button" @click="goToPlanList">← 返回学案清单</button>
+      </template>
+      <template #actions>
+        <n-button secondary @click="openStudentPreview">预览学生端</n-button>
+      </template>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
     <div v-if="!isLoading && !isEditorRoute" class="page-stack">
-        <div class="ls-row">
-          <article class="metric-tile">
-            <p class="metric-label">学案总数</p>
-            <p class="metric-value">{{ plans.length }}</p>
-            <p class="metric-note">包含草稿、已发布和已开课学案</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">任务总数</p>
-            <p class="metric-value">{{ totalTaskCount }}</p>
-            <p class="metric-note">阅读、上传、编程任务合计</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">待完成进度</p>
-            <p class="metric-value">{{ totalPendingCount }}</p>
-            <p class="metric-note">只会在开课后产生</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">已完成进度</p>
-            <p class="metric-value">{{ totalCompletedCount }}</p>
-            <p class="metric-note">便于教师快速判断班级推进情况</p>
-          </article>
+      <StaffStatStrip :items="planStatItems" />
+
+      <section class="sf-panel">
+        <div class="sf-toolbar">
+          <n-input
+            v-model:value="planKeyword"
+            class="sf-toolbar__search"
+            clearable
+            placeholder="搜索学案标题 / 课次 / 单元"
+          />
+          <div class="sf-toolbar__right">
+            <span class="sf-toolbar__count">{{ filteredPlans.length }} / {{ plans.length }} 份</span>
+          </div>
         </div>
 
-        <div class="plan-charts">
-          <SaPanel>
-            <template #header>
-              <div class="plan-chart-head">
-                <div>
-                  <strong>整体进度</strong>
-                  <p class="section-note">已完成与待完成的学案及任务进度汇总。</p>
-                </div>
-              </div>
-            </template>
-            <n-empty v-if="!totalPendingCount && !totalCompletedCount" description="开课并产生学生进度后这里会显示图表。" />
-            <AppChart v-else :height="260" :option="overallProgressOption" />
-          </SaPanel>
-
-          <SaPanel>
-            <template #header>
-              <div class="plan-chart-head">
-                <div>
-                  <strong>各学案进度对比</strong>
-                  <p class="section-note">按学案查看已完成 / 待完成进度，快速定位推进较慢的学案。</p>
-                </div>
-              </div>
-            </template>
-            <n-empty v-if="!plans.length" description="暂无可对比的学案。" />
-            <AppChart v-else :height="260" :option="planProgressOption" />
-          </SaPanel>
-        </div>
-
-        <SaPanel title="学案列表">
-          <SaDataTable
-            :data="plans"
-            empty-text="暂无学案数据"
-            row-key="id"
-            :scroll-x="1400"
-            stripe
-            @row-click="handleRowClick"
+        <div class="sf-tabs list-tabs">
+          <button
+            v-for="tab in planFilterTabs"
+            :key="tab.value"
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': planStatusFilter === tab.value }]"
+            @click="planStatusFilter = tab.value"
           >
-            <SaTableColumn label="学案" min-width="360">
-              <template #default="{ row }">
-                <div class="plan-title-cell">
-                  <div class="plan-title-cell__thumb-wrap">
-                    <img
-                      v-if="row.preview_image_url"
-                      :src="row.preview_image_url"
-                      alt="学案缩略图"
-                      class="plan-title-cell__thumb"
-                    />
-                    <div v-else class="plan-title-cell__thumb plan-title-cell__thumb--placeholder">
-                      {{ row.title.slice(0, 1) || '学' }}
-                    </div>
-                  </div>
-                  <div class="plan-title-cell__meta">
-                    <p class="plan-title-cell__title">{{ row.title }}</p>
-                    <p class="plan-title-cell__desc">{{ row.content_excerpt || '当前学案暂未添加导读摘要' }}</p>
-                  </div>
-                </div>
-              </template>
-            </SaTableColumn>
-          <SaTableColumn label="状态" min-width="110">
-            <template #default="{ row }">
-              <n-tag round :type="planStatusType(row.status)">{{ planStatusLabel(row.status) }}</n-tag>
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="绑定课次" min-width="190">
-            <template #default="{ row }">
-              {{ planLessonDisplayLabel(row) }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="所属单元" min-width="220">
-            <template #default="{ row }">
-              {{ row.lesson?.unit_title || '暂未绑定' }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="发布时间" min-width="120" prop="assigned_date" />
-          <SaTableColumn label="任务数" min-width="88" prop="task_count" />
-          <SaTableColumn label="待完成" min-width="88">
-            <template #default="{ row }">
-              {{ row.progress.pending_count }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="操作" min-width="220">
-            <template #default="{ row }">
-              <div class="chip-row">
-                <n-button text type="primary" @click.stop="openEditDialog(row.id)">进入编辑</n-button>
+            {{ tab.label }}
+            <span class="sf-tabs__count">{{ tab.count }}</span>
+          </button>
+        </div>
+
+        <p v-if="!filteredPlans.length" class="sf-empty">
+          {{ plans.length ? '当前筛选条件下没有学案。' : '还没有学案。先新建一份，绑定课次后即可发布。' }}
+        </p>
+
+        <div v-else>
+          <div class="sf-rows__head sf-cols-plans">
+            <span>学案</span>
+            <span>活动</span>
+            <span>学生待完成</span>
+            <span>操作</span>
+          </div>
+          <div class="sf-rows">
+          <article
+            v-for="plan in filteredPlans"
+            :key="plan.id"
+            class="sf-row sf-row--cols sf-cols-plans sf-row--link"
+            @click="openEditDialog(plan.id)"
+          >
+            <div class="sf-row__main">
+              <p class="sf-row__title">
+                <span class="sf-row__title-text">{{ plan.title }}</span>
+                <span :class="['sf-pill', planStatusPillClass(plan.status)]">{{ planStatusLabel(plan.status) }}</span>
+                <span v-if="plan.is_hidden" class="sf-pill sf-pill--hidden">已下架</span>
+                <span v-if="!plan.lesson" class="sf-pill">未绑定课次</span>
+              </p>
+              <p class="sf-row__meta">
+                <span>{{ planLessonDisplayLabel(plan) }}</span>
+                <span v-if="plan.lesson?.unit_title">{{ plan.lesson.unit_title }}</span>
+                <span>{{ plan.assigned_date }}</span>
+              </p>
+            </div>
+
+            <span class="sf-row__num" data-label="活动">{{ plan.task_count }}</span>
+            <span class="sf-row__num" data-label="待完成">{{ plan.progress.pending_count }}</span>
+
+            <div class="sf-row__action" @click.stop>
+              <n-button
+                v-if="plan.status === 'draft'"
+                :disabled="!plan.lesson"
+                :loading="publishingPlanId === plan.id"
+                text
+                type="primary"
+                @click="publishPlan(plan.id)"
+              >
+                发布
+              </n-button>
+              <n-dropdown
+                :options="planRowActions(plan)"
+                placement="bottom-end"
+                trigger="click"
+                @select="(key: string) => handlePlanRowAction(key, plan)"
+              >
                 <n-button
-                  text
-                  type="warning"
-                  :disabled="!canEditPlan(row)"
-                  @click.stop="openEditDialog(row.id)"
+                  :loading="visibilityLoadingPlanId === plan.id"
+                  quaternary
+                  circle
+                  size="small"
+                  aria-label="更多操作"
                 >
-                  快速编辑
+                  ···
                 </n-button>
-                <n-button
-                  v-if="row.status === 'draft'"
-                  text
-                  type="success"
-                  :disabled="!row.lesson"
-                  @click.stop="publishPlan(row.id)"
-                >
-                  发布
-                </n-button>
-                <n-button
-                  text
-                  type="error"
-                  :disabled="!canEditPlan(row)"
-                  :loading="deletingPlanId === row.id"
-                  @click.stop="deletePlan(row.id)"
-                >
-                  删除
-                </n-button>
-              </div>
-            </template>
-          </SaTableColumn>
-          </SaDataTable>
-        </SaPanel>
+              </n-dropdown>
+            </div>
+          </article>
+          </div>
+        </div>
+      </section>
     </div>
     <SaPanel
       v-if="!isLoading && isEditorRoute && editorVisible"
@@ -180,7 +136,7 @@
             <p class="section-note">
               {{
                 editingPlanId
-                  ? '可以直接在当前页面修改学案导读、任务与资源，保存后立即同步。'
+                  ? '可以直接在当前页面修改学案导读、活动与资源，保存后立即同步。'
                   : '可以先不绑定课次保存草稿；绑定课次后即可继续发布或开课。'
               }}
             </p>
@@ -234,11 +190,11 @@
 
         <div class="dialog-task-head editor-task-toolbar">
           <div>
-            <h3>学案导读与任务配置</h3>
-            <p class="section-note">按“学案导读、任务 1、任务 2...”逐项配置，减少来回跳转。</p>
+            <h3>学案导读与活动配置</h3>
+            <p class="section-note">按“学案导读、活动 1、活动 2...”逐项配置，减少来回跳转。</p>
           </div>
           <div class="chip-row">
-            <n-button secondary @click="addTaskRow">新增空白任务</n-button>
+            <n-button secondary @click="addTaskRow">新增空白活动</n-button>
             <TaskTemplatePickerDropdown
               :custom-task-templates-loading="customTaskTemplatesLoading"
               :custom-task-templates="customTaskTemplates"
@@ -426,18 +382,16 @@
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDatePicker, NEmpty, NForm, NFormItem, NInput, NSelect, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
-import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { NAlert, NButton, NDatePicker, NDropdown, NForm, NFormItem, NInput, NSelect, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
 import RichTextEditor from '@/components/RichTextEditor.vue';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { streamCompanionReply } from '@/utils/companionStream';
 import { richTextToExcerpt, richTextToPlainText } from '@/utils/richText';
@@ -471,7 +425,6 @@ import {
   isTaskScopeFixed,
   normalizeHtmlValue,
   planStatusLabel,
-  planStatusType,
   taskAssetGenerationKey,
   taskAssetSlotLabel,
   taskDescriptionGenerationKey,
@@ -500,8 +453,6 @@ import type {
 const route = useRoute();
 const router = useRouter();
 const authStore = useAuthStore();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
 const ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT = 'learnsite:assistant-runtime-config-updated';
@@ -533,6 +484,7 @@ const selectedPlanDetail = ref<PlanDetail | null>(null);
 const isLoading = ref(true);
 const isSavingPlan = ref(false);
 const publishingPlanId = ref<number | null>(null);
+const visibilityLoadingPlanId = ref<number | null>(null);
 const deletingPlanId = ref<number | null>(null);
 const errorMessage = ref('');
 const generatingPlanHtml = ref(false);
@@ -663,10 +615,10 @@ const {
   ensureTaskIdReserved,
   seedTaskTypeStarterSources,
   onTaskCopyWithReset: () => {
-    ElMessage.warning('已复制任务结构，但资源文件和接口地址不会自动复用，请按需重新上传或生成。');
+    ElMessage.warning('已复制活动结构，但资源文件和接口地址不会自动复用，请按需重新上传或生成。');
   },
   onTaskCopied: () => {
-    ElMessage.success('任务已复制');
+    ElMessage.success('活动已复制');
   },
 });
 
@@ -867,7 +819,7 @@ const studentPreviewPlan = computed<StudentPreviewPlan | null>(() => {
   });
 });
 
-/** 从当前编辑的任务标签直接跳到对应任务的学生视角 */
+/** 从当前编辑的活动标签直接跳到对应活动的学生视角 */
 function openStudentPreview() {
   const activeTabKey = editorTaskTabKey.value;
   studentPreviewTaskKey.value = activeTabKey.startsWith('task:') ? activeTabKey.slice('task:'.length) : null;
@@ -883,119 +835,143 @@ const isEditorRoute = computed(() => isCreateRoute.value || routePlanId.value !=
 const selectedPlanId = computed(() => routePlanId.value);
 
 const pageTitle = computed(() => {
-  if (!isEditorRoute.value) {
-    return '教师学案管理';
-  }
   if (isCreateRoute.value) {
     return '新建学案';
   }
   return planForm.value.title.trim() || selectedPlanDetail.value?.title || '编辑学案';
 });
-const heroSummaryTitle = computed(() => {
-  if (!isEditorRoute.value) {
-    return plans.value[0]?.title || '还没有学案';
-  }
-  if (isCreateRoute.value) {
-    return planForm.value.title.trim() || '新建学案';
-  }
-  return planForm.value.title.trim() || selectedPlanDetail.value?.title || '学案编辑';
-});
 const heroSummarySubtitle = computed(() => {
-  if (!isEditorRoute.value) {
-    return plans.value[0]
-      ? `${planLessonDisplayLabel(plans.value[0])} · ${planStatusLabel(plans.value[0].status)}`
-      : '可以先创建草稿，再按需要绑定课次。';
-  }
   if (isCreateRoute.value) {
-    return '可先保存草稿；绑定课次后再发布或开课。';
+    return '先保存草稿，绑定课次后再发布或开课。';
   }
   if (selectedPlanDetail.value) {
-    return `${planLessonDisplayLabel(selectedPlanDetail.value)} · ${planStatusLabel(selectedPlanDetail.value.status)}`;
+    const plan = selectedPlanDetail.value;
+    const lessonLabel = planLessonDisplayLabel(plan);
+    const bound = plan.lesson ? `已绑定「${lessonLabel}」` : '未绑定课次';
+    return `${bound} · ${planStatusLabel(plan.status)} · ${plan.task_count} 个活动`;
   }
-  return '正在加载学案详情...';
+  return '正在加载学案详情…';
 });
 
 function planLessonDisplayLabel(plan: Pick<PlanSummary, 'lesson'>) {
   return plan.lesson?.title || '暂未绑定课次';
 }
 
+/** 状态药丸：草稿中性、已发布/上课中为正、已完成中性 */
+function planStatusPillClass(status: string) {
+  if (status === 'published' || status === 'active') {
+    return 'sf-pill--pos';
+  }
+  return '';
+}
+
 const totalTaskCount = computed(() => plans.value.reduce((sum, item) => sum + item.task_count, 0));
-const totalPendingCount = computed(() =>
-  plans.value.reduce((sum, item) => sum + item.progress.pending_count, 0)
+const publishedPlanCount = computed(
+  () => plans.value.filter((plan) => plan.status === 'published' || plan.status === 'active').length
 );
-const totalCompletedCount = computed(() =>
-  plans.value.reduce((sum, item) => sum + item.progress.completed_count, 0)
+const unboundPlanCount = computed(() => plans.value.filter((plan) => !plan.lesson).length);
+
+/** 标题下一行只写结论：数字在下面的统计带里，这里不重复 */
+const pendingTaskTotal = computed(() =>
+  plans.value.reduce((sum, plan) => sum + plan.progress.pending_count, 0)
 );
 
-const overallProgressOption = computed(() => {
-  const pending = totalPendingCount.value;
-  const completed = totalCompletedCount.value;
-  const total = pending + completed;
-  const rate = total ? Math.round((completed / total) * 100) : 0;
+const planListSummary = computed(() => {
+  if (!plans.value.length) {
+    return '还没有学案。新建一份、绑定课次后即可发布开课。';
+  }
+  if (unboundPlanCount.value > 0) {
+    return `${unboundPlanCount.value} 份学案还没绑定课次，绑定后才能发布。`;
+  }
+  const draft = plans.value.filter((plan) => plan.status === 'draft').length;
+  if (draft > 0) {
+    return `${draft} 份草稿还没发布。`;
+  }
+  if (pendingTaskTotal.value > 0) {
+    return `学生还有 ${pendingTaskTotal.value} 个活动待完成。`;
+  }
+  return '全部学案都已发布。';
+});
 
-  return base({
-    tooltip: tooltip('item'),
-    legend: legend({ bottom: 0, top: 'auto' }),
-    series: [
-      {
-        type: 'pie',
-        radius: ['50%', '72%'],
-        center: ['50%', '44%'],
-        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
-        label: { show: false },
-        data: [
-          { value: completed, name: '已完成', itemStyle: { color: palette.value[2] } },
-          { value: pending, name: '待完成', itemStyle: { color: tokens.value.warning } },
-        ],
-      },
-    ],
-    graphic: [
-      {
-        type: 'text',
-        left: 'center',
-        top: '38%',
-        style: { text: `${rate}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
-      },
-      {
-        type: 'text',
-        left: 'center',
-        top: '50%',
-        style: { text: '完成率', fill: tokens.value.muted, fontSize: 12 },
-      },
-    ],
+const planStatItems = computed<StaffStatItem[]>(() => [  { label: '学案', value: plans.value.length, unit: '份' },
+  { label: '已发布', value: publishedPlanCount.value, unit: '份', note: '可以直接开课' },
+  { label: '活动', value: totalTaskCount.value, unit: '个' },
+  {
+    label: '未绑定课次',
+    value: unboundPlanCount.value,
+    unit: '份',
+    note: unboundPlanCount.value ? '绑定课次后才能发布' : '全部学案都已绑定',
+  },
+]);
+
+const planKeyword = ref('');
+const planStatusFilter = ref<'all' | 'draft' | 'published' | 'unbound'>('all');
+
+const filteredPlans = computed(() => {
+  const keyword = planKeyword.value.trim().toLowerCase();
+  return plans.value.filter((plan) => {
+    if (planStatusFilter.value === 'draft' && plan.status !== 'draft') {
+      return false;
+    }
+    if (planStatusFilter.value === 'published' && plan.status !== 'published' && plan.status !== 'active') {
+      return false;
+    }
+    if (planStatusFilter.value === 'unbound' && plan.lesson) {
+      return false;
+    }
+    if (!keyword) {
+      return true;
+    }
+    return [plan.title, plan.lesson?.title || '', plan.lesson?.unit_title || '']
+      .join(' ')
+      .toLowerCase()
+      .includes(keyword);
   });
 });
 
-const planProgressOption = computed(() => {
-  const items = plans.value.slice(0, 10);
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 42 }),
-    xAxis: axisX(items.map((item) => item.title), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: axisY(),
-    series: [
-      {
-        name: '已完成',
-        type: 'bar',
-        stack: 'plan',
-        barMaxWidth: 30,
-        itemStyle: { color: palette.value[2] },
-        data: items.map((item) => item.progress.completed_count),
-      },
-      {
-        name: '待完成',
-        type: 'bar',
-        stack: 'plan',
-        barMaxWidth: 30,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        data: items.map((item) => item.progress.pending_count),
-      },
-    ],
-  });
-});
+const planFilterTabs = computed(() => [
+  { value: 'all' as const, label: '全部', count: plans.value.length },
+  { value: 'draft' as const, label: '草稿', count: plans.value.filter((plan) => plan.status === 'draft').length },
+  {
+    value: 'published' as const,
+    label: '已发布',
+    count: plans.value.filter((plan) => plan.status === 'published' || plan.status === 'active').length,
+  },
+  { value: 'unbound' as const, label: '未绑定课次', count: unboundPlanCount.value },
+]);
+
+function planRowActions(plan: PlanSummary) {
+  return [
+    { label: '进入编辑', key: 'edit' },
+    ...(plan.status === 'draft' ? [{ label: '发布', key: 'publish', disabled: !plan.lesson }] : []),
+    plan.is_hidden
+      ? { label: '恢复显示', key: 'show' }
+      : { label: '隐藏（下架）', key: 'hide', disabled: plan.status === 'active' },
+    { label: '删除', key: 'delete' },
+  ];
+}
+
+function handlePlanRowAction(key: string, plan: PlanSummary) {
+  if (key === 'edit') {
+    void openEditDialog(plan.id);
+    return;
+  }
+  if (key === 'publish') {
+    void publishPlan(plan.id);
+    return;
+  }
+  if (key === 'hide') {
+    void togglePlanVisibility(plan, true);
+    return;
+  }
+  if (key === 'show') {
+    void togglePlanVisibility(plan, false);
+    return;
+  }
+  if (key === 'delete') {
+    void deletePlan(plan.id);
+  }
+}
 const lessonOptions = computed<LessonOptionGroup[]>(() =>
   curriculumBooks.value.flatMap((book) =>
     book.units.map((unit) => ({
@@ -1239,7 +1215,7 @@ async function ensureTaskIdReserved(task: PlanFormTask) {
       }
       return reservedId;
     } catch (error) {
-      const message = error instanceof Error ? error.message : '生成任务接口失败';
+      const message = error instanceof Error ? error.message : '生成活动接口失败';
       errorMessage.value = message;
       ElMessage.error(message);
       return null;
@@ -1288,7 +1264,7 @@ function taskDataSubmitAlertTitle(task: PlanFormTask) {
   if (task.id) {
     return '数据提交接口已就绪，可直接生成网页并即时预览';
   }
-  return '切换为数据提交任务后会自动生成正式接口地址';
+  return '切换为数据提交活动后会自动生成正式接口地址';
 }
 
 function taskDataSubmitAlertDescription(task: PlanFormTask) {
@@ -1298,12 +1274,7 @@ function taskDataSubmitAlertDescription(task: PlanFormTask) {
   if (task.id) {
     return '接口已经可用，可直接复制给 AI 生成网页，或继续手动调整提交页与可视化页。';
   }
-  return '切换到数据提交任务后，系统会自动生成提交接口与读取接口。';
-}
-
-function canEditPlan(plan: Pick<PlanSummary, 'status' | 'progress'>) {
-  void plan;
-  return true;
+  return '切换到数据提交活动后，系统会自动生成提交接口与读取接口。';
 }
 
 function isDialogCancelled(error: unknown) {
@@ -1355,7 +1326,7 @@ function syncDataSubmitTaskHtmlSources(
     return;
   }
 
-  const title = task.title.trim() || taskTypeLabel(task.task_type) || '任务';
+  const title = task.title.trim() || taskTypeLabel(task.task_type) || '活动';
   const submitApiPath = taskDataSubmitApiPath(task);
   const recordsApiPath = taskDataSubmitRecordsPath(task);
   const replaceKnownPaths = (source: string) => {
@@ -1391,7 +1362,7 @@ function syncDataSubmitTaskHtmlSources(
 }
 
 function seedTaskTypeStarterSources(task: PlanFormTask) {
-  const title = task.title.trim() || taskTypeLabel(task.task_type) || '任务';
+  const title = task.title.trim() || taskTypeLabel(task.task_type) || '活动';
   if (task.task_type === 'web_page' && !task.config.entry_html_source.trim()) {
     task.config.entry_html_source = buildWebTaskStarterHtml(title);
     task.config.entry_path = task.config.entry_path.trim() || 'index.html';
@@ -1957,11 +1928,11 @@ function buildPlanHtmlPrompt() {
 }
 
 function buildTaskDescriptionPrompt(task: PlanFormTask) {
-  const displayTitle = task.title.trim() || `任务 ${task.key}`;
+  const displayTitle = task.title.trim() || `活动 ${task.key}`;
   return [
-    `请为任务“${displayTitle}”生成一段简洁的 HTML 任务说明。`,
-    `任务类型：${taskTypeLabel(task.task_type)}。`,
-    '内容要适合直接展示给学生，包含任务目标、步骤提示和提交要求。',
+    `请为活动“${displayTitle}”生成一段简洁的 HTML 活动说明。`,
+    `活动类型：${taskTypeLabel(task.task_type)}。`,
+    '内容要适合直接展示给学生，包含活动目标、步骤提示和提交要求。',
     '请直接返回可渲染的 HTML 片段。',
   ].join('\n');
 }
@@ -1972,13 +1943,13 @@ function buildTaskHtmlPrompt(task: PlanFormTask, slot: TaskAssetSlot, options?: 
   const recordsApiPath = taskDataSubmitPromptRecordsPath(task);
   const runtimeHint =
     '生成页面时请只使用浏览器原生能力；如需请求数据，请使用原生 fetch 并处理失败情况。';
-  const previewHint = '生成结果需要教师确认后写入当前任务的 HTML 源码区域，页面应能在 iframe 中独立运行。';
+  const previewHint = '生成结果需要教师确认后写入当前活动的 HTML 源码区域，页面应能在 iframe 中独立运行。';
   const templatePrompt = options?.template_prompt?.trim();
   const customPrompt = richTextToPlainText(options?.custom_prompt).trim();
 
   if (slot === 'web') {
     const promptLines = [
-      `请生成一个 HTML 网页，用于完成“${title}”这项网页任务。`,
+      `请生成一个 HTML 网页，用于完成“${title}”这项网页活动。`,
       '优先使用浏览器原生能力；如需第三方资源，仅可使用稳定 CDN，并确保页面可直接运行。',
       runtimeHint,
       '请直接返回 HTML。',
@@ -1994,7 +1965,7 @@ function buildTaskHtmlPrompt(task: PlanFormTask, slot: TaskAssetSlot, options?: 
 
   if (slot === 'data_submit_form') {
     const promptLines = [
-      `请生成一个 HTML 提交页，用于完成“${title}”这项数据提交任务。`,
+      `请生成一个 HTML 提交页，用于完成“${title}”这项数据提交活动。`,
       `提交接口：${submitApiPath}` ,
       '页面需要把表单内容整理成 JSON，并通过 POST 提交到上述接口。',
       '请提供清晰的表单、提交反馈和必要说明，适合学生直接填写提交。',
@@ -2011,7 +1982,7 @@ function buildTaskHtmlPrompt(task: PlanFormTask, slot: TaskAssetSlot, options?: 
   }
 
   const promptLines = [
-    `请生成一个 HTML 可视化页，用于展示“${title}”这项数据提交任务的结果。`,
+    `请生成一个 HTML 可视化页，用于展示“${title}”这项数据提交活动的结果。`,
     `读取接口：${recordsApiPath}` ,
     '页面需要读取接口返回的 JSON 数据。',
     '请将结果做成清晰的统计展示，可使用表格、卡片、图表等形式，但不要依赖重量级框架。',
@@ -2051,9 +2022,9 @@ async function generateTaskDescriptionDraft(task: PlanFormTask) {
     const html = await requestHtmlDraft(buildTaskDescriptionPrompt(task));
     task.description = html;
     task.description_mode = 'visual';
-    ElMessage.success('任务说明初稿已生成');
+    ElMessage.success('活动说明初稿已生成');
   } catch (error) {
-    const message = error instanceof Error ? error.message : '生成任务说明失败';
+    const message = error instanceof Error ? error.message : '生成活动说明失败';
     errorMessage.value = message;
     ElMessage.error(message);
   } finally {
@@ -2098,9 +2069,9 @@ async function submitTaskHtmlPromptDialog() {
       html_source: generatedHtml,
       received_chars: generatedHtml.length,
     });
-    ElMessage.success('任务页面源码已生成，请确认后更新到下方源码编辑区');
+    ElMessage.success('活动页面源码已生成，请确认后更新到下方源码编辑区');
   } catch (error) {
-    const message = error instanceof Error ? error.message : '任务网页生成失败，请稍后重试。';
+    const message = error instanceof Error ? error.message : '活动网页生成失败，请稍后重试。';
     errorMessage.value = message;
     ElMessage.error(message);
     if (taskHtmlPromptGenerationStatus.value.state !== 'error') {
@@ -2308,10 +2279,6 @@ async function selectPlan(planId: number | null) {
   await router.push(`/staff/lesson-plans/${planId}`);
 }
 
-function handleRowClick(row: PlanSummary) {
-  void openEditDialog(row.id);
-}
-
 function openCreateDialog() {
   persistCurrentEditorDraft();
   void router.push('/staff/lesson-plans/new');
@@ -2340,7 +2307,7 @@ function buildPayload() {
 
   const tasks = planForm.value.tasks.map((task, index) => {
     if (!task.title.trim()) {
-      throw new Error(`请填写任务 ${index + 1} 的标题`);
+      throw new Error(`请填写活动 ${index + 1} 的标题`);
     }
     return {
       id: task.id,
@@ -2351,6 +2318,7 @@ function buildPayload() {
       config: buildTaskConfigPayload(task),
       sort_order: index + 1,
       is_required: task.is_required,
+      is_active: task.is_active,
     };
   });
 
@@ -2360,6 +2328,7 @@ function buildPayload() {
     content: normalizeHtmlValue(planForm.value.content, 'visual'),
     assigned_date: planForm.value.assigned_date,
     status: planForm.value.status,
+    is_hidden: planForm.value.is_hidden,
     tasks,
   };
 }
@@ -2430,6 +2399,46 @@ async function publishPlan(planId: number) {
     errorMessage.value = error instanceof Error ? error.message : '发布学案失败';
   } finally {
     publishingPlanId.value = null;
+  }
+}
+
+async function togglePlanVisibility(plan: PlanSummary, hidden: boolean) {
+  if (!authStore.token) {
+    return;
+  }
+  if (hidden) {
+    try {
+      await ElMessageBox.confirm(
+        '下架后学生在学习首页和课程页都看不到这份学案，教师端仍可恢复。确认下架吗？',
+        '隐藏学案',
+        { type: 'warning' }
+      );
+    } catch (error) {
+      if (isDialogCancelled(error)) {
+        return;
+      }
+      return;
+    }
+  }
+
+  visibilityLoadingPlanId.value = plan.id;
+  errorMessage.value = '';
+  try {
+    const response = await apiPost<{ plan: PlanDetail }>(
+      `/lesson-plans/staff/${plan.id}/visibility`,
+      { hidden },
+      authStore.token
+    );
+    ElMessage.success(hidden ? '学案已隐藏' : '学案已恢复显示');
+    await loadPlans();
+    if (selectedPlanId.value === plan.id) {
+      await loadPlanDetail(plan.id);
+    }
+    return response.plan;
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '更新学案显示状态失败';
+  } finally {
+    visibilityLoadingPlanId.value = null;
   }
 }
 
@@ -2590,85 +2599,9 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
-.plan-charts {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr);
-  gap: var(--ls-gap-md, 12px);
-}
-
-.plan-charts :deep(.sa-panel__body) {
-  display: grid;
-  gap: 12px;
-}
-
-.plan-chart-head strong {
-  color: var(--ls-ink);
-  font-size: 15px;
-}
-
-.plan-chart-head .section-note {
-  margin: 4px 0 0;
-  color: var(--ls-muted);
-  font-size: 13px;
-}
-
-@media (max-width: 1080px) {
-  .plan-charts {
-    grid-template-columns: 1fr;
-  }
-}
-
-.lesson-plan-hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
-  gap: 18px;
-  align-items: stretch;
-}
-
-.lesson-plan-hero :deep(.sa-page-header__title) {
-  font-size: clamp(34px, 4vw, 44px);
-}
-
-.lesson-plan-hero__actions {
-  display: grid;
-  gap: 14px;
-  align-content: space-between;
-  width: 100%;
-}
-
-.lesson-plan-hero__buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: flex-start;
-}
-
-.lesson-plan-hero__summary {
-  display: grid;
-  gap: 6px;
-  padding: 18px 18px 16px;
-  border: 1px solid var(--ls-summary-border);
-  border-radius: 22px;
-  background: var(--ls-summary-bg);
-}
-
-.lesson-plan-hero__summary strong {
-  font-size: 18px;
-  color: var(--ls-text);
-}
-
-.lesson-plan-hero__summary span {
-  color: var(--ls-muted);
-  line-height: 1.6;
-}
-
-.lesson-plan-hero__summary-label {
-  margin: 0;
-  color: var(--ls-summary-label);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+/* 状态页签与工具栏同宽，下划线贴着行分隔线 */
+.list-tabs {
+  padding: 0 16px;
 }
 
 .chip-row {
@@ -2684,76 +2617,6 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
-}
-
-.stack-list {
-  display: grid;
-  gap: 16px;
-}
-
-.content-panel {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--ls-border);
-  border-radius: 20px;
-  background: var(--ls-panel-soft);
-}
-
-.plan-title-cell {
-  display: grid;
-  grid-template-columns: 84px minmax(0, 1fr);
-  gap: 12px;
-  align-items: center;
-}
-
-.plan-title-cell__thumb-wrap {
-  width: 84px;
-  height: 58px;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid rgba(67, 109, 185, 0.16);
-  background: rgba(67, 109, 185, 0.06);
-}
-
-.plan-title-cell__thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-.plan-title-cell__thumb--placeholder {
-  display: grid;
-  place-items: center;
-  color: var(--ls-text);
-  font-weight: 700;
-  background:
-    linear-gradient(135deg, rgba(67, 109, 185, 0.2), rgba(111, 179, 149, 0.2)),
-    rgba(67, 109, 185, 0.1);
-}
-
-.plan-title-cell__meta {
-  min-width: 0;
-  display: grid;
-  gap: 4px;
-}
-
-.plan-title-cell__title,
-.plan-title-cell__desc {
-  margin: 0;
-}
-
-.plan-title-cell__title {
-  color: var(--ls-ink);
-  font-weight: 700;
-  line-height: 1.4;
-}
-
-.plan-title-cell__desc {
-  color: var(--ls-muted);
-  font-size: 12px;
-  line-height: 1.5;
 }
 
 .editor-tabs {

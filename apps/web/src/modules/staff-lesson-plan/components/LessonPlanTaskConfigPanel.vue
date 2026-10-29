@@ -2,13 +2,13 @@
   <div>
     <div class="dialog-task-head">
       <div>
-        <h3>任务配置</h3>
+        <h3>活动配置</h3>
         <p class="section-note">
-          支持网页任务、讨论任务、图文任务、数据提交任务等多类型编排。每个任务会作为独立 Tab 页面编辑。
+          支持网页活动、讨论活动、图文活动、数据提交活动等多类型编排。每个活动会作为独立 Tab 页面编辑。
         </p>
       </div>
       <div class="chip-row">
-        <n-button secondary @click="addTaskRow">新增空白任务</n-button>
+        <n-button secondary @click="addTaskRow">新增空白活动</n-button>
         <TaskTemplatePickerDropdown
           :custom-task-templates-loading="customTaskTemplatesLoading"
           :custom-task-templates="customTaskTemplates"

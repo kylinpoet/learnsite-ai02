@@ -26,7 +26,7 @@
         <p class="sw-course__progress-note">按顺序完成，提交后回到这里进入下一项。</p>
       </div>
 
-      <StudentPanel title="任务清单" :count="`${tasks.length} 项`" flush>
+      <StudentPanel title="活动清单" :count="`${tasks.length} 项`" flush>
         <template v-if="tasks.length">
           <button
             v-for="task in sortedTasks"
@@ -57,7 +57,7 @@
             </span>
           </button>
         </template>
-        <StudentEmpty v-else text="这节课还没有发布任务。" />
+        <StudentEmpty v-else text="这节课还没有发布活动。" />
       </StudentPanel>
 
       <StudentPanel v-if="hasGuide" title="学案导读">
@@ -121,32 +121,32 @@ const headSub = computed(() => {
     return '';
   }
   if (!tasks.value.length) {
-    return `${planDetail.value.lesson_title} · 暂无任务`;
+    return `${planDetail.value.lesson_title} · 暂无活动`;
   }
-  return `${planDetail.value.unit_title || planDetail.value.lesson_title} · ${tasks.value.length} 项任务，已完成 ${completedCount.value} 项`;
+  return `${planDetail.value.unit_title || planDetail.value.lesson_title} · ${tasks.value.length} 项活动，已完成 ${completedCount.value} 项`;
 });
 
 function taskTypeLabel(taskType: string) {
   if (taskType === 'rich_text') {
-    return '图文任务';
+    return '图文活动';
   }
   if (taskType === 'web_page') {
-    return '网页任务';
+    return '网页活动';
   }
   if (taskType === 'discussion') {
-    return '讨论任务';
+    return '讨论活动';
   }
   if (taskType === 'data_submit') {
-    return '数据提交任务';
+    return '数据提交活动';
   }
   if (taskType === 'programming') {
-    return '编程任务';
+    return '编程活动';
   }
   if (taskType === 'upload_image') {
     return '上传作品';
   }
   if (taskType === 'reading') {
-    return '阅读任务';
+    return '阅读活动';
   }
   return taskType;
 }

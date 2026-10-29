@@ -289,7 +289,7 @@ def test_reading_completion_contributes_to_lesson_plan_progress():
             teacher,
             lesson_id=lesson_id,
             title="阅读联动学案进度",
-            content="<p>测试阅读任务与学案进度联动。</p>",
+            content="<p>测试阅读活动与学案进度联动。</p>",
             assigned_date="2026-04-06",
             tasks=[
                 {
@@ -3048,7 +3048,7 @@ def test_teacher_can_update_and_delete_draft_lesson_plan():
                 "assigned_date": "2026-04-01",
                 "status": "draft",
                 "tasks": [
-                    {"title": "更新任务A", "task_type": "reading", "description": "<p>A</p>", "sort_order": 1, "is_required": True},
+                    {"title": "更新活动A", "task_type": "reading", "description": "<p>A</p>", "sort_order": 1, "is_required": True},
                 ],
             },
         )
@@ -3056,7 +3056,7 @@ def test_teacher_can_update_and_delete_draft_lesson_plan():
         updated_plan = update_response.json()["data"]["plan"]
         assert updated_plan["title"] == "可编辑删除学案-更新版"
         assert len(updated_plan["tasks"]) == 1
-        assert updated_plan["tasks"][0]["title"] == "更新任务A"
+        assert updated_plan["tasks"][0]["title"] == "更新活动A"
 
         delete_response = client.delete(
             f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
@@ -3087,7 +3087,7 @@ def test_teacher_can_save_unbound_lesson_plan_draft_but_not_publish():
                 "status": "draft",
                 "tasks": [
                     {
-                        "title": "先写任务",
+                        "title": "先写活动",
                         "task_type": "reading",
                         "description": "<p>后续再绑定课次。</p>",
                         "sort_order": 1,
@@ -3121,7 +3121,7 @@ def test_teacher_can_save_unbound_lesson_plan_draft_but_not_publish():
                 "tasks": [
                     {
                         "id": created_plan["tasks"][0]["id"],
-                        "title": "先写任务",
+                        "title": "先写活动",
                         "task_type": "reading",
                         "description": "<p>后续再绑定课次。</p>",
                         "sort_order": 1,
@@ -3150,8 +3150,8 @@ def test_teacher_can_update_and_delete_active_plan_with_progress():
                 "assigned_date": "2026-04-01",
                 "status": "draft",
                 "tasks": [
-                    {"title": "阅读任务A", "task_type": "reading", "description": "<p>任务A</p>", "sort_order": 1, "is_required": True},
-                    {"title": "上传任务B", "task_type": "upload_image", "description": "<p>任务B</p>", "sort_order": 2, "is_required": True},
+                    {"title": "阅读活动A", "task_type": "reading", "description": "<p>活动A</p>", "sort_order": 1, "is_required": True},
+                    {"title": "上传活动B", "task_type": "upload_image", "description": "<p>活动B</p>", "sort_order": 2, "is_required": True},
                 ],
             },
         )
@@ -3190,9 +3190,9 @@ def test_teacher_can_update_and_delete_active_plan_with_progress():
                 "tasks": [
                     {
                         "id": existing_task_id,
-                        "title": "阅读任务A-更新",
+                        "title": "阅读活动A-更新",
                         "task_type": "reading",
-                        "description": "<p>更新任务A</p>",
+                        "description": "<p>更新活动A</p>",
                         "sort_order": 1,
                         "is_required": True,
                     },
@@ -3203,7 +3203,7 @@ def test_teacher_can_update_and_delete_active_plan_with_progress():
         updated_plan = update_response.json()["data"]["plan"]
         assert updated_plan["title"] == "开课后可编辑删除-更新版"
         assert len(updated_plan["tasks"]) == 1
-        assert updated_plan["tasks"][0]["title"] == "阅读任务A-更新"
+        assert updated_plan["tasks"][0]["title"] == "阅读活动A-更新"
 
         delete_response = client.delete(
             f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}",
@@ -3229,8 +3229,8 @@ def test_staff_can_save_update_list_and_delete_custom_task_templates():
             headers=teacher,
             json={
                 "title": "数据采集双页模板",
-                "group_name": "数据任务",
-                "summary": "保留提交页与可视化页源码骨架，适合再次生成任务。",
+                "group_name": "数据活动",
+                "summary": "保留提交页与可视化页源码骨架，适合再次生成活动。",
                 "task_title": "活动一：上传实验记录",
                 "task_type": "data_submit",
                 "submission_scope": "group",
@@ -3252,7 +3252,7 @@ def test_staff_can_save_update_list_and_delete_custom_task_templates():
         assert create_response.status_code == 200
         template = create_response.json()["data"]["template"]
         assert template["title"] == "数据采集双页模板"
-        assert template["group_name"] == "数据任务"
+        assert template["group_name"] == "数据活动"
         assert template["submission_scope"] == "group"
         assert template["is_required"] is False
         assert template["sort_order"] >= 1
@@ -3482,7 +3482,7 @@ def test_teacher_can_complete_full_teaching_roundtrip():
                 "assigned_date": "2026-03-31",
                 "status": "draft",
                 "tasks": [
-                    {"title": "阅读任务：智能应用观察", "task_type": "reading", "description": "<p>先阅读导学内容。</p>", "sort_order": 1, "is_required": True},
+                    {"title": "阅读活动：智能应用观察", "task_type": "reading", "description": "<p>先阅读导学内容。</p>", "sort_order": 1, "is_required": True},
                     {"title": "活动一：提交我的智能应用方案", "task_type": "upload_image", "description": "<p>上传图片或文字说明。</p>", "sort_order": 2, "is_required": True},
                 ],
             },
@@ -3577,8 +3577,8 @@ def test_data_submit_task_assets_bootstrap_runtime_cookie_and_records():
             headers=teacher,
             json={
                 "lesson_id": lesson_id,
-                "title": "数据提交任务运行时上下文测试",
-                "content": "<p>测试数据提交任务资源运行时。</p>",
+                "title": "数据提交活动运行时上下文测试",
+                "content": "<p>测试数据提交活动资源运行时。</p>",
                 "assigned_date": "2026-04-04",
                 "status": "draft",
                 "tasks": [
@@ -3666,7 +3666,7 @@ def test_data_submit_task_inline_html_source_persists_and_materializes_assets():
             headers=teacher,
             json={
                 "lesson_id": lesson_id,
-                "title": "数据提交任务源码保存测试",
+                "title": "数据提交活动源码保存测试",
                 "content": "<p>测试整体保存学案时同步写入数据提交页源码。</p>",
                 "assigned_date": "2026-04-04",
                 "status": "draft",
@@ -3712,7 +3712,7 @@ def test_data_submit_task_inline_html_source_persists_and_materializes_assets():
             headers=teacher,
             json={
                 "lesson_id": lesson_id,
-                "title": "数据提交任务源码保存测试",
+                "title": "数据提交活动源码保存测试",
                 "content": "<p>测试整体保存学案时同步写入数据提交页源码。</p>",
                 "assigned_date": "2026-04-04",
                 "status": "draft",
@@ -3834,8 +3834,8 @@ def test_staff_can_reserve_task_ids_for_data_submit_tasks_and_keep_ids_on_save()
             headers=teacher,
             json={
                 "lesson_id": lesson_id,
-                "title": "预生成任务编号测试",
-                "content": "<p>测试预生成任务编号是否会原样保存。</p>",
+                "title": "预生成活动编号测试",
+                "content": "<p>测试预生成活动编号是否会原样保存。</p>",
                 "assigned_date": "2026-04-05",
                 "status": "draft",
                 "tasks": [
@@ -3872,8 +3872,8 @@ def test_staff_can_reserve_task_ids_for_data_submit_tasks_and_keep_ids_on_save()
             headers=teacher,
             json={
                 "lesson_id": lesson_id,
-                "title": "预生成任务编号测试",
-                "content": "<p>测试预生成任务编号是否会原样保存。</p>",
+                "title": "预生成活动编号测试",
+                "content": "<p>测试预生成活动编号是否会原样保存。</p>",
                 "assigned_date": "2026-04-05",
                 "status": "draft",
                 "tasks": [
@@ -3922,7 +3922,7 @@ def test_teacher_cannot_review_other_teachers_class_work():
         allowed = client.get(f"{API_PREFIX}/submissions/teacher/task/75", headers=admin)
 
     assert blocked.status_code == 403
-    assert blocked.json()["detail"] == "无权查看该任务作品"
+    assert blocked.json()["detail"] == "无权查看该活动作品"
     assert allowed.status_code == 200
     assert allowed.json()["data"]["summary"]["submission_count"] >= 1
 
@@ -4218,7 +4218,7 @@ def test_ai_companion_bootstrap_context_and_preview_reply():
             headers=student,
             json={
                 "scope": "lesson",
-                "message": "帮我理解这道任务应该先做什么",
+                "message": "帮我理解这道活动应该先做什么",
                 "provider_id": selected_provider_id,
                 "task_id": 57,
                 "knowledge_base_ids": ["lesson-plan", "task-guidance"],
@@ -5596,7 +5596,7 @@ def test_ai_companion_runtime_generation_params_emit_object_thinking_flag():
 
 
 def test_ai_companion_stream_text_fragments_preserve_text_and_split_large_reply():
-    text = "第一步先理解题目要求。第二步拆成更小的任务。第三步再开始动手完成。"
+    text = "第一步先理解题目要求。第二步拆成更小的活动。第三步再开始动手完成。"
 
     fragments = list(assistants_endpoints.iter_stream_text_fragments(text, min_chunk_size=4, max_chunk_size=10))
 
@@ -5610,7 +5610,7 @@ def test_ai_companion_extracts_native_provider_reasoning_fields():
     message = {
         "content": "这是最终回答。",
         "reasoning_content": [
-            {"text": "先识别任务目标"},
+            {"text": "先识别活动目标"},
             {"text": "再确认关键约束"},
         ],
     }
@@ -5624,7 +5624,7 @@ def test_ai_companion_extracts_native_provider_reasoning_fields():
     reasoning = assistants_endpoints.extract_provider_reasoning(message)
     stream_reasoning = assistants_endpoints.extract_provider_stream_reasoning(delta)
 
-    assert reasoning == "先识别任务目标\n再确认关键约束"
+    assert reasoning == "先识别活动目标\n再确认关键约束"
     assert stream_reasoning == "先看题目再拆步骤"
 
 

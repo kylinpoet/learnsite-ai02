@@ -126,7 +126,7 @@ const checkinNote = computed(() => {
 
 const submissionNote = computed(() => {
   const { partial, none, taskCount } = props.submission;
-  return `部分 ${partial} · 未交 ${none} · 本节 ${taskCount} 个任务`;
+  return `部分 ${partial} · 未交 ${none} · 本节 ${taskCount} 个活动`;
 });
 
 const reviewNote = computed(() =>

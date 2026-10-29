@@ -2371,7 +2371,7 @@ async function executePromotions() {
         `升班完成：迁移 ${result.moved_student_count} 人，新建 ${result.created_target_count} 班，归档 ${result.archived_count} 班`
       );
     } else {
-      ElMessage.success('升班任务已完成');
+      ElMessage.success('升班活动已完成');
     }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '执行升班失败');

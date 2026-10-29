@@ -18,7 +18,7 @@
     </div>
 
     <template v-else-if="overview">
-      <StudentPanel title="任务清单" :count="`${tasks.length} 项`" flush>
+      <StudentPanel title="活动清单" :count="`${tasks.length} 项`" flush>
         <template v-if="tasks.length">
           <button
             v-for="task in sortedTasks"
@@ -35,13 +35,13 @@
               </span>
               <span class="sw-row__meta">
                 <span>{{ taskTypeLabel(task.task_type) }}</span>
-                <span>{{ task.submission_scope === 'group' ? '小组任务' : '个人任务' }}</span>
+                <span>{{ task.submission_scope === 'group' ? '小组活动' : '个人活动' }}</span>
               </span>
             </span>
             <span class="sw-task__go">查看 →</span>
           </button>
         </template>
-        <StudentEmpty v-else text="这节课还没有发布任务。" />
+        <StudentEmpty v-else text="这节课还没有发布活动。" />
       </StudentPanel>
 
       <StudentPanel v-if="planContent" title="学案导读">
@@ -147,7 +147,7 @@ const headSub = computed(() => {
   if (current.plan?.book_name) parts.push(current.plan.book_name);
   if (current.plan?.unit_title) parts.push(current.plan.unit_title);
   if (current.plan?.lesson_title) parts.push(current.plan.lesson_title);
-  parts.push(`${tasks.value.length} 项任务`);
+  parts.push(`${tasks.value.length} 项活动`);
   return parts.join(' · ');
 });
 

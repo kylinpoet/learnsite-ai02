@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from datetime import date, datetime, time
 from html import escape
 from io import BytesIO
@@ -28,6 +29,7 @@ from app.models import (
     GroupTaskDraft,
     LessonPlan,
     PeerReviewVote,
+    PortraitTemplate,
     QuestionBank,
     Quiz,
     QuizAttempt,
@@ -39,8 +41,7 @@ from app.models import (
     ResourceItem,
     ReviewTemplate,
     SchoolClass,
-    StaffProfile,
-    StudentGroup,
+    StaffProfile,    StudentGroup,
     StudentGroupMember,
     StudentLessonPlanProgress,
     StudentProfile,
@@ -55,6 +56,7 @@ from app.models import (
     User,
 )
 from app.services.review_templates import ensure_default_review_templates
+from app.services.student_portraits import default_template_config
 from app.services.class_code import (
     CLASS_CODE_ALPHABET,
     CLASS_CODE_LENGTH,
@@ -401,6 +403,7 @@ def ensure_runtime_schema() -> None:
                             title VARCHAR(120) NOT NULL,
                             content TEXT,
                             status VARCHAR(30) NOT NULL,
+                            is_hidden BOOLEAN NOT NULL DEFAULT 0,
                             assigned_date DATE NOT NULL,
                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
                             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
@@ -414,9 +417,9 @@ def ensure_runtime_schema() -> None:
                     text(
                         """
                         INSERT INTO lesson_plans_runtime_new (
-                            id, lesson_id, title, content, status, assigned_date, created_at, updated_at
+                            id, lesson_id, title, content, status, is_hidden, assigned_date, created_at, updated_at
                         )
-                        SELECT id, lesson_id, title, content, status, assigned_date, created_at, updated_at
+                        SELECT id, lesson_id, title, content, status, 0, assigned_date, created_at, updated_at
                         FROM lesson_plans
                         """
                     )
@@ -425,11 +428,21 @@ def ensure_runtime_schema() -> None:
                 connection.execute(text("ALTER TABLE lesson_plans_runtime_new RENAME TO lesson_plans"))
             connection.execute(text("PRAGMA foreign_keys=ON"))
             connection.commit()
+        # 重建后列集合已变化，重新探测，避免下面重复 ADD COLUMN
+        lesson_plan_columns = {column["name"] for column in inspect(engine).get_columns("lesson_plans")}
 
     with engine.begin() as connection:
         if "class_code" not in school_class_columns:
             connection.execute(
                 text("ALTER TABLE school_classes ADD COLUMN class_code VARCHAR(12)")
+            )
+        if "is_hidden" not in lesson_plan_columns:
+            connection.execute(
+                text("ALTER TABLE lesson_plans ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0")
+            )
+        if "is_active" not in task_columns:
+            connection.execute(
+                text("ALTER TABLE tasks ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1")
             )
         if "submission_scope" not in task_columns:
             connection.execute(
@@ -574,14 +587,14 @@ def seed_lesson_plans(session, lessons: dict[str, CurriculumLesson]) -> list[Les
         Task(id=56, plan_id=14, title="活动一：识别生活中的 AI", task_type="upload_image", sort_order=2, description="<p>拍一张照片或写一段说明，记录你发现的一个人工智能应用场景。</p>"),
         Task(id=57, plan_id=24, title="案例导读：校园里的智能服务", task_type="reading", sort_order=1, description="<p>阅读校园门禁、刷脸签到、智能广播等案例，思考它们解决了什么问题。</p>"),
         Task(id=58, plan_id=24, title="活动二：设计一个智能应用", task_type="upload_image", submission_scope="group", sort_order=2, description="<p>用图片、流程图或文字说明，设计一个适合校园使用的智能应用。</p>"),
-        Task(id=63, plan_id=16, title="阅读任务：互联网的基本结构", task_type="reading", sort_order=1, description="<p>了解互联网、网站、浏览器和域名之间的关系。</p>"),
+        Task(id=63, plan_id=16, title="阅读活动：互联网的基本结构", task_type="reading", sort_order=1, description="<p>了解互联网、网站、浏览器和域名之间的关系。</p>"),
         Task(id=67, plan_id=16, title="活动一：画出你的互联网路线图", task_type="upload_image", sort_order=2, description="<p>用思维导图或结构图说明你访问网页时可能经过的路径。</p>"),
-        Task(id=71, plan_id=21, title="阅读任务：高效检索与可信信息", task_type="reading", sort_order=1, description="<p>比较关键词搜索、短语搜索和筛选条件的差异。</p>"),
+        Task(id=71, plan_id=21, title="阅读活动：高效检索与可信信息", task_type="reading", sort_order=1, description="<p>比较关键词搜索、短语搜索和筛选条件的差异。</p>"),
         Task(id=72, plan_id=21, title="活动一：甄别网络信息", task_type="upload_image", sort_order=2, description="<p>选择一条网络信息，说明你如何判断它是否可信。</p>"),
         Task(id=74, plan_id=18, title="导读：认识物联网", task_type="reading", sort_order=1, description="<p>阅读“感知层、网络层、应用层”的基本概念。</p>"),
         Task(id=75, plan_id=18, title="活动一：生活中的物联网设备", task_type="upload_image", sort_order=2, description="<p>整理一个物联网设备案例，说明它使用了哪些传感器或网络连接。</p>"),
         Task(id=76, plan_id=18, title="活动二：物联网场景设计", task_type="upload_image", submission_scope="group", sort_order=3, description="<p>为教室、校园或家庭设计一个物联网应用场景，突出数据采集与反馈。</p>"),
-        Task(id=81, plan_id=22, title="阅读任务：智能感知系统", task_type="reading", sort_order=1, description="<p>阅读传感器、数据采集和实时反馈的基本流程。</p>"),
+        Task(id=81, plan_id=22, title="阅读活动：智能感知系统", task_type="reading", sort_order=1, description="<p>阅读传感器、数据采集和实时反馈的基本流程。</p>"),
         Task(id=82, plan_id=22, title="活动一：智能感知案例观察", task_type="upload_image", sort_order=2, description="<p>观察一个智能感知案例，说明输入、处理和输出环节。</p>"),
         Task(id=83, plan_id=22, title="活动二：编写感知流程说明", task_type="programming", submission_scope="group", sort_order=3, description="<p>使用伪代码或流程步骤，描述一个简单的智能感知系统逻辑。</p>"),
     ]
@@ -1341,6 +1354,26 @@ def ensure_class_codes(session) -> int:
     return filled
 
 
+def ensure_default_portrait_template(session) -> None:
+    """首次启动时写入一份系统默认画像模板；已有系统模板则不重复创建。"""
+    existing = session.scalar(
+        select(PortraitTemplate).where(PortraitTemplate.is_system == True)  # noqa: E712
+    )
+    if existing is not None:
+        return
+    session.add(
+        PortraitTemplate(
+            owner_staff_id=None,
+            name="默认学生画像",
+            description="覆盖活动完成、作品质量、测验、出勤与课堂参与等常用维度，可复制后调整。",
+            config_json=json.dumps(default_template_config(), ensure_ascii=False),
+            is_system=True,
+            sort_order=1,
+        )
+    )
+    session.commit()
+
+
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_runtime_schema()
@@ -1349,5 +1382,6 @@ def init_db() -> None:
     with SessionLocal() as session:
         ensure_system_setting_defaults(session)
         session.commit()
+        ensure_default_portrait_template(session)
         migrate_ai_provider_api_keys(session)
         ensure_class_codes(session)
