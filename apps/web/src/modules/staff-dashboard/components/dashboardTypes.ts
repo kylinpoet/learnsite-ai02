@@ -113,3 +113,13 @@ export type ClassLivePayload = {
   room: RoomBrief;
   generated_at: string;
 };
+
+export type RecentSession = {
+  session_id: number;
+  status: string;
+  started_at: string;
+  class: { name: string };
+  plan: { title: string; lesson_title: string };
+  submission_count: number;
+  pending_review_count: number;
+};

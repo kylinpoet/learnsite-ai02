@@ -1,5 +1,5 @@
 <template>
-  <div :class="['soybean-shell', `${variant}-layout`]">
+  <div :class="['soybean-shell', `${variant}-layout`]" :data-module="moduleKey">
     <n-dialog-provider>
       <n-message-provider>
         <div :class="['sb-layout', { 'is-collapsed': tabsStore.menuCollapsed }]">
@@ -201,12 +201,78 @@ const currentGroupTitle = computed(() => {
   return group?.title ?? '';
 });
 
+/**
+ * 当前页面所属模块。科目色谱（growth）用它取 --ls-module 功能色，
+ * 把「这一页属于哪个模块」落到页头竖标与卡片顶边上。按前缀从长到短匹配。
+ */
+const MODULE_PREFIXES: ReadonlyArray<readonly [string, string]> = [
+  ['/staff/lesson-plans', 'lesson'],
+  ['/staff/curriculum', 'curriculum'],
+  ['/staff/classroom', 'classroom'],
+  ['/staff/assistants', 'assistant'],
+  ['/staff/submissions', 'submission'],
+  ['/staff/attendance', 'attendance'],
+  ['/staff/learning-reports', 'report'],
+  ['/staff/students', 'student'],
+  ['/staff/quizzes', 'quiz'],
+  ['/staff/typing', 'typing'],
+  ['/staff/resources', 'resource'],
+  ['/staff/admin', 'admin'],
+  ['/staff', 'overview'],
+  ['/student/courses', 'lesson'],
+  ['/student/reviews', 'review'],
+  ['/student/work', 'submission'],
+  ['/student/quiz', 'quiz'],
+  ['/student/typing', 'typing'],
+  ['/student/resources', 'resource'],
+  ['/student/drive', 'drive'],
+  ['/student/groups', 'student'],
+  ['/student/profile', 'student'],
+  ['/student/portrait', 'student'],
+  ['/student', 'overview'],
+];
+
+const MODULE_HUES: Record<string, string> = {
+  overview: '#1e7a57',
+  lesson: '#1e7a57',
+  student: '#1e7a57',
+  curriculum: '#0e7c86',
+  report: '#0e7c86',
+  classroom: '#2563b8',
+  quiz: '#c2600f',
+  attendance: '#c2600f',
+  resource: '#6b4eaa',
+  assistant: '#6b4eaa',
+  drive: '#6b4eaa',
+  submission: '#b23a48',
+  typing: '#b23a48',
+  review: '#b23a48',
+  admin: '#5c6f64',
+};
+
+function moduleOf(path: string) {
+  const hit = MODULE_PREFIXES.find(([prefix]) => path === prefix || path.startsWith(`${prefix}/`));
+  return hit?.[1] ?? 'overview';
+}
+
+const moduleKey = computed(() => moduleOf(route.path));
+
 const menuOptions = computed<MenuOption[]>(() => {
-  const renderIcon = (icon: LucideIcon) => () => h(AppIcon, { icon, size: 18 });
+  // 图标统一包一层 .sb-nav-icon，并把模块功能色作为 --nav-hue 带下去：
+  // 科目色谱据此出浅色块，粘土童趣出橙色胶囊块，墨绿画布不出块。
+  const renderIcon = (item: ShellNavItem) => () =>
+    h(
+      'span',
+      {
+        class: 'sb-nav-icon',
+        style: { '--nav-hue': MODULE_HUES[moduleOf(item.to)] ?? '#5c6f64' },
+      },
+      [h(AppIcon, { icon: item.icon, size: 17 })]
+    );
   const toOption = (item: ShellNavItem): MenuOption => ({
     key: item.to,
     label: item.label,
-    icon: renderIcon(item.icon),
+    icon: renderIcon(item),
   });
 
   const isFlat = props.navGroups.length === 1 && !props.navGroups[0].title;

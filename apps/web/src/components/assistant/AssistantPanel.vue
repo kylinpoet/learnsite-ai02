@@ -292,9 +292,9 @@ import MarkdownContent from '@/components/MarkdownContent.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
 import { streamCompanionReply } from '@/utils/companionStream';
+import type { ContextQuery } from '@/types/domain';
 
 type Scope = 'general' | 'lesson';
-type ContextQuery = Partial<Record<'course_id' | 'task_id' | 'plan_id' | 'session_id', number>>;
 
 type CompanionProvider = {
   id: number;

@@ -1,3 +1,5 @@
+export { formatDateTime } from '@/utils/datetime';
+export { triggerBrowserDownload } from '@/utils/download';
 /** 教师端「小组与协作」相关的数据类型与格式化工具。
  *  这些类型与 /staff/classes/{id}/groups、group-management、group-task-progress、
  *  group-operation-logs 的返回结构一一对应，从仪表盘迁移时原样保留。 */
@@ -239,11 +241,6 @@ export type EditableGroup = {
 
 export type EditableStudent = GroupManagerStudent & { target_group_id: number | null };
 
-export function formatDateTime(value: string | null | undefined) {
-  if (!value) return '暂无记录';
-  return value.replace('T', ' ').slice(0, 16);
-}
-
 export function formatBytes(bytes = 0) {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
@@ -306,15 +303,4 @@ export function getDownloadFileName(contentDisposition: string | null, fallbackN
   if (utf8Match) return decodeURIComponent(utf8Match[1]);
   const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   return basicMatch?.[1] || fallbackName;
-}
-
-export function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
 }

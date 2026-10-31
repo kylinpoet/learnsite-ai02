@@ -3,7 +3,6 @@ import re
 from datetime import datetime
 from io import StringIO
 from typing import Literal
-from urllib.parse import quote
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import case, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.downloads import build_content_disposition
 from app.api.deps.auth import get_current_user, require_staff, require_student
 from app.api.deps.db import get_db
 from app.models import (
@@ -510,17 +510,6 @@ def next_review_template_sort_order(staff_user_id: int, group_name: str, db: Ses
     if not templates:
         return 10
     return max(template.sort_order for template in templates) + 10
-
-
-def build_content_disposition(filename: str, disposition: Literal["inline", "attachment"]) -> str:
-    encoded_name = quote(filename)
-    fallback_name = filename.encode("ascii", "ignore").decode("ascii").strip()
-    if not fallback_name:
-        suffix = ""
-        if "." in filename:
-            suffix = f".{filename.rsplit('.', 1)[1]}"
-        fallback_name = f"attachment{suffix}"
-    return f'{disposition}; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
 def sanitize_archive_part(value: str, fallback: str) -> str:

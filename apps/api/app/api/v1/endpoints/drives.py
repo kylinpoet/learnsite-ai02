@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from math import ceil
 from pathlib import Path
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
@@ -25,17 +24,13 @@ from app.services.classroom_switches import (
     serialize_classroom_capabilities,
 )
 from app.services.group_operation_logs import log_group_operation
+from app.core.downloads import build_content_disposition
 from app.services.student_groups import ensure_group_drive_space, load_student_group_membership
 
 router = APIRouter()
 
 DEFAULT_STUDENT_DRIVE_QUOTA_MB = 128
 
-
-def build_content_disposition(filename: str, disposition: str = "attachment") -> str:
-    encoded_name = quote(filename)
-    fallback_name = filename.encode("ascii", "ignore").decode("ascii").strip() or "download.bin"
-    return f'{disposition}; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
 def load_quota_mb(setting_key: str, default_value: int, db: Session) -> int:
@@ -560,5 +555,5 @@ def download_drive_file(
         media_type=guess_drive_media_type(drive_file),
         filename=drive_file.stored_name,
     )
-    response.headers["Content-Disposition"] = build_content_disposition(drive_file.stored_name)
+    response.headers["Content-Disposition"] = build_content_disposition(drive_file.stored_name, fallback="download.bin")
     return response

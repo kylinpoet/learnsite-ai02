@@ -413,74 +413,13 @@ import GroupDraftHistoryDialog from '@/modules/student-task/components/GroupDraf
 import { useAuthStore } from '@/stores/auth';
 import { resolveIframeSandbox } from '@/utils/iframeTrust';
 import { normalizeRichTextHtml } from '@/utils/richText';
-
-type TaskSubmissionFile = {
-  id: number;
-  name: string;
-  ext: string;
-  size_kb: number;
-  role: string;
-  mime_type?: string;
-  previewable?: boolean;
-};
-
-type FilePreviewKind = 'image' | 'pdf' | 'text' | 'unsupported';
-
-type TaskSubmission = {
-  id: number;
-  status: 'submitted' | 'reviewed';
-  score: number | null;
-  is_recommended: boolean;
-  peer_review_score: number | null;
-  submission_note: string | null;
-  teacher_comment: string | null;
-  submitted_at: string | null;
-  updated_at: string | null;
-  can_resubmit: boolean;
-  submission_scope: 'individual' | 'group';
-  group_id: number | null;
-  group_name: string | null;
-  group_no: number | null;
-  submitted_by_name: string | null;
-  submitted_by_student_no: string | null;
-  files: TaskSubmissionFile[];
-};
-
-type RecommendedSubmissionFile = TaskSubmissionFile & {
-  mime_type: string;
-  previewable: boolean;
-};
-
-type RecommendedSubmissionItem = {
-  submission_id: number;
-  student_id: number;
-  student_name: string;
-  student_no: string;
-  class_name: string;
-  score: number | null;
-  submission_note: string | null;
-  teacher_comment: string | null;
-  submitted_at: string | null;
-  updated_at: string | null;
-  files: RecommendedSubmissionFile[];
-};
-
-type GroupTaskDraft = {
-  id: number;
-  submission_note: string | null;
-  source_code: string | null;
-  version_no: number;
-  updated_at: string | null;
-  updated_by_name: string | null;
-  updated_by_student_no: string | null;
-};
-
-type TaskAssetManifestItem = {
-  path: string;
-  size_kb: number;
-  mime_type?: string | null;
-  slot?: string;
-};
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
+import type { GroupTaskDraft, NavigationTask } from '@/types/domain';
+import type { TaskRuntimeRequestMessage, TaskRuntimeResponseMessage, TaskRuntimeSessionPayload } from '@/types/taskRuntime';
+import type { TaskSubmissionFile, RecommendedSubmissionItem } from '@/types/submission';
+import type { TaskSubmission, TaskAssetManifestItem } from './taskTypes';
+import { detectFilePreviewKind, type FilePreviewKind } from '@/utils/filePreview';
 
 type TaskConfigState = {
   topic: string;
@@ -493,35 +432,6 @@ type TaskConfigState = {
   visualization_assets: TaskAssetManifestItem[];
   submit_api_path: string;
   records_api_path: string;
-};
-
-type TaskRuntimeSessionPayload = {
-  task_id: number;
-  expires_at: string | null;
-  asset_base_path: string;
-};
-
-type TaskRuntimeRequestMessage = {
-  source: 'learnsite-task-runtime-request';
-  requestId: string;
-  previewKey?: string;
-  taskId: number;
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  bodyKind?: 'empty' | 'text' | 'base64';
-  bodyValue?: string;
-  bodyMimeType?: string;
-};
-
-type TaskRuntimeResponseMessage = {
-  source: 'learnsite-task-runtime-response';
-  requestId: string;
-  status?: number;
-  statusText?: string;
-  headers?: Record<string, string>;
-  bodyBase64?: string;
-  error?: string;
 };
 
 type DiscussionPost = {
@@ -546,12 +456,6 @@ type DiscussionFeedPayload = {
   count?: number;
   items?: DiscussionPost[];
   posts?: DiscussionPost[];
-};
-
-type NavigationTask = {
-  id: number;
-  title: string;
-  task_type: string;
 };
 
 type TaskDetailPayload = {
@@ -631,22 +535,6 @@ const taskEmbedSandboxFor = (src: string | null | undefined) => resolveIframeSan
 const runtimeSessionRefreshBufferMs = 15_000;
 const routeNavigationTimeoutMs = 1_200;
 const textPreviewSliceBytes = 256 * 1024;
-const previewableImageExtensions = new Set(['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']);
-const previewableTextExtensions = new Set([
-  'txt',
-  'md',
-  'csv',
-  'json',
-  'log',
-  'html',
-  'css',
-  'js',
-  'ts',
-  'xml',
-  'yml',
-  'yaml',
-  'py',
-]);
 
 const taskDetail = ref<TaskDetailPayload | null>(null);
 const submissionNote = ref('');
@@ -1242,13 +1130,6 @@ function formatDate(value: string) {
   return value.split('-').join('.');
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
-
 function formatFileSize(size: number) {
   const sizeKb = Math.max(1, Math.ceil(size / 1024));
   return `${sizeKb} KB`;
@@ -1277,22 +1158,6 @@ function getFileExtension(fileName: string) {
     return '';
   }
   return fileName.slice(index + 1).toLowerCase();
-}
-
-function detectFilePreviewKind(ext: string, mimeType: string): FilePreviewKind {
-  const normalizedExt = ext.toLowerCase();
-  const normalizedMimeType = mimeType.toLowerCase();
-
-  if (normalizedExt === 'pdf' || normalizedMimeType.includes('pdf')) {
-    return 'pdf';
-  }
-  if (normalizedMimeType.startsWith('image/') || previewableImageExtensions.has(normalizedExt)) {
-    return 'image';
-  }
-  if (normalizedMimeType.startsWith('text/') || previewableTextExtensions.has(normalizedExt)) {
-    return 'text';
-  }
-  return 'unsupported';
 }
 
 function resetFilePreviewTextState() {
@@ -1445,17 +1310,6 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
 
   const basicMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
   return basicMatch?.[1] || fallbackName;
-}
-
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
 }
 
 async function downloadSavedFile(file: TaskSubmissionFile) {

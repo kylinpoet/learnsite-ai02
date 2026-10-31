@@ -634,6 +634,7 @@ import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStat
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
 import { createDebouncedAbortableRequestRunner } from '@/utils/debouncedAbortableRequest';
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type QuizSortMode = 'updated_desc' | 'updated_asc' | 'attempt_desc' | 'attempt_asc';
 type QuizStatusFilter = '' | 'active' | 'inactive';
@@ -1175,10 +1176,7 @@ function createDefaultOptions() {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '暂无', sliceStart: 0, sliceEnd: 16 });
 }
 
 function quizStatusLabel(status: string) {

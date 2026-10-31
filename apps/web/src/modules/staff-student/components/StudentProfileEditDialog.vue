@@ -45,6 +45,7 @@
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NFormItem, NInput, NModal, NRadioButton, NRadioGroup } from 'naive-ui';
 import { ref, watch } from 'vue';
 
 import { apiDelete, apiPut, apiUpload } from '@/api/http';

@@ -1,194 +1,175 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="按班级查看学生、重置密码、停用或恢复账号；分组协作也在这个班里维护。"
-      eyebrow="学生管理"
-      title="班级学生维护"
-    >
+    <StaffPageHead title="学生名单" :sub="pageSummary">
       <template #actions>
-        <n-button :loading="isLoading || isLoadingTransferRequests" type="primary" @click="refreshAll">
-          刷新
-        </n-button>
+        <n-button :loading="isLoading || isLoadingTransferRequests" text @click="refreshAll">刷新</n-button>
         <n-button :disabled="!students?.selected_class_id" secondary @click="downloadStudents">
           导出学生表
         </n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="11" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="11" animated /></div>
+    </div>
 
     <div v-else-if="students" class="page-stack">
-      <n-tabs v-model:value="activeTab" animated type="line">
-        <n-tab-pane display-directive="if" name="students" tab="本班学生">
-      <div class="ls-row">
-        <article class="metric-tile">
-          <p class="metric-label">学生数</p>
-          <p class="metric-value">{{ students.summary.student_count }}</p>
-          <p class="metric-note">当前筛选条件</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">活跃账号</p>
-          <p class="metric-value">{{ students.summary.active_count }}</p>
-          <p class="metric-note">可登录学生</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已停用</p>
-          <p class="metric-value">{{ students.summary.inactive_count }}</p>
-          <p class="metric-note">可在本页恢复</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已分组</p>
-          <p class="metric-value">{{ students.summary.grouped_count }}</p>
-          <p class="metric-note">当前班级分组成员</p>
-        </article>
+      <div class="sf-tabs">
+        <button
+          type="button"
+          :class="['sf-tabs__item', { 'is-active': activeTab === 'students' }]"
+          @click="activeTab = 'students'"
+        >
+          本班学生
+          <span class="sf-tabs__count">{{ students.items.length }}</span>
+        </button>
+        <button
+          type="button"
+          :class="['sf-tabs__item', { 'is-active': activeTab === 'transfers' }]"
+          @click="activeTab = 'transfers'"
+        >
+          转班与审计
+          <span v-if="pendingTransferCount" class="sf-tabs__count">{{ pendingTransferCount }}</span>
+        </button>
+        <button
+          type="button"
+          :class="['sf-tabs__item', { 'is-active': activeTab === 'groups' }]"
+          @click="activeTab = 'groups'"
+        >
+          分组与协作
+        </button>
+        <button
+          type="button"
+          :class="['sf-tabs__item', { 'is-active': activeTab === 'group-progress' }]"
+          @click="activeTab = 'group-progress'"
+        >
+          小组活动进度
+        </button>
       </div>
 
-      <div class="student-charts">
-        <SaPanel compact>
-          <template #header>
-            <div class="student-chart-head">
-              <strong>各班账号构成</strong>
-              <span class="student-chart-note">按班级查看启用与停用账号分布</span>
-            </div>
-          </template>
-          <n-empty v-if="!students.classes.length" description="暂无可对比的班级。" />
-          <AppChart v-else :height="260" :option="classAccountOption" />
-        </SaPanel>
+      <section v-if="activeTab === 'students'" class="sf-panel">
+        <div class="sf-toolbar">
+          <n-select
+            v-model:value="filters.classId"
+            :options="classOptions"
+            class="filter-select"
+            placeholder="选择班级"
+            @update:value="loadStudents"
+          />
+          <n-input
+            v-model:value="filters.keyword"
+            class="sf-toolbar__search"
+            clearable
+            placeholder="按学号 / 账号 / 姓名搜索"
+            @clear="clearStudentKeyword"
+            @keyup.enter="loadStudents"
+          />
+          <n-checkbox v-model:checked="filters.includeInactive" @update:checked="loadStudents">
+            包含停用账号
+          </n-checkbox>
+          <div class="sf-toolbar__right">
+            <span>{{ students.items.length }} 人</span>
+            <n-button text :disabled="!students.selected_class_id" @click="openPermissionDialog">
+              资料修改权限
+            </n-button>
+          </div>
+        </div>
 
-        <SaPanel compact>
-          <template #header>
-            <div class="student-chart-head">
-              <strong>本班提交与评阅</strong>
-              <span class="student-chart-note">按学生查看提交量与待评阅积压（前 12 名学生）</span>
-            </div>
-          </template>
-          <n-empty v-if="!students.items.length" description="当前筛选条件下没有学生。" />
-          <AppChart v-else :height="260" :option="studentSubmissionOption" />
-        </SaPanel>
-      </div>
+        <div v-if="hasSelectedStudents" class="batch-bar">
+          <span class="batch-bar__count">已选 {{ selectedStudentIds.length }} 人</span>
+          <div class="batch-bar__actions">
+            <n-button size="small" secondary @click="runBatchAction('deactivate')">停用</n-button>
+            <n-button size="small" secondary @click="runBatchAction('activate')">恢复</n-button>
+            <n-button size="small" secondary @click="runBatchAction('ungroup')">解除分组</n-button>
+            <n-button size="small" secondary @click="runBatchAction('reset_password')">重置密码</n-button>
+            <n-button size="small" text @click="clearStudentSelection">取消选择</n-button>
+          </div>
+        </div>
 
-      <SaPanel>
-        <template #header>
-          <div class="panel-toolbar">
-            <div class="toolbar-row">
-              <div class="filter-row">
-                <n-select
-                  v-model:value="filters.classId"
-                  :options="classOptions"
-                  class="filter-select"
-                  placeholder="选择班级"
-                  @update:value="loadStudents"
+        <p v-if="!students.items.length" class="sf-empty">
+          当前筛选条件下没有学生。换个班级，或勾选「包含停用账号」再试。
+        </p>
+
+        <template v-else>
+          <div class="sf-rows__head roster-cols">
+            <span class="roster-check">
+              <n-checkbox
+                :checked="allVisibleSelected"
+                :indeterminate="someVisibleSelected"
+                aria-label="全选本页学生"
+                @update:checked="toggleSelectAll"
+              />
+            </span>
+            <span class="roster-col-name">学生</span>
+            <span>签到</span>
+            <span>提交 / 待评</span>
+            <span>最近提交</span>
+            <span>操作</span>
+          </div>
+
+          <div class="sf-rows">
+            <article
+              v-for="row in students.items"
+              :key="row.user_id"
+              :class="['sf-row', 'sf-row--cols', 'roster-cols', row.is_active ? '' : 'is-inactive']"
+            >
+              <span class="roster-check">
+                <n-checkbox
+                  :checked="isStudentChecked(row.user_id)"
+                  :aria-label="`选择 ${row.display_name}`"
+                  @update:checked="(checked) => toggleStudentCheck(row.user_id, checked)"
                 />
-                <n-input
-                  v-model:value="filters.keyword"
-                  class="filter-select"
-                  clearable
-                  placeholder="按学号/账号/姓名搜索"
-                  @clear="clearStudentKeyword"
-                  @keyup.enter="loadStudents"
-                />
-                <n-checkbox v-model:checked="filters.includeInactive" @update:checked="loadStudents">
-                  包含停用账号
-                </n-checkbox>
+              </span>
+
+              <div class="sf-row__main">
+                <p class="sf-row__title">
+                  <span class="sf-row__title-text">{{ row.display_name }}</span>
+                  <span v-if="row.current_role === 'leader'" class="sf-pill sf-pill--accent">组长</span>
+                  <span v-if="!row.is_active" class="sf-pill sf-pill--neg">停用</span>
+                </p>
+                <p class="sf-row__meta">
+                  <span class="roster-no">{{ row.student_no }}</span>
+                  <span v-if="row.username !== row.student_no">账号 {{ row.username }}</span>
+                  <span v-if="row.current_group_name">{{ row.current_group_name }}</span>
+                  <span v-else class="roster-ungrouped">未分组</span>
+                  <span v-if="row.seat_label">{{ row.seat_label }} · {{ row.room_name }}</span>
+                </p>
               </div>
-              <n-tag v-if="students.selected_class" round>
-                {{ students.selected_class.class_name }}
-              </n-tag>
-              <n-button secondary size="small" :disabled="!filters.classId" @click="permissionDialogVisible = true">
-                资料修改权限
-              </n-button>
-            </div>
-            <div class="batch-row">
-              <n-tag round type="info">已选 {{ selectedStudentIds.length }} 人</n-tag>
-              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('deactivate')">
-                批量停用
-              </n-button>
-              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('activate')">
-                批量恢复
-              </n-button>
-              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('ungroup')">
-                批量解除分组
-              </n-button>
-              <n-button :disabled="!hasSelectedStudents" secondary @click="runBatchAction('reset_password')">
-                批量重置密码
-              </n-button>
-            </div>
+
+              <span class="roster-cell" data-label="签到">
+                <span v-if="row.checked_in_today" class="roster-quiet">{{ formatTime(row.checked_in_at) }}</span>
+                <span v-else class="roster-absent">未签到</span>
+              </span>
+
+              <span class="roster-cell roster-submit" data-label="提交">
+                <span :class="['roster-num', row.submission_count ? '' : 'is-zero']">{{ row.submission_count }}</span>
+                <small :class="row.pending_review_count ? 'is-warn' : 'is-zero'">
+                  待评 {{ row.pending_review_count }}
+                </small>
+              </span>
+
+              <span class="roster-cell roster-quiet" data-label="最近提交">
+                {{ row.latest_submission_at ? formatRelative(row.latest_submission_at) : '—' }}
+              </span>
+
+              <div class="sf-row__action">
+                <n-button size="small" text @click="openStudentPortrait(row)">画像</n-button>
+                <n-dropdown
+                  :options="rowActionOptions(row)"
+                  trigger="click"
+                  @select="(key) => handleRowAction(String(key), row)"
+                >
+                  <n-button size="small" text aria-label="更多操作">更多</n-button>
+                </n-dropdown>
+              </div>
+            </article>
           </div>
         </template>
+      </section>
 
-        <SaDataTable
-          v-model:checked-row-keys="selectedStudentKeys"
-          :data="students.items"
-          :scroll-x="1528"
-          empty-text="当前筛选条件下没有学生"
-          row-key="user_id"
-          stripe
-        >
-          <SaTableColumn type="selection" width="48" />
-          <SaTableColumn label="学号" min-width="110" prop="student_no" />
-          <SaTableColumn label="账号" min-width="110" prop="username" />
-          <SaTableColumn label="姓名" min-width="120" prop="display_name" />
-          <SaTableColumn label="状态" min-width="100">
-            <template #default="{ row }">
-              <n-tag :type="row.is_active ? 'success' : 'warning'" round>
-                {{ row.is_active ? '启用' : '停用' }}
-              </n-tag>
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="分组" min-width="170">
-            <template #default="{ row }">
-              <span v-if="row.current_group_name">
-                {{ row.current_group_name }}
-                <n-tag round size="small" :type="row.current_role === 'leader' ? 'success' : 'info'">
-                  {{ row.current_role === 'leader' ? '组长' : '组员' }}
-                </n-tag>
-              </span>
-              <span v-else>未分组</span>
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="座位" min-width="150">
-            <template #default="{ row }">
-              {{ row.seat_label || '--' }}
-              <span v-if="row.room_name"> · {{ row.room_name }}</span>
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="签到" min-width="130">
-            <template #default="{ row }">
-              {{ row.checked_in_today ? `已签到 ${formatDateTime(row.checked_in_at)}` : '未签到' }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="提交/评阅" min-width="130">
-            <template #default="{ row }">
-              {{ row.submission_count }} / {{ row.reviewed_submission_count }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="最近提交" min-width="160">
-            <template #default="{ row }">{{ formatDateTime(row.latest_submission_at) }}</template>
-          </SaTableColumn>
-          <SaTableColumn label="操作" fixed="right" min-width="420">
-            <template #default="{ row }">
-              <div class="cell-actions">
-                <n-button text type="primary" @click="openStudentPortrait(row)">学生画像</n-button>
-                <n-button text type="primary" @click="openProfileEdit(row)">编辑资料</n-button>
-                <n-button text type="primary" @click="openResetPassword(row)">重置密码</n-button>
-                <n-button text type="primary" @click="openStudentSubmissions(row)">作品记录</n-button>
-                <n-button :disabled="!row.current_group_id" text @click="removeFromGroup(row)">
-                  解除分组
-                </n-button>
-                <n-button :type="row.is_active ? 'error' : 'success'" text @click="toggleStudentStatus(row)">
-                  {{ row.is_active ? '停用账号' : '恢复账号' }}
-                </n-button>
-              </div>
-            </template>
-          </SaTableColumn>
-        </SaDataTable>
-      </SaPanel>
-
+      <template v-else-if="activeTab === 'transfers'">
       <SaPanel>
         <template #header>
           <div class="panel-toolbar">
@@ -501,16 +482,14 @@
           </SaTableColumn>
         </SaDataTable>
       </SaPanel>
-        </n-tab-pane>
+      </template>
 
-        <n-tab-pane display-directive="if" name="groups" tab="分组与协作">
-          <GroupCollabPanel :class-id="students.selected_class_id ?? null" />
-        </n-tab-pane>
+      <GroupCollabPanel v-else-if="activeTab === 'groups'" :class-id="students.selected_class_id ?? null" />
 
-        <n-tab-pane display-directive="if" name="group-progress" tab="小组活动进度">
-          <GroupTaskProgressPanel :class-id="students.selected_class_id ?? null" />
-        </n-tab-pane>
-      </n-tabs>
+      <GroupTaskProgressPanel
+        v-else-if="activeTab === 'group-progress'"
+        :class-id="students.selected_class_id ?? null"
+      />
     </div>
 
     <n-drawer v-model:show="submissionDrawerVisible" :width="720" display-directive="if" placement="right">
@@ -564,20 +543,20 @@
 </template>
 
 <script setup lang="ts">
+import type { DropdownOption } from 'naive-ui';
 import {
   NAlert,
   NButton,
   NCheckbox,
   NDrawer,
   NDrawerContent,
+  NDropdown,
   NInput,
   NSelect,
   NSkeleton,
-  NTabPane,
-  NTabs,
   NTag,
 } from 'naive-ui';
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 import { apiGet, apiGetBlob, apiPost } from '@/api/http';
 import GroupCollabPanel from './components/GroupCollabPanel.vue';
@@ -586,14 +565,12 @@ import ProfilePermissionDialog from './components/ProfilePermissionDialog.vue';
 import StudentPortraitDrawer, { type PortraitStudentRef } from './components/StudentPortraitDrawer.vue';
 import StudentProfileEditDialog, { type EditableStudent } from './components/StudentProfileEditDialog.vue';
 import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
 import SaTableColumn from '@/components/sa/SaTableColumn.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
-
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type StudentItem = {
   user_id: number;
@@ -814,7 +791,6 @@ const defaultTransferUnreviewReasonPresetOptions: TransferPresetOption[] = [
 ];
 
 const authStore = useAuthStore();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const students = ref<StudentsPayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -842,71 +818,129 @@ const profileEditStudent = ref<EditableStudent | null>(null);
 const permissionDialogVisible = ref(false);
 const hasSelectedStudents = computed(() => selectedStudentIds.value.length > 0);
 
-const classAccountOption = computed(() => {
-  const classes = students.value?.classes || [];
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 40 }),
-    xAxis: axisX(classes.map((item) => item.class_name), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: axisY(),
-    series: [
-      {
-        name: '启用',
-        type: 'bar',
-        stack: 'account',
-        barMaxWidth: 30,
-        itemStyle: { color: palette.value[2] },
-        data: classes.map((item) => item.active_count),
-      },
-      {
-        name: '停用',
-        type: 'bar',
-        stack: 'account',
-        barMaxWidth: 30,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        data: classes.map((item) => item.inactive_count),
-      },
-    ],
-  });
+const pageSummary = computed(() => {
+  const payload = students.value;
+  if (!payload?.selected_class) {
+    return '按班级查看学生、维护账号与分组；转班申请与资料审计在第二个页签。';
+  }
+  const summary = payload.summary;
+  const facts = [
+    `${payload.selected_class.class_name} · ${summary.student_count} 人`,
+    `今日签到 ${summary.checked_in_today} / ${summary.student_count}`,
+    `已分组 ${summary.grouped_count}`,
+  ];
+  if (summary.inactive_count) {
+    facts.push(`停用 ${summary.inactive_count}`);
+  }
+  return facts.join(' · ');
 });
 
-const studentSubmissionOption = computed(() => {
-  const items = (students.value?.items || [])
-    .slice()
-    .sort((left, right) => right.submission_count - left.submission_count)
-    .slice(0, 12);
+const visibleStudents = computed(() => students.value?.items || []);
 
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 40 }),
-    xAxis: axisX(items.map((item) => item.display_name), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 54, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: axisY(),
-    series: [
-      {
-        name: '已评阅',
-        type: 'bar',
-        stack: 'submission',
-        barMaxWidth: 26,
-        itemStyle: { color: palette.value[2] },
-        data: items.map((item) => item.reviewed_submission_count),
-      },
-      {
-        name: '待评阅',
-        type: 'bar',
-        stack: 'submission',
-        barMaxWidth: 26,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        data: items.map((item) => item.pending_review_count),
-      },
-    ],
-  });
-});
+const isStudentChecked = (userId: number) =>
+  selectedStudentKeys.value.some((key) => Number(key) === userId);
+
+const allVisibleSelected = computed(
+  () => visibleStudents.value.length > 0 && visibleStudents.value.every((item) => isStudentChecked(item.user_id)),
+);
+
+const someVisibleSelected = computed(
+  () => !allVisibleSelected.value && visibleStudents.value.some((item) => isStudentChecked(item.user_id)),
+);
+
+function toggleStudentCheck(userId: number, checked: boolean) {
+  const keys = new Set(selectedStudentKeys.value.map((key) => Number(key)));
+  if (checked) {
+    keys.add(userId);
+  } else {
+    keys.delete(userId);
+  }
+  selectedStudentKeys.value = Array.from(keys);
+}
+
+function toggleSelectAll(checked: boolean) {
+  selectedStudentKeys.value = checked ? visibleStudents.value.map((item) => item.user_id) : [];
+}
+
+function clearStudentSelection() {
+  selectedStudentKeys.value = [];
+}
+
+function openPermissionDialog() {
+  if (!filters.value.classId) {
+    ElMessage.warning('请先选择班级');
+    return;
+  }
+  permissionDialogVisible.value = true;
+}
+
+/** 每行只留一个「画像」入口，其余收进一个下拉，避免一行六个文字按钮 */
+function rowActionOptions(row: StudentItem): DropdownOption[] {
+  return [
+    { label: '编辑资料', key: 'edit' },
+    { label: '重置密码', key: 'password' },
+    { label: '作品记录', key: 'submissions' },
+    { label: '解除分组', key: 'ungroup', disabled: !row.current_group_id },
+    { type: 'divider', key: 'divider' },
+    { label: row.is_active ? '停用账号' : '恢复账号', key: 'toggle' },
+  ];
+}
+
+function handleRowAction(key: string, row: StudentItem) {
+  if (key === 'edit') {
+    openProfileEdit(row);
+    return;
+  }
+  if (key === 'password') {
+    void openResetPassword(row);
+    return;
+  }
+  if (key === 'submissions') {
+    void openStudentSubmissions(row);
+    return;
+  }
+  if (key === 'ungroup') {
+    void removeFromGroup(row);
+    return;
+  }
+  if (key === 'toggle') {
+    void toggleStudentStatus(row);
+  }
+}
+
+function formatTime(value: string | null) {
+  if (!value) {
+    return '--';
+  }
+  return value.replace('T', ' ').slice(11, 16);
+}
+
+function formatRelative(value: string | null) {
+  if (!value) {
+    return '—';
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value.replace('T', ' ').slice(0, 16);
+  }
+  const diffMinutes = Math.round((Date.now() - timestamp) / 60000);
+  if (diffMinutes < 1) {
+    return '刚刚';
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 30) {
+    return `${diffDays} 天前`;
+  }
+  return value.replace('T', ' ').slice(0, 10);
+}
+
 const transferFilters = ref({
   classId: undefined as number | undefined,
   status: 'pending' as '' | 'pending' | 'approved' | 'rejected',
@@ -980,10 +1014,7 @@ const auditClassOptions = computed(() =>
 const activeAuditBatchToken = computed(() => auditFilters.value.batchToken.trim());
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '--';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '--', sliceStart: 0, sliceEnd: 16 });
 }
 
 function extractFilename(disposition: string | null, fallback: string) {
@@ -1162,6 +1193,8 @@ async function loadStudents() {
       authStore.token
     );
     students.value = payload;
+    // 换班/搜索后旧的选择会指向不在列表里的学生，统一清空
+    selectedStudentKeys.value = [];
     filters.value.classId = payload.selected_class_id || undefined;
     if (transferFilters.value.classId === undefined && payload.selected_class_id) {
       transferFilters.value.classId = payload.selected_class_id;
@@ -1764,46 +1797,119 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.student-charts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--ls-gap-md, 12px);
+/* 名单是这一页的答案：一列身份 + 三个数值列 + 一个动作列 */
+.roster-cols {
+  grid-template-columns: 28px minmax(0, 1fr) 88px 108px 96px 96px;
 }
 
-.student-charts :deep(.sa-panel__body) {
-  display: grid;
-  gap: 12px;
+/* 第 1 列是勾选框，第 2 列「学生」必须跟着姓名左对齐，否则会贴在姓名列最右边 */
+.sf-rows__head.roster-cols > span:nth-child(2) {
+  text-align: left;
 }
 
-.student-chart-head {
+.roster-cols > span:nth-child(n + 3) {
+  text-align: right;
+}
+
+.sf-row.roster-cols {
+  align-items: center;
+  /* 名单是逐行扫描的，行高比默认松一档更能一屏多看清几个人 */
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.sf-row.roster-cols .sf-row__meta {
+  margin-top: 2px;
+}
+
+.roster-check {
+  display: flex;
+  align-items: center;
+}
+
+.roster-cell {
+  color: var(--sf-muted);
+  font-size: 13px;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 次行只留事实：学号/账号/分组/座位，全部一档灰 */
+.roster-no {
+  color: var(--sf-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.roster-ungrouped {
+  color: var(--sf-faint);
+}
+
+.roster-quiet {
+  color: var(--sf-muted);
+}
+
+/* 签到这里只是事实：没签到的用警示色文字，不再加底色——48 行都挂药丸会把名字淹没 */
+.roster-absent {
+  color: var(--sf-warn);
+}
+
+/* 提交 / 待评：零值退成灰点，待评不为零才用警示色 */
+.roster-submit {
   display: flex;
   align-items: baseline;
-  gap: 10px;
-  flex-wrap: wrap;
-  min-width: 0;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
-.student-chart-head strong {
-  color: var(--ls-ink);
+.roster-num {
+  color: var(--sf-ink);
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
 
-.student-chart-note {
-  color: var(--ls-muted);
+.roster-submit small {
   font-size: 12px;
 }
 
-@media (max-width: 1080px) {
-  .student-charts {
-    grid-template-columns: 1fr;
-  }
+.roster-num.is-zero,
+.roster-submit small.is-zero {
+  color: var(--sf-faint);
+  font-size: 12px;
 }
 
-.toolbar-row {
+.roster-submit small.is-warn {
+  color: var(--sf-warn);
+  font-weight: 500;
+}
+
+/* 停用账号整行降一档，但内容仍然可读 */
+.sf-row.is-inactive .sf-row__title-text {
+  color: var(--sf-muted);
+}
+
+.batch-bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--sf-line-soft);
+  background: var(--sf-surface-2);
+}
+
+.batch-bar__count {
+  color: var(--sf-ink);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.batch-bar__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
 }
 
@@ -1815,7 +1921,7 @@ onMounted(() => {
 }
 
 .filter-select {
-  width: 230px;
+  width: 220px;
 }
 
 .preset-select {
@@ -1829,18 +1935,40 @@ onMounted(() => {
   flex-wrap: wrap;
 }
 
-.batch-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-
 .panel-toolbar {
   display: grid;
   gap: 10px;
   width: 100%;
+}
+
+@media (max-width: 860px) {
+  /* 窄屏：身份占一行，签到/提交/最近提交作为带标签的次级行，动作贴右 */
+  .sf-row.roster-cols {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+  }
+
+  .sf-row.roster-cols .sf-row__main {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .roster-cell {
+    flex: none;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  /* 窄屏表头收起，数值列自带标签 */
+  .roster-cell[data-label]::before {
+    content: attr(data-label);
+    margin-right: 4px;
+    color: var(--sf-faint);
+  }
+
+  .sf-row.roster-cols .sf-row__action {
+    margin-left: auto;
+  }
 }
 
 .chip-row {

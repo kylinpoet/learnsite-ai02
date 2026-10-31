@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import datetime
-from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -22,6 +21,7 @@ from app.models import (
     User,
 )
 from app.schemas.common import ApiResponse
+from app.core.downloads import build_content_disposition
 from app.services.submission_files import guess_media_type, is_previewable_file, stored_file_path
 
 router = APIRouter()
@@ -49,13 +49,6 @@ def serialize_submission_file(submission_file: SubmissionFile) -> dict:
         "previewable": is_previewable_file(submission_file),
     }
 
-
-def build_content_disposition(filename: str, disposition: str) -> str:
-    encoded_name = quote(filename)
-    fallback_name = filename.encode("ascii", "ignore").decode("ascii").strip()
-    if not fallback_name:
-        fallback_name = "attachment"
-    return f'{disposition}; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
 def load_task_bundle(task_id: int, db: Session) -> tuple[Task, list[Submission], list[PeerReviewVote]]:
@@ -351,5 +344,6 @@ def peer_review_file_content(
     response.headers["Content-Disposition"] = build_content_disposition(
         submission_file.original_name,
         disposition,
+        fallback="attachment",
     )
     return response

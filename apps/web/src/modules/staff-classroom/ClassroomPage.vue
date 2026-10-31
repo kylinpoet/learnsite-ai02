@@ -318,6 +318,7 @@ import type {
   SeatCell,
   SubmissionStage,
 } from '@/modules/staff-dashboard/components/dashboardTypes';
+import { formatDateTime } from '@/utils/datetime';
 
 type SessionSwitchMap = Record<string, boolean>;
 
@@ -498,10 +499,7 @@ const seatFootText = computed(() => {
   return `${room.name} · ${room.row_count} 行 × ${room.col_count} 列 · ${updatedText.value}`;
 });
 
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '暂无记录';
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function taskTypeLabel(type: string) {
   const labels: Record<string, string> = {

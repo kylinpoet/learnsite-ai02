@@ -1,195 +1,192 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="统一管理中文打字、拼音打字等练习内容，并查看每套内容的使用情况。"
-      eyebrow="打字内容管理"
-      title="教师打字内容与成绩概览"
-    >
+    <StaffPageHead title="打字训练" :sub="pageSummary">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadBootstrap">刷新数据</n-button>
-        <n-button secondary @click="resetForm">重置表单</n-button>
+        <n-button type="primary" @click="openCreate">新建内容</n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="12" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
     <template v-else-if="bootstrap">
-      <div class="ls-row">
-        <article class="metric-tile">
-          <p class="metric-label">班级数量</p>
-          <p class="metric-value">{{ bootstrap.classes.length }}</p>
-          <p class="metric-note">当前账号可见班级</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">内容套数</p>
-          <p class="metric-value">{{ bootstrap.sets.length }}</p>
-          <p class="metric-note">全部打字练习内容</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">启用中</p>
-          <p class="metric-value">{{ activeSetCount }}</p>
-          <p class="metric-note">学生端可见的内容数量</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">最高速度</p>
-          <p class="metric-value">{{ bestSpeedOverall }}</p>
-          <p class="metric-note">按已有成绩统计</p>
-        </article>
-      </div>
+      <StaffStatStrip :items="statItems" />
 
-      <SaPanel>
-        <template #header>
-          <div class="section-head">
-            <div>
-              <h3>内容练习与成绩对比</h3>
-              <p class="section-note">柱为练习次数，折线为平均 / 最佳速度（CPM），快速定位热门与难点内容。</p>
-            </div>
+      <section class="sf-panel">
+        <div class="sf-tabs">
+          <button
+            v-for="tab in modeTabs"
+            :key="tab.key"
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': activeMode === tab.key }]"
+            @click="activeMode = tab.key"
+          >
+            {{ tab.label }}
+            <span class="sf-tabs__count">{{ tab.count }}</span>
+          </button>
+        </div>
+
+        <header class="sf-panel__head">
+          <h2 class="sf-panel__title">
+            内容清单
+            <span class="sf-panel__count">{{ filteredSets.length }} 套</span>
+          </h2>
+          <div class="sf-panel__actions">
+            <n-button :loading="isLoading" text @click="loadBootstrap">刷新</n-button>
           </div>
-        </template>
-        <n-empty v-if="!bootstrap.sets.length" description="当前还没有打字练习内容。" />
-        <AppChart v-else :height="300" :option="setPerformanceOption" />
-      </SaPanel>
+        </header>
 
-      <div class="split-grid">
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>新建打字内容</h3>
-                <p class="section-note">支持英文、中文和拼音三种模式。</p>
-              </div>
-            </div>
-          </template>
+        <p v-if="!filteredSets.length" class="sf-empty">
+          {{
+            bootstrap.sets.length
+              ? '当前筛选条件下没有打字内容。'
+              : '还没有打字内容。点右上角「新建内容」录入第一套练习，学生端才会出现打字训练。'
+          }}
+        </p>
 
-          <n-form label-placement="top" @submit.prevent>
-            <n-form-item label="标题">
-              <n-input v-model:value="form.title" maxlength="120" placeholder="例如：拼音训练 · 人工智能应用" />
-            </n-form-item>
-
-            <div class="form-inline-grid">
-              <n-form-item label="练习模式">
-                <n-select v-model:value="form.typing_mode" :options="typingModeOptions" class="full-width" />
-              </n-form-item>
-              <n-form-item label="难度">
-                <n-select v-model:value="form.difficulty" :options="difficultyOptions" class="full-width" />
-              </n-form-item>
-            </div>
-
-            <n-form-item label="内容说明">
-              <n-input
-                v-model:value="form.description"
-                :rows="3"
-                maxlength="1000"
-                placeholder="说明练习主题或适用年级"
-                type="textarea"
-              />
-            </n-form-item>
-
-            <n-form-item label="练习正文">
-              <n-input
-                v-model:value="form.content"
-                :rows="10"
-                maxlength="10000"
-                placeholder="请输入学生实际要练习输入的正文内容"
-                type="textarea"
-              />
-            </n-form-item>
-
-            <n-form-item label="是否启用">
-              <n-switch v-model:value="form.is_active">
-                <template #checked>启用</template>
-                <template #unchecked>停用</template>
-              </n-switch>
-            </n-form-item>
-
-            <n-button :loading="submitting" type="primary" @click="submitSet">保存内容</n-button>
-          </n-form>
-        </SaPanel>
-
-        <SaPanel>
-          <template #header>
-            <div class="section-head">
-              <div>
-                <h3>内容列表</h3>
-                <p class="section-note">可按模式快速筛选查看。</p>
-              </div>
-              <n-radio-group v-model:value="activeMode" size="small">
-                <n-radio-button value="all">全部</n-radio-button>
-                <n-radio-button value="english">英文</n-radio-button>
-                <n-radio-button value="chinese">中文</n-radio-button>
-                <n-radio-button value="pinyin">拼音</n-radio-button>
-              </n-radio-group>
-            </div>
-          </template>
-
-          <div class="chip-row classroom-chip-row">
-            <n-tag v-for="item in bootstrap.classes" :key="item.id" round>
-              {{ item.class_name }} · {{ item.student_count }} 人
-            </n-tag>
+        <template v-else>
+          <div class="sf-rows__head sf-cols-typing">
+            <span>内容</span>
+            <span>练习</span>
+            <span>平均 CPM</span>
+            <span>最佳 CPM</span>
+            <span>操作</span>
           </div>
-
-          <n-empty v-if="!filteredSets.length" description="当前筛选条件下没有打字内容" />
-
-          <div v-else class="set-list">
+          <div class="sf-rows">
             <article
               v-for="item in filteredSets"
               :key="item.id"
-              class="set-card"
+              class="sf-row sf-row--cols sf-row--link sf-cols-typing"
+              @click="openPreview(item)"
             >
-              <div class="set-card__top">
-                <div>
-                  <h4>{{ item.title }}</h4>
-                  <p class="set-card__meta">
-                    {{ item.owner_name }} · {{ modeLabel(item.typing_mode) }} · {{ item.difficulty }}
-                  </p>
-                </div>
-                <div class="chip-row">
-                  <n-tag :type="item.is_active ? 'success' : 'info'" round>
-                    {{ item.is_active ? '已启用' : '未启用' }}
-                  </n-tag>
-                  <n-tag round>{{ item.record_count }} 次练习</n-tag>
-                </div>
+              <div class="sf-row__main">
+                <p class="sf-row__title">
+                  <span class="sf-row__title-text">{{ item.title }}</span>
+                  <span :class="['sf-pill', item.is_active ? 'sf-pill--pos' : '']">
+                    <span v-if="item.is_active" class="sf-pill__dot" />
+                    {{ item.is_active ? '学生端可见' : '未启用' }}
+                  </span>
+                </p>
+                <p class="sf-row__meta">
+                  <span>{{ modeLabel(item.typing_mode) }}</span>
+                  <span>{{ item.difficulty }}</span>
+                  <span>{{ item.owner_name }}</span>
+                  <span>更新于 {{ formatDateTime(item.updated_at) }}</span>
+                  <span v-if="item.description">{{ item.description }}</span>
+                </p>
               </div>
 
-              <p class="set-card__desc">{{ item.description || '暂无内容说明。' }}</p>
-              <p class="set-card__preview">{{ previewContent(item.content) }}</p>
+              <span class="sf-row__num" data-label="练习">{{ item.record_count }}</span>
+              <span class="sf-row__num" data-label="平均 CPM">{{ item.average_speed ?? '--' }}</span>
+              <span class="sf-row__num" data-label="最佳 CPM">{{ item.best_speed ?? '--' }}</span>
 
-              <div class="chip-row">
-                <n-tag round type="success">
-                  平均速度 {{ item.average_speed ?? '--' }}
-                </n-tag>
-                <n-tag round type="warning">
-                  最佳速度 {{ item.best_speed ?? '--' }}
-                </n-tag>
-                <n-tag round type="info">
-                  更新于 {{ formatDateTime(item.updated_at) }}
-                </n-tag>
+              <div class="sf-row__action" @click.stop>
+                <n-button text @click="openPreview(item)">查看全文</n-button>
               </div>
             </article>
           </div>
-        </SaPanel>
-      </div>
+        </template>
+      </section>
     </template>
+
+    <n-drawer v-model:show="createVisible" :width="drawerWidth" placement="right">
+      <n-drawer-content closable title="新建打字内容">
+        <n-form label-placement="top" @submit.prevent>
+          <n-form-item label="标题">
+            <n-input v-model:value="form.title" maxlength="120" placeholder="例如：拼音训练 · 人工智能应用" />
+          </n-form-item>
+
+          <div class="form-inline-grid">
+            <n-form-item label="练习模式">
+              <n-select v-model:value="form.typing_mode" :options="typingModeOptions" class="full-width" />
+            </n-form-item>
+            <n-form-item label="难度">
+              <n-select v-model:value="form.difficulty" :options="difficultyOptions" class="full-width" />
+            </n-form-item>
+          </div>
+
+          <n-form-item label="内容说明">
+            <n-input
+              v-model:value="form.description"
+              :rows="3"
+              maxlength="1000"
+              placeholder="说明练习主题或适用年级"
+              type="textarea"
+            />
+          </n-form-item>
+
+          <n-form-item label="练习正文">
+            <n-input
+              v-model:value="form.content"
+              :rows="10"
+              maxlength="10000"
+              placeholder="输入学生实际要练习输入的正文内容"
+              type="textarea"
+            />
+          </n-form-item>
+
+          <n-form-item label="学生端可见">
+            <n-switch v-model:value="form.is_active">
+              <template #checked>启用</template>
+              <template #unchecked>停用</template>
+            </n-switch>
+          </n-form-item>
+        </n-form>
+
+        <template #footer>
+          <n-space justify="end">
+            <n-button @click="createVisible = false">取消</n-button>
+            <n-button :loading="submitting" type="primary" @click="submitSet">保存内容</n-button>
+          </n-space>
+        </template>
+      </n-drawer-content>
+    </n-drawer>
+
+    <n-modal
+      v-model:show="previewVisible"
+      :title="previewSet?.title || '内容预览'"
+      preset="card"
+      style="width: min(720px, 94vw)"
+    >
+      <template v-if="previewSet">
+        <div class="preview-meta">
+          <span class="sf-pill">{{ modeLabel(previewSet.typing_mode) }}</span>
+          <span class="sf-pill">{{ previewSet.difficulty }}</span>
+          <span :class="['sf-pill', previewSet.is_active ? 'sf-pill--pos' : '']">
+            {{ previewSet.is_active ? '学生端可见' : '未启用' }}
+          </span>
+        </div>
+        <p class="preview-summary">
+          {{ previewSet.description || '暂无内容说明。' }}
+        </p>
+        <p class="preview-stats">
+          练习 {{ previewSet.record_count }} 次 · 平均 {{ previewSet.average_speed ?? '--' }} CPM · 最佳
+          {{ previewSet.best_speed ?? '--' }} CPM · 更新于 {{ formatDateTime(previewSet.updated_at) }}
+        </p>
+        <p class="preview-content">{{ previewSet.content }}</p>
+      </template>
+      <template #footer>
+        <n-space justify="end">
+          <n-button @click="previewVisible = false">关闭</n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NForm, NFormItem, NInput, NRadioButton, NRadioGroup, NSelect, NSkeleton, NSwitch, NTag } from 'naive-ui';
-import { computed, defineAsyncComponent, onMounted, reactive, ref } from 'vue';
+import { NAlert, NButton, NDrawer, NDrawerContent, NForm, NFormItem, NInput, NModal, NSelect, NSkeleton, NSpace, NSwitch } from 'naive-ui';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from '@/ui/feedback';
 
 import { apiGet, apiPost } from '@/api/http';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
-
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type StaffTypingBootstrap = {
   classes: Array<{
@@ -215,14 +212,21 @@ type StaffTypingBootstrap = {
   }>;
 };
 
+type TypingSet = StaffTypingBootstrap['sets'][number];
+type ModeKey = 'all' | 'english' | 'chinese' | 'pinyin';
+
 const authStore = useAuthStore();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 
 const isLoading = ref(true);
 const errorMessage = ref('');
 const submitting = ref(false);
-const activeMode = ref<'all' | 'english' | 'chinese' | 'pinyin'>('all');
+const activeMode = ref<ModeKey>('all');
 const bootstrap = ref<StaffTypingBootstrap | null>(null);
+const createVisible = ref(false);
+const previewVisible = ref(false);
+const previewSet = ref<TypingSet | null>(null);
+
+const drawerWidth = 'min(560px, 94vw)';
 
 const typingModeOptions = [
   { label: '英文', value: 'english' },
@@ -245,69 +249,53 @@ const form = reactive({
   is_active: true,
 });
 
+const sets = computed(() => bootstrap.value?.sets || []);
+const classes = computed(() => bootstrap.value?.classes || []);
+
 const filteredSets = computed(() => {
-  const items = bootstrap.value?.sets || [];
   if (activeMode.value === 'all') {
-    return items;
+    return sets.value;
   }
-  return items.filter((item) => item.typing_mode === activeMode.value);
+  return sets.value.filter((item) => item.typing_mode === activeMode.value);
 });
 
-const activeSetCount = computed(() =>
-  (bootstrap.value?.sets || []).filter((item) => item.is_active).length
-);
+const modeTabs = computed(() => [
+  { key: 'all' as const, label: '全部', count: sets.value.length },
+  { key: 'english' as const, label: '英文', count: sets.value.filter((item) => item.typing_mode === 'english').length },
+  { key: 'chinese' as const, label: '中文', count: sets.value.filter((item) => item.typing_mode === 'chinese').length },
+  { key: 'pinyin' as const, label: '拼音', count: sets.value.filter((item) => item.typing_mode === 'pinyin').length },
+]);
 
-const bestSpeedOverall = computed(() => {
-  const max = Math.max(...(bootstrap.value?.sets || []).map((item) => item.best_speed || 0), 0);
-  return max || '--';
+const activeSetCount = computed(() => sets.value.filter((item) => item.is_active).length);
+const totalRecords = computed(() => sets.value.reduce((sum, item) => sum + item.record_count, 0));
+const bestSpeedOverall = computed(() => Math.max(0, ...sets.value.map((item) => item.best_speed || 0)));
+
+const pageSummary = computed(() => {
+  if (!sets.value.length) {
+    return '还没有打字内容。先新建一套练习，学生端才会出现打字训练。';
+  }
+  if (!activeSetCount.value) {
+    return `有 ${sets.value.length} 套内容，但都未启用，学生端现在还看不到练习。`;
+  }
+  return `学生端可见 ${activeSetCount.value} 套内容，覆盖 ${classes.value.length} 个班级；累计 ${totalRecords.value} 次练习。`;
 });
 
-const setPerformanceOption = computed(() => {
-  const sets = (bootstrap.value?.sets || []).slice(0, 12);
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 42 }),
-    xAxis: axisX(sets.map((item) => item.title), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: [
-      axisY({ name: '练习次数', nameTextStyle: { color: tokens.value.muted } }),
-      axisY({ name: 'CPM', nameTextStyle: { color: tokens.value.muted }, splitLine: { show: false } }),
-    ],
-    series: [
-      {
-        name: '练习次数',
-        type: 'bar',
-        barMaxWidth: 30,
-        itemStyle: { color: palette.value[0], borderRadius: [6, 6, 0, 0] },
-        data: sets.map((item) => item.record_count),
-      },
-      {
-        name: '平均速度',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        symbolSize: 7,
-        connectNulls: true,
-        lineStyle: { color: palette.value[1] },
-        itemStyle: { color: palette.value[1] },
-        data: sets.map((item) => item.average_speed),
-      },
-      {
-        name: '最佳速度',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        symbolSize: 7,
-        connectNulls: true,
-        lineStyle: { color: palette.value[2], type: 'dashed' },
-        itemStyle: { color: palette.value[2] },
-        data: sets.map((item) => item.best_speed),
-      },
-    ],
-  });
-});
+const statItems = computed<StaffStatItem[]>(() => [
+  { label: '覆盖班级', value: classes.value.length, unit: '个', note: '当前账号可见班级' },
+  { label: '内容套数', value: sets.value.length, unit: '套', note: '含未启用内容' },
+  {
+    label: '学生端可见',
+    value: activeSetCount.value,
+    unit: '套',
+    note: activeSetCount.value ? '启用中的内容' : '暂无启用内容',
+  },
+  {
+    label: '累计练习',
+    value: totalRecords.value,
+    unit: '次',
+    note: bestSpeedOverall.value ? `全站最高 ${bestSpeedOverall.value} CPM` : '还没有成绩',
+  },
+]);
 
 function modeLabel(mode: string) {
   if (mode === 'english') {
@@ -322,15 +310,8 @@ function modeLabel(mode: string) {
   return mode;
 }
 
-function previewContent(content: string) {
-  return content.length > 140 ? `${content.slice(0, 140)}...` : content;
-}
-
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '暂无', sliceStart: 0, sliceEnd: 16 });
 }
 
 function resetForm() {
@@ -340,6 +321,16 @@ function resetForm() {
   form.description = '';
   form.content = '';
   form.is_active = true;
+}
+
+function openCreate() {
+  resetForm();
+  createVisible.value = true;
+}
+
+function openPreview(item: TypingSet) {
+  previewSet.value = item;
+  previewVisible.value = true;
 }
 
 async function loadBootstrap() {
@@ -390,6 +381,7 @@ async function submitSet() {
       authStore.token
     );
     ElMessage.success('打字内容已保存');
+    createVisible.value = false;
     resetForm();
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '保存打字内容失败');
@@ -402,93 +394,57 @@ onMounted(loadBootstrap);
 </script>
 
 <style scoped>
-.section-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
-}
-
-.split-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 9fr) minmax(0, 15fr);
-  gap: 16px;
-  align-items: start;
-}
-
-.full-width {
-  width: 100%;
-}
-
-@media (max-width: 1199px) {
-  .split-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-.section-head h3 {
-  margin: 0 0 4px;
-}
-
 .form-inline-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 
-.classroom-chip-row {
-  margin-bottom: 16px;
+.full-width {
+  width: 100%;
 }
 
-.set-list {
-  display: grid;
-  gap: 14px;
+.sf-cols-typing {
+  grid-template-columns: minmax(0, 1fr) 72px 96px 96px 84px;
 }
 
-.set-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--ls-border);
-  border-radius: 18px;
-  background: var(--ls-card);
-}
-
-.set-card__top {
+.preview-meta {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 
-.set-card__top h4 {
+.preview-summary {
   margin: 0 0 6px;
+  color: var(--sf-text);
+  font-size: 14px;
+  line-height: 1.6;
 }
 
-.set-card__meta,
-.set-card__desc,
-.set-card__preview {
+.preview-stats {
+  margin: 0 0 16px;
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-content {
   margin: 0;
-  color: var(--ls-muted);
-}
-
-.set-card__preview {
-  padding: 12px 14px;
-  border-radius: 14px;
-  background: var(--ls-panel-soft);
-  color: var(--ls-text);
-  line-height: 1.8;
+  padding: 16px;
+  border: 1px solid var(--sf-line-soft);
+  border-radius: var(--sf-r-card);
+  background: var(--sf-surface-2);
+  color: var(--sf-ink);
+  font-size: 14px;
+  line-height: 1.9;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 @media (max-width: 900px) {
   .form-inline-grid {
     grid-template-columns: 1fr;
-  }
-
-  .set-card__top {
-    flex-direction: column;
   }
 }
 </style>

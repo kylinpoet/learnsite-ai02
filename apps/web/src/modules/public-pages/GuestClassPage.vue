@@ -89,14 +89,7 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import { taskTypeLabel } from '@/modules/staff-lesson-plan/lessonPlanTask.utils';
 import { ensureGuestToken } from '@/modules/public-pages/guestSession';
-
-type GuestResource = {
-  id: number;
-  title: string;
-  resource_type: string;
-  summary: string | null;
-  external_url: string | null;
-};
+import type { GuestResource } from './guestTypes';
 
 type GuestTask = {
   id: number;

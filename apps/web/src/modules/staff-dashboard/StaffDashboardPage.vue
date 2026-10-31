@@ -97,6 +97,7 @@ import type {
   LaunchpadPlan,
   LiveSession,
   LiveStudent,
+  RecentSession,
   RoomBrief,
   SeatCell,
   SubmissionStage,
@@ -155,16 +156,6 @@ type SessionSummary = {
   recommended_count: number;
   checked_in_count: number;
   pending_signin_count: number;
-};
-
-type RecentSession = {
-  session_id: number;
-  status: string;
-  started_at: string;
-  class: { name: string };
-  plan: { title: string; lesson_title: string };
-  submission_count: number;
-  pending_review_count: number;
 };
 
 type DashboardPayload = {

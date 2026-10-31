@@ -1,243 +1,193 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="汇总所有已有学生提交的活动，优先处理未评阅的作品。"
-      eyebrow="作品评分"
-      title="教师作品总览"
-    >
+    <StaffPageHead title="提交批改" :sub="pageSummary">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadOverview">刷新列表</n-button>
+        <n-button :loading="isLoading" text @click="loadOverview">刷新</n-button>
         <n-button
-          v-if="filteredItems.length"
-          secondary
-          @click="goToTask(filteredItems[0].task_id)"
+          v-if="topQueueItem"
+          type="primary"
+          :title="topQueueItem.task_title"
+          @click="goToTask(topQueueItem.task_id)"
         >
-          前往当前筛选首项
+          开始批改
         </n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="8" animated />
-    </SaPanel>
-
-    <div v-else class="page-stack">
-      <div class="ls-row ls-row--5">
-        <article class="metric-tile">
-          <p class="metric-label">活动数</p>
-          <p class="metric-value">{{ overview?.summary.task_count || 0 }}</p>
-          <p class="metric-note">当前已有学生提交记录的活动总数。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">作品总数</p>
-          <p class="metric-value">{{ overview?.summary.submission_count || 0 }}</p>
-          <p class="metric-note">教师可进入活动页查看作品说明和附件。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已评阅</p>
-          <p class="metric-value">{{ overview?.summary.reviewed_count || 0 }}</p>
-          <p class="metric-note">已经录入评分或教师评语的作品数量。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">待评阅</p>
-          <p class="metric-value">{{ overview?.summary.pending_count || 0 }}</p>
-          <p class="metric-note">学生已提交但教师尚未完成评阅的作品数量。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">提交学生数</p>
-          <p class="metric-value">{{ overview?.student_summary?.summary.student_count || 0 }}</p>
-          <p class="metric-note">按学生聚合统计作品与评分，便于快速查看班级学习表现。</p>
-        </article>
-      </div>
-
-      <div class="overview-charts">
-        <SaPanel>
-          <template #header>
-            <div class="info-row">
-              <span>评阅进度</span>
-              <n-tag round :type="reviewedRate >= 80 ? 'success' : reviewedRate >= 40 ? 'warning' : 'error'">
-                已评阅 {{ reviewedRate }}%
-              </n-tag>
-            </div>
-          </template>
-          <n-empty v-if="!overview?.summary.submission_count" description="当前还没有作品可统计评阅进度。" />
-          <AppChart v-else :height="260" :option="reviewProgressOption" />
-        </SaPanel>
-
-        <SaPanel>
-          <template #header>
-            <div class="info-row">
-              <span>活动提交与平均分</span>
-              <span class="table-note">柱为提交数（深色已评阅），折线为平均分</span>
-            </div>
-          </template>
-          <n-empty v-if="!overview?.items.length" description="当前还没有可对比的活动。" />
-          <AppChart v-else :height="260" :option="taskSubmissionOption" />
-        </SaPanel>
-      </div>
-
-      <SaPanel>
-        <template #header>
-          <div class="toolbar-row">
-            <div class="info-row">
-              <span>学生成绩汇总</span>
-              <n-tag round type="info">
-                计分学生 {{ overview?.student_summary?.summary.scored_student_count || 0 }} / {{
-                  overview?.student_summary?.summary.student_count || 0
-                }}
-              </n-tag>
-              <n-tag round type="success">
-                人均 {{ overview?.student_summary?.summary.average_student_score ?? '--' }}
-              </n-tag>
-            </div>
-            <n-button
-              :disabled="!studentSummaryItems.length"
-              :loading="isExportingStudentSummary"
-              secondary
-              @click="downloadStudentSummary"
-            >
-              导出学生成绩汇总
-            </n-button>
-          </div>
-        </template>
-
-        <n-empty
-          v-if="!studentSummaryItems.length"
-          description="当前还没有可汇总的学生作品记录。"
-        />
-
-        <SaDataTable v-else :data="studentSummaryItems" row-key="student_id" stripe>
-          <SaTableColumn label="班级" min-width="140" prop="class_name" />
-          <SaTableColumn label="学号" min-width="120" prop="student_no" />
-          <SaTableColumn label="学生" min-width="120" prop="student_name" />
-          <SaTableColumn label="作品数" min-width="88" prop="submission_count" />
-          <SaTableColumn label="已评阅" min-width="88" prop="reviewed_count" />
-          <SaTableColumn label="待评阅" min-width="88" prop="pending_count" />
-          <SaTableColumn label="平均分" min-width="100">
-            <template #default="{ row }">
-              {{ row.average_score ?? '--' }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="最近提交" min-width="170">
-            <template #default="{ row }">
-              {{ formatDateTime(row.latest_submitted_at) }}
-            </template>
-          </SaTableColumn>
-        </SaDataTable>
-      </SaPanel>
-
-      <SaPanel>
-        <template #header>
-          <div class="toolbar-row">
-            <div class="info-row">
-              <span>活动列表</span>
-              <n-tag round type="info">
-                平均分 {{ overview?.summary.average_score ?? '--' }}
-              </n-tag>
-            </div>
-            <div class="filter-row">
-              <span class="filter-label">仅看未评阅活动</span>
-              <n-switch v-model:value="onlyPendingTasks" />
-              <n-select
-                v-model:value="selectedCourse"
-                :options="courseOptions.map((option) => ({ label: option, value: option }))"
-                class="filter-select"
-                clearable
-                placeholder="筛选课程"
-              />
-              <n-select
-                v-model:value="selectedLesson"
-                :options="lessonOptions"
-                class="filter-select filter-select-wide"
-                clearable
-                placeholder="筛选课次"
-              />
-              <n-button
-                v-if="selectedCourse || selectedLesson || !onlyPendingTasks"
-                text
-                @click="resetFilters"
-              >
-                恢复默认
-              </n-button>
-              <n-tag round type="success">
-                当前显示 {{ filteredItems.length }} / {{ overview?.items.length || 0 }}
-              </n-tag>
-            </div>
-          </div>
-        </template>
-
-        <n-empty
-          v-if="!overview?.items.length"
-          description="当前还没有学生提交的作品活动。"
-        />
-
-        <n-empty
-          v-else-if="!filteredItems.length"
-          description="当前筛选条件下没有待处理活动。"
-        />
-
-        <SaDataTable
-          v-else
-          :data="filteredItems"
-          :scroll-x="1294"
-          row-key="task_id"
-          stripe
-          @row-click="handleRowClick"
-        >
-          <SaTableColumn label="课程" min-width="220" prop="course_title" />
-          <SaTableColumn label="活动" min-width="220" prop="task_title" />
-          <SaTableColumn label="所属课次" min-width="200">
-            <template #default="{ row }">
-              <div>
-                <strong>{{ row.lesson_title }}</strong>
-                <p class="table-note">{{ row.unit_title }}</p>
-              </div>
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="提交数" min-width="88" prop="submission_count" />
-          <SaTableColumn label="已评阅" min-width="88" prop="reviewed_count" />
-          <SaTableColumn label="待评阅" min-width="88" prop="pending_count" />
-          <SaTableColumn label="平均分" min-width="100">
-            <template #default="{ row }">
-              {{ row.average_score ?? '--' }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="最近提交" min-width="170">
-            <template #default="{ row }">
-              {{ formatDateTime(row.latest_submitted_at) }}
-            </template>
-          </SaTableColumn>
-          <SaTableColumn label="操作" fixed="right" min-width="120">
-            <template #default="{ row }">
-              <n-button text type="primary" @click.stop="goToTask(row.task_id)">
-                进入评分
-              </n-button>
-            </template>
-          </SaTableColumn>
-        </SaDataTable>
-      </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="9" animated /></div>
     </div>
+
+    <template v-else-if="overview">
+      <StaffStatStrip :items="statItems" />
+
+      <div class="queue-layout">
+        <section class="sf-panel">
+          <div class="sf-tabs">
+            <button
+              type="button"
+              :class="['sf-tabs__item', { 'is-active': activeTab === 'pending' }]"
+              @click="activeTab = 'pending'"
+            >
+              待评阅
+              <span class="sf-tabs__count">{{ pendingItems.length }}</span>
+            </button>
+            <button
+              type="button"
+              :class="['sf-tabs__item', { 'is-active': activeTab === 'all' }]"
+              @click="activeTab = 'all'"
+            >
+              全部活动
+              <span class="sf-tabs__count">{{ overviewItems.length }}</span>
+            </button>
+          </div>
+
+          <div class="sf-toolbar">
+            <n-select
+              v-model:value="selectedCourse"
+              :options="courseOptions.map((option) => ({ label: option, value: option }))"
+              class="filter-select"
+              clearable
+              placeholder="筛选课程"
+            />
+            <n-select
+              v-model:value="selectedLesson"
+              :options="lessonOptions"
+              class="filter-select filter-select--wide"
+              clearable
+              placeholder="筛选课次"
+            />
+            <div class="sf-toolbar__right">
+              <n-button v-if="hasFilters" text @click="resetFilters">清除筛选</n-button>
+              <span>{{ filteredItems.length }} / {{ overviewItems.length }} 个活动</span>
+            </div>
+          </div>
+
+          <p v-if="!overviewItems.length" class="sf-empty">
+            还没有学生提交过作品。学生提交后，活动会出现在这里等待批改。
+          </p>
+
+          <p v-else-if="!filteredItems.length" class="sf-empty">
+            当前筛选条件下没有活动。
+          </p>
+
+          <template v-else>
+            <div class="sf-rows__head queue-cols">
+              <span>活动</span>
+              <span>待评阅</span>
+              <span>最近提交</span>
+              <span>操作</span>
+            </div>
+            <div class="sf-rows">
+              <article
+                v-for="item in filteredItems"
+                :key="item.task_id"
+                class="sf-row sf-row--cols sf-row--link queue-cols"
+                @click="goToTask(item.task_id)"
+              >
+                <div class="sf-row__main">
+                  <p class="sf-row__title">
+                    <span class="sf-row__title-text">{{ item.task_title }}</span>
+                    <span v-if="item.pending_count > 0" class="sf-pill sf-pill--warn">
+                      待评 {{ item.pending_count }}
+                    </span>
+                    <span v-else class="sf-pill sf-pill--pos">
+                      <span class="sf-pill__dot" />已批完
+                    </span>
+                  </p>
+                  <p class="sf-row__meta">
+                    <span>{{ item.course_title }}</span>
+                    <span>{{ item.unit_title }} / {{ item.lesson_title }}</span>
+                    <span v-if="item.average_score !== null">平均 {{ item.average_score }}</span>
+                  </p>
+                </div>
+
+                <span class="queue-count">
+                  {{ item.pending_count }}
+                  <small>/ {{ item.submission_count }}</small>
+                </span>
+                <span class="queue-time">{{ formatRelative(item.latest_submitted_at) }}</span>
+
+                <div class="sf-row__action" @click.stop>
+                  <n-button text @click="goToTask(item.task_id)">
+                    {{ item.pending_count > 0 ? '批改' : '查看' }}
+                  </n-button>
+                </div>
+              </article>
+            </div>
+          </template>
+        </section>
+
+        <aside class="queue-rail">
+          <section class="sf-panel">
+            <header class="sf-panel__head">
+              <h2 class="sf-panel__title">
+                谁在等批改
+                <span class="sf-panel__count">{{ studentSummaryItems.length }} 名学生</span>
+              </h2>
+            </header>
+
+            <p v-if="!studentSummaryItems.length" class="sf-empty">
+              还没有学生作品记录。
+            </p>
+
+            <div v-else class="sf-rows">
+              <article
+                v-for="item in studentSummaryItems"
+                :key="item.student_id"
+                class="sf-row student-row"
+              >
+                <div class="sf-row__main">
+                  <p class="sf-row__title">
+                    <span class="sf-row__title-text">{{ item.student_name }}</span>
+                  </p>
+                  <p class="sf-row__meta">
+                    <span>{{ item.class_name }}</span>
+                    <span>{{ item.student_no }}</span>
+                    <span>作品 {{ item.submission_count }}</span>
+                    <span v-if="item.average_score !== null">平均 {{ item.average_score }}</span>
+                  </p>
+                </div>
+                <span class="sf-row__value">
+                  {{ item.pending_count }}
+                  <small>待评</small>
+                </span>
+              </article>
+            </div>
+
+            <footer v-if="studentSummaryItems.length" class="sf-panel__foot student-foot">
+              <span class="student-foot__note">
+                计分学生 {{ scoredStudentCount }} / {{ studentSummaryItems.length }}，人均
+                {{ summaryAverage ?? '--' }}
+              </span>
+              <n-button
+                :loading="isExportingStudentSummary"
+                secondary
+                size="small"
+                @click="downloadStudentSummary"
+              >
+                导出汇总
+              </n-button>
+            </footer>
+          </section>
+        </aside>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSelect, NSkeleton, NSwitch, NTag } from 'naive-ui';
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue';
+import { NAlert, NButton, NSelect, NSkeleton } from 'naive-ui';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import { apiGet, apiGetBlob } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
-
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 defineProps<{
   eyebrow?: string;
@@ -302,9 +252,8 @@ type OverviewPayload = {
 
 const router = useRouter();
 const authStore = useAuthStore();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const overview = ref<OverviewPayload | null>(null);
-const onlyPendingTasks = ref(true);
+const activeTab = ref<'pending' | 'all'>('pending');
 const selectedCourse = ref('');
 const selectedLesson = ref('');
 const isLoading = ref(true);
@@ -312,99 +261,84 @@ const isExportingStudentSummary = ref(false);
 const errorMessage = ref('');
 
 const overviewItems = computed(() => overview.value?.items || []);
-const studentSummaryItems = computed(() => overview.value?.student_summary?.items || []);
+const studentSummaryItems = computed(() =>
+  [...(overview.value?.student_summary?.items || [])].sort((a, b) => {
+    if (b.pending_count !== a.pending_count) {
+      return b.pending_count - a.pending_count;
+    }
+    return b.submission_count - a.submission_count;
+  }),
+);
 
-const reviewedRate = computed(() => {
+const pendingItems = computed(() => overviewItems.value.filter((item) => item.pending_count > 0));
+
+const scoredStudentCount = computed(
+  () => overview.value?.student_summary?.summary.scored_student_count ?? 0,
+);
+const summaryAverage = computed(() => overview.value?.student_summary?.summary.average_student_score ?? null);
+
+/** 队列按“还剩多少份没批”排，其次是最近提交；最上面的一条就是页面主操作的去处 */
+const queueItems = computed(() =>
+  [...overviewItems.value].sort((a, b) => {
+    if (b.pending_count !== a.pending_count) {
+      return b.pending_count - a.pending_count;
+    }
+    return String(b.latest_submitted_at || '').localeCompare(String(a.latest_submitted_at || ''));
+  }),
+);
+
+const topQueueItem = computed(() => pendingItems.value.length ? queueItems.value[0] : null);
+
+const latestSubmitted = computed(() => {
+  const values = overviewItems.value
+    .map((item) => item.latest_submitted_at)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  return values.length ? values[values.length - 1] : null;
+});
+
+const pageSummary = computed(() => {
   const summary = overview.value?.summary;
-  if (!summary?.submission_count) {
-    return 0;
+  if (!summary) {
+    return '汇总所有已有学生提交的活动，优先处理未评阅的作品。';
   }
-  return Math.round((summary.reviewed_count / summary.submission_count) * 100);
+  if (!summary.submission_count) {
+    return '还没有学生提交作品，提交后会进入待批队列。';
+  }
+  const pending = summary.pending_count;
+  if (!pending) {
+    return `${summary.submission_count} 份作品已全部批改完成，最近提交 ${formatRelative(latestSubmitted.value)}`;
+  }
+  return `${pending} 份作品待评阅，分布在 ${pendingItems.value.length} 个活动 · 最近提交 ${formatRelative(latestSubmitted.value)}`;
 });
 
-const reviewProgressOption = computed(() => {
+const statItems = computed<StaffStatItem[]>(() => {
   const summary = overview.value?.summary;
-  const reviewed = summary?.reviewed_count ?? 0;
-  const pending = summary?.pending_count ?? 0;
-
-  return base({
-    tooltip: tooltip('item'),
-    legend: legend({ bottom: 0, top: 'auto' }),
-    series: [
-      {
-        type: 'pie',
-        radius: ['52%', '74%'],
-        center: ['50%', '44%'],
-        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
-        label: { show: false },
-        data: [
-          { value: reviewed, name: '已评阅', itemStyle: { color: palette.value[2] } },
-          { value: pending, name: '待评阅', itemStyle: { color: tokens.value.warning } },
-        ],
-      },
-    ],
-    graphic: [
-      {
-        type: 'text',
-        left: 'center',
-        top: '38%',
-        style: { text: `${reviewedRate.value}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
-      },
-      {
-        type: 'text',
-        left: 'center',
-        top: '50%',
-        style: { text: '评阅完成度', fill: tokens.value.muted, fontSize: 12 },
-      },
-    ],
-  });
-});
-
-const taskSubmissionOption = computed(() => {
-  const items = overviewItems.value.slice(0, 12);
-  const averageScores = items.map((item) => (item.average_score === null ? null : Number(item.average_score.toFixed(1))));
-
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid({ top: 42 }),
-    xAxis: axisX(items.map((item) => item.task_title), {
-      axisLabel: { color: tokens.value.muted, fontSize: 11, width: 72, overflow: 'truncate', interval: 0 },
-    }),
-    yAxis: [
-      axisY(),
-      axisY({ name: '平均分', nameTextStyle: { color: tokens.value.muted }, max: 100, splitLine: { show: false } }),
-    ],
-    series: [
-      {
-        name: '已评阅',
-        type: 'bar',
-        stack: 'submission',
-        barMaxWidth: 30,
-        itemStyle: { color: palette.value[2] },
-        data: items.map((item) => item.reviewed_count),
-      },
-      {
-        name: '待评阅',
-        type: 'bar',
-        stack: 'submission',
-        barMaxWidth: 30,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        data: items.map((item) => item.pending_count),
-      },
-      {
-        name: '平均分',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        symbolSize: 7,
-        connectNulls: true,
-        lineStyle: { color: palette.value[1] },
-        itemStyle: { color: palette.value[1] },
-        data: averageScores,
-      },
-    ],
-  });
+  return [
+    {
+      label: '待评阅',
+      value: summary?.pending_count ?? 0,
+      unit: '份',
+      note: `分布在 ${pendingItems.value.length} 个活动`,
+    },
+    {
+      label: '已评阅',
+      value: summary?.reviewed_count ?? 0,
+      unit: ` / ${summary?.submission_count ?? 0}`,
+      note: '已录入分数或评语的作品',
+    },
+    {
+      label: '学生',
+      value: overview.value?.student_summary?.summary.student_count ?? 0,
+      unit: '人',
+      note: '有作品记录的学生',
+    },
+    {
+      label: '平均分',
+      value: summary?.average_score ?? '--',
+      note: '仅统计已打分作品',
+    },
+  ];
 });
 
 const courseOptions = computed(() => {
@@ -428,9 +362,11 @@ const lessonOptions = computed(() => {
   return Array.from(options, ([value, label]) => ({ value, label }));
 });
 
+const hasFilters = computed(() => Boolean(selectedCourse.value || selectedLesson.value));
+
 const filteredItems = computed(() => {
-  return overviewItems.value.filter((item) => {
-    if (onlyPendingTasks.value && item.pending_count <= 0) {
+  return queueItems.value.filter((item) => {
+    if (activeTab.value === 'pending' && item.pending_count <= 0) {
       return false;
     }
     if (selectedCourse.value && item.course_title !== selectedCourse.value) {
@@ -443,11 +379,31 @@ const filteredItems = computed(() => {
   });
 });
 
-function formatDateTime(value: string | null) {
+/** 时间用“几天前/几小时前”说，比 2026-10-28 20:25 更快看出积压多久 */
+function formatRelative(value: string | null) {
   if (!value) {
-    return '暂无记录';
+    return '暂无提交';
   }
-  return value.replace('T', ' ').slice(0, 16);
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value.replace('T', ' ').slice(0, 16);
+  }
+  const diffMinutes = Math.round((Date.now() - timestamp) / 60000);
+  if (diffMinutes < 1) {
+    return '刚刚';
+  }
+  if (diffMinutes < 60) {
+    return `${diffMinutes} 分钟前`;
+  }
+  const diffHours = Math.round(diffMinutes / 60);
+  if (diffHours < 24) {
+    return `${diffHours} 小时前`;
+  }
+  const diffDays = Math.round(diffHours / 24);
+  if (diffDays < 30) {
+    return `${diffDays} 天前`;
+  }
+  return value.replace('T', ' ').slice(0, 10);
 }
 
 function buildLessonFilterValue(item: Pick<OverviewItem, 'unit_title' | 'lesson_title'>) {
@@ -455,7 +411,6 @@ function buildLessonFilterValue(item: Pick<OverviewItem, 'unit_title' | 'lesson_
 }
 
 function resetFilters() {
-  onlyPendingTasks.value = true;
   selectedCourse.value = '';
   selectedLesson.value = '';
 }
@@ -531,10 +486,6 @@ async function goToTask(taskId: number) {
   await router.push(`/staff/submissions/${taskId}`);
 }
 
-function handleRowClick(row: OverviewItem) {
-  void goToTask(row.task_id);
-}
-
 watch(courseOptions, (options) => {
   if (selectedCourse.value && !options.includes(selectedCourse.value)) {
     selectedCourse.value = '';
@@ -551,60 +502,100 @@ onMounted(loadOverview);
 </script>
 
 <style scoped>
-.overview-charts {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.8fr);
-  gap: 16px;
-}
-
-.overview-charts :deep(.sa-panel__body) {
-  display: grid;
-  gap: 12px;
-}
-
-.toolbar-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
 .filter-select {
-  width: 170px;
+  width: 200px;
 }
 
-.filter-select-wide {
-  width: 240px;
+.filter-select--wide {
+  width: 260px;
 }
 
-.filter-label {
-  color: var(--ls-muted);
-  font-size: 13px;
+.queue-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--sf-section-gap);
+  align-items: start;
 }
 
-.table-note {
-  margin: 4px 0 0;
-  color: var(--ls-muted);
+.queue-rail {
+  display: grid;
+  gap: var(--sf-section-gap);
+  align-content: start;
+  min-width: 0;
+}
+
+.queue-cols {
+  grid-template-columns: minmax(0, 1fr) 92px 108px 64px;
+}
+
+.queue-cols > span:nth-child(2),
+.queue-cols > span:nth-child(3) {
+  text-align: right;
+}
+
+.queue-count {
+  color: var(--sf-ink);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.queue-count small {
+  color: var(--sf-muted);
   font-size: 12px;
 }
 
-@media (max-width: 960px) {
-  .overview-charts {
-    grid-template-columns: 1fr;
+.queue-time {
+  color: var(--sf-muted);
+  font-size: 12px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.student-row {
+  align-items: flex-start;
+}
+
+.student-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.student-foot__note {
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) {
+  .queue-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
-@media (max-width: 900px) {
+@media (max-width: 860px) {
+  .queue-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .sf-row.queue-cols .sf-row__main {
+    flex: 1 1 100%;
+  }
+
+  .queue-count {
+    text-align: left;
+    font-size: 13px;
+  }
+
+  .queue-time {
+    text-align: left;
+  }
+
   .filter-select,
-  .filter-select-wide {
+  .filter-select--wide {
     width: 100%;
   }
 }

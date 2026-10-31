@@ -34,6 +34,7 @@
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NModal, NSwitch } from 'naive-ui';
 import { ref, watch } from 'vue';
 
 import { apiGet, apiPut } from '@/api/http';

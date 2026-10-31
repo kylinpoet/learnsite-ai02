@@ -128,22 +128,10 @@ import StudentPanel from '@/components/student/StudentPanel.vue';
 import { taskTypeLabel } from '@/modules/staff-lesson-plan/lessonPlanTask.utils';
 import { ensureGuestToken } from '@/modules/public-pages/guestSession';
 import { resolveIframeSandbox } from '@/utils/iframeTrust';
+import type { NavigationTask } from '@/types/domain';
+import type { GuestResource } from './guestTypes';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1';
-
-type NavigationTask = {
-  id: number;
-  title: string;
-  task_type: string;
-};
-
-type GuestResource = {
-  id: number;
-  title: string;
-  resource_type: string;
-  summary: string | null;
-  external_url: string | null;
-};
 
 type GuestTaskDetail = {
   id: number;

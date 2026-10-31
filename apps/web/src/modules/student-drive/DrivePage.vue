@@ -146,6 +146,8 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
 
 type DriveFile = {
   id: number;
@@ -298,12 +300,7 @@ function formatBytes(bytes: number) {
   return `${bytes} B`;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function selectedFileKey(file: File) {
   return `${file.name}-${file.size}-${file.lastModified}`;
@@ -356,16 +353,7 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
   return basicMatch?.[1] || fallbackName;
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
-}
+
 
 function syncTabFromRoute() {
   activeTab.value = route.query.tab === 'group' ? 'group' : 'personal';

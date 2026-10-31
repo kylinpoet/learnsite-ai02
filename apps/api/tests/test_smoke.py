@@ -48,108 +48,16 @@ def reset_demo_data():
     yield
 
 
-def student_headers(
-    client: TestClient,
-    username: str = "70101",
-    password: str = "12345",
-    extra_headers: dict[str, str] | None = None,
-) -> dict[str, str]:
-    response = client.post(
-        f"{API_PREFIX}/auth/student/login",
-        json={"username": username, "password": password},
-        headers=extra_headers or {},
-    )
-    assert response.status_code == 200
-    token = response.json()["data"]["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-def staff_headers(client: TestClient, username: str = "t1", password: str = "222221") -> dict[str, str]:
-    response = client.post(
-        f"{API_PREFIX}/auth/staff/login",
-        json={"username": username, "password": password},
-    )
-    assert response.status_code == 200
-    token = response.json()["data"]["access_token"]
-    return {"Authorization": f"Bearer {token}"}
-
-
-def find_class(payload: dict, class_name: str) -> dict:
-    return next(item for item in payload["launchpad"]["classes"] if item["class_name"] == class_name)
-
-
-def find_roster(payload: dict, class_name: str) -> dict:
-    return next(item for item in payload["class_rosters"] if item["class_name"] == class_name)
-
-
-def find_seat_by_student(roster: dict, student_no: str) -> dict:
-    return next(item for item in roster["seats"] if item["student"] and item["student"]["student_no"] == student_no)
-
-
-def find_lesson_id_by_title(books: list[dict], lesson_title: str) -> int:
-    for book in books:
-        for unit in book["units"]:
-            for lesson in unit["lessons"]:
-                if lesson["title"] == lesson_title:
-                    return lesson["id"]
-    raise AssertionError(f"lesson not found: {lesson_title}")
-
-
-def create_published_plan_with_active_session(
-    client: TestClient,
-    teacher_headers: dict[str, str],
-    *,
-    lesson_id: int,
-    title: str,
-    content: str,
-    assigned_date: str,
-    tasks: list[dict],
-    class_id: int = 1,
-) -> dict:
-    create_response = client.post(
-        f"{API_PREFIX}/lesson-plans/staff",
-        headers=teacher_headers,
-        json={
-            "lesson_id": lesson_id,
-            "title": title,
-            "content": content,
-            "assigned_date": assigned_date,
-            "status": "draft",
-            "tasks": tasks,
-        },
-    )
-    assert create_response.status_code == 200
-    created_plan = create_response.json()["data"]["plan"]
-
-    publish_response = client.post(
-        f"{API_PREFIX}/lesson-plans/staff/{created_plan['id']}/publish",
-        headers=teacher_headers,
-    )
-    assert publish_response.status_code == 200
-
-    start_response = client.post(
-        f"{API_PREFIX}/classroom/sessions",
-        headers=teacher_headers,
-        json={"class_id": class_id, "plan_id": created_plan["id"]},
-    )
-    assert start_response.status_code == 200
-    return created_plan
-
-
-def start_classroom_session_for_plan(
-    client: TestClient,
-    teacher_headers: dict[str, str],
-    *,
-    class_id: int,
-    plan_id: int,
-) -> int:
-    start_response = client.post(
-        f"{API_PREFIX}/classroom/sessions",
-        headers=teacher_headers,
-        json={"class_id": class_id, "plan_id": plan_id},
-    )
-    assert start_response.status_code == 200
-    return start_response.json()["data"]["session"]["session_id"]
+from smoke_helpers import (  # noqa: E402
+    create_published_plan_with_active_session,
+    find_class,
+    find_lesson_id_by_title,
+    find_roster,
+    find_seat_by_student,
+    staff_headers,
+    start_classroom_session_for_plan,
+    student_headers,
+)
 
 
 def test_application_title_and_health():
@@ -5898,7 +5806,7 @@ def test_ai_companion_tts_returns_audio_and_validates_input(monkeypatch: pytest.
 
 def test_staff_can_generate_and_list_learning_reports(monkeypatch: pytest.MonkeyPatch):
     """教师生成本班 AI 学情报告：mock AI 返回，验证入库、列表、详情与非授权班级 403。"""
-    from app.api.v1.endpoints import staff as staff_endpoints
+    from app.api.v1.endpoints import learning_reports as staff_endpoints
 
     with SessionLocal() as session:
         demo_provider = session.scalar(select(AIProvider).where(AIProvider.is_default == True))  # noqa: E712
@@ -5984,7 +5892,7 @@ def test_staff_learning_report_generate_returns_error_when_ai_fails(monkeypatch:
     """AI 调用失败时返回 502 明确错误，且失败记录 status=failed 入库留痕。"""
     from sqlalchemy import func as sa_func
 
-    from app.api.v1.endpoints import staff as staff_endpoints
+    from app.api.v1.endpoints import learning_reports as staff_endpoints
     from app.models import LearningReport
 
     def fake_call_provider(provider, overview, db):

@@ -34,6 +34,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 
 import { useRoute } from 'vue-router';
 
 import { useAuthStore } from '@/stores/auth';
+import type { ContextQuery } from '@/types/domain';
 
 /**
  * 入口（圆形头像）必须立刻可见，而面板依赖 Markdown 渲染链（marked + dompurify），
@@ -43,7 +44,6 @@ const PanelComponent = defineAsyncComponent(() => import('./assistant/AssistantP
 
 type Pt = { x: number; y: number };
 type Viewport = { w: number; h: number };
-type ContextQuery = Partial<Record<'course_id' | 'task_id' | 'plan_id' | 'session_id', number>>;
 
 const NARROW_W = 720;
 const SIZE_WIDE = 68;

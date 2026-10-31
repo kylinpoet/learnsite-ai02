@@ -76,9 +76,9 @@ const appStore = useAppStore();
 const tabsStore = useNavTabsStore();
 
 const swatchMap: Record<string, string> = {
-  emblem: 'linear-gradient(135deg, #3f9678, #1e7a57 58%, #c9a469)',
-  growth: 'linear-gradient(135deg, #2db1a4, #0d9488 58%, #f59e0b)',
-  clay: 'linear-gradient(135deg, #fb923c, #f97316 58%, #2563eb)',
+  emblem: 'linear-gradient(135deg, #12362b, #1e7a57 58%, #c9a469)',
+  growth: 'linear-gradient(135deg, #1e7a57, #0e7c86 40%, #2563b8 66%, #c2600f)',
+  clay: 'linear-gradient(135deg, #fff4e6, #f97316 58%, #2563eb)',
 };
 
 function handleShowChange(value: boolean) {

@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.models import SystemSetting
 
 SYSTEM_THEME_PRESETS: list[dict[str, str]] = [
-    {"code": "emblem", "name": "校徽映翠", "description": "校徽绿×描边金的白色浅侧栏配色，平台默认，明亮耐看"},
-    {"code": "growth", "name": "青禾成长", "description": "青绿×暖橙的深青侧栏配色，贴合学生成长与激励场景"},
-    {"code": "clay", "name": "粘土童趣", "description": "Claymorphism 粘土风，奶油底×活力橙，圆角软萌，适合低年级学生端"},
+    {"code": "emblem", "name": "墨绿画布", "description": "深墨绿侧栏与页头色带、鼠尾草画布、纸白墨线卡片，平台默认，重量在框架上"},
+    {"code": "growth", "name": "科目色谱", "description": "浅色壳层 + 每页一个模块功能色（页头竖标、卡片顶边、导航选中），活泼但只用语义色"},
+    {"code": "clay", "name": "粘土童趣", "description": "奶油底点阵、橙色缎带与胶囊导航、软立体卡片，适合学生端与低年级场景"},
 ]
 SYSTEM_THEME_CODES = {item["code"] for item in SYSTEM_THEME_PRESETS}
 DEFAULT_THEME_CODE = "emblem"

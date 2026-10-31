@@ -4,7 +4,6 @@ from collections import defaultdict
 from datetime import date, datetime, time
 from math import ceil
 from pathlib import Path
-from urllib.parse import quote
 
 import csv
 from io import StringIO
@@ -31,7 +30,6 @@ from app.models import (
     CurriculumUnit,
     DriveFile,
     DriveSpace,
-    LearningReport,
     LessonPlan,
     QuizAttempt,
     SchoolClass,
@@ -51,12 +49,6 @@ from app.services.drive_files import (
     stored_drive_file_path,
     upload_files_to_drive_space,
 )
-from app.services.learning_reports import (
-    build_class_learning_overview,
-    call_provider_for_learning_report,
-    provider_is_demo as learning_report_provider_is_demo,
-    resolve_report_provider,
-)
 from app.services.staff_access import build_staff_roles, get_accessible_class_ids, staff_can_access_class
 from app.services.group_activity import build_group_activity_feed, load_recent_group_submissions
 from app.services.group_operation_logs import (
@@ -75,6 +67,7 @@ from app.services.system_settings import (
     resolve_student_profile_edit_permissions,
     write_student_profile_edit_permissions_by_class,
 )
+from app.core.downloads import build_content_disposition
 from app.services.student_groups import ensure_group_drive_space
 
 router = APIRouter()
@@ -154,44 +147,6 @@ class StaffClassProfileEditPermissionsPayload(BaseModel):
     can_edit_gender: bool = True
     can_edit_photo: bool = True
     can_edit_class: bool = True
-
-
-class LearningReportGeneratePayload(BaseModel):
-    class_id: int = Field(ge=1)
-    lesson_plan_id: int | None = Field(default=None, ge=1)
-
-
-class LearningReportSummary(BaseModel):
-    id: int
-    class_id: int
-    class_name: str
-    lesson_plan_id: int | None
-    lesson_plan_title: str | None
-    teacher_id: int | None
-    teacher_name: str
-    title: str
-    status: str
-    error_message: str | None
-    created_at: str | None
-
-
-class LearningReportDetail(LearningReportSummary):
-    content_md: str
-
-
-class LearningReportListData(BaseModel):
-    items: list[LearningReportSummary]
-    total: int
-    page: int
-    page_size: int
-
-
-class LearningReportDetailData(BaseModel):
-    report: LearningReportDetail
-
-
-class LearningReportGenerateData(BaseModel):
-    report: LearningReportDetail
 
 
 class StaffStudentBatchActionPayload(BaseModel):
@@ -621,11 +576,6 @@ def serialize_seat_map(
         "unassigned_students": pending_students,
     }
 
-
-def build_content_disposition(filename: str, disposition: str = "attachment") -> str:
-    encoded_name = quote(filename)
-    fallback_name = filename.encode("ascii", "ignore").decode("ascii").strip() or "download.bin"
-    return f'{disposition}; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
 def serialize_group_drive_limits(db: Session) -> dict:
@@ -2430,7 +2380,7 @@ def export_class_group_operation_logs(
     return Response(
         content=("\ufeff" + build_group_operation_log_csv(logs)).encode("utf-8"),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": build_content_disposition(file_name)},
+        headers={"Content-Disposition": build_content_disposition(file_name, fallback="download.bin")},
     )
 
 
@@ -2779,7 +2729,7 @@ def download_group_shared_file_for_staff(
         media_type=guess_drive_media_type(drive_file),
         filename=drive_file.stored_name,
     )
-    response.headers["Content-Disposition"] = build_content_disposition(drive_file.stored_name)
+    response.headers["Content-Disposition"] = build_content_disposition(drive_file.stored_name, fallback="download.bin")
     return response
 
 
@@ -2829,7 +2779,7 @@ def export_staff_attendance(
     return Response(
         content=("\ufeff" + csv_text).encode("utf-8"),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": build_content_disposition(file_name)},
+        headers={"Content-Disposition": build_content_disposition(file_name, fallback="download.bin")},
     )
 
 
@@ -2874,7 +2824,7 @@ def export_staff_students(
     return Response(
         content=("\ufeff" + csv_text).encode("utf-8"),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": build_content_disposition(file_name)},
+        headers={"Content-Disposition": build_content_disposition(file_name, fallback="download.bin")},
     )
 
 
@@ -3457,167 +3407,3 @@ def save_class_seat_map(
     return ApiResponse(message="班级座位表已更新", data={"class_id": class_id, "room_id": room.id})
 
 
-def serialize_learning_report(report: LearningReport, *, with_content: bool = False) -> dict:
-    payload = {
-        "id": report.id,
-        "class_id": report.class_id,
-        "class_name": report.school_class.class_name if report.school_class else "",
-        "lesson_plan_id": report.lesson_plan_id,
-        "lesson_plan_title": report.lesson_plan.title if report.lesson_plan else None,
-        "teacher_id": report.teacher_id,
-        "teacher_name": report.teacher.display_name if report.teacher else "",
-        "title": report.title,
-        "status": report.status,
-        "error_message": report.error_message,
-        "created_at": report.created_at.isoformat() if report.created_at else None,
-    }
-    if with_content:
-        payload["content_md"] = report.content_md
-    return payload
-
-
-def load_learning_report_or_404(report_id: int, staff: User, db: Session) -> LearningReport:
-    report = db.scalar(
-        select(LearningReport)
-        .where(LearningReport.id == report_id)
-        .options(
-            selectinload(LearningReport.school_class),
-            selectinload(LearningReport.teacher),
-            selectinload(LearningReport.lesson_plan),
-        )
-    )
-    if report is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学情报告不存在")
-    if not staff_can_access_class(staff, report.class_id, db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级的学情报告")
-    return report
-
-
-@router.get("/learning-reports", response_model=ApiResponse[LearningReportListData])
-def list_learning_reports(
-    class_id: int | None = Query(default=None, ge=1),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=10, ge=1, le=50),
-    staff: User = Depends(require_staff),
-    db: Session = Depends(get_db),
-) -> ApiResponse[LearningReportListData]:
-    accessible_class_ids = get_accessible_class_ids(staff, db)
-    if not accessible_class_ids:
-        return ApiResponse(data=LearningReportListData(items=[], total=0, page=page, page_size=page_size))
-
-    filters = [LearningReport.class_id.in_(accessible_class_ids)]
-    if class_id is not None:
-        if class_id not in accessible_class_ids:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权查看该班级的学情报告")
-        filters.append(LearningReport.class_id == class_id)
-
-    total = db.scalar(select(func.count()).select_from(LearningReport).where(*filters)) or 0
-    rows = db.scalars(
-        select(LearningReport)
-        .where(*filters)
-        .options(
-            selectinload(LearningReport.school_class),
-            selectinload(LearningReport.teacher),
-            selectinload(LearningReport.lesson_plan),
-        )
-        .order_by(LearningReport.created_at.desc(), LearningReport.id.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    ).all()
-    return ApiResponse(
-        data=LearningReportListData(
-            items=[serialize_learning_report(item) for item in rows],  # type: ignore[arg-type]
-            total=total,
-            page=page,
-            page_size=page_size,
-        )
-    )
-
-
-@router.get("/learning-reports/{report_id}", response_model=ApiResponse[LearningReportDetailData])
-def get_learning_report(
-    report_id: int,
-    staff: User = Depends(require_staff),
-    db: Session = Depends(get_db),
-) -> ApiResponse[LearningReportDetailData]:
-    report = load_learning_report_or_404(report_id, staff, db)
-    return ApiResponse(data=LearningReportDetailData(report=serialize_learning_report(report, with_content=True)))  # type: ignore[arg-type]
-
-
-@router.post("/learning-reports/generate", response_model=ApiResponse[LearningReportGenerateData])
-def generate_learning_report(
-    payload: LearningReportGeneratePayload,
-    staff: User = Depends(require_staff),
-    db: Session = Depends(get_db),
-) -> ApiResponse[LearningReportGenerateData]:
-    if not staff_can_access_class(staff, payload.class_id, db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权为该班级生成学情报告")
-
-    school_class = db.scalar(
-        select(SchoolClass)
-        .where(SchoolClass.id == payload.class_id)
-        .options(selectinload(SchoolClass.students).selectinload(StudentProfile.user))
-    )
-    if school_class is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
-
-    if payload.lesson_plan_id is not None:
-        plan = db.get(LessonPlan, payload.lesson_plan_id)
-        if plan is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
-
-    provider = resolve_report_provider(db)
-    if provider is None or learning_report_provider_is_demo(provider):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="尚未配置可用的 AI Provider，请先在系统设置中接入真实模型服务",
-        )
-
-    overview = build_class_learning_overview(
-        school_class,
-        db,
-        lesson_plan_id=payload.lesson_plan_id,
-    )
-    content_md, provider_error = call_provider_for_learning_report(provider, overview, db)
-    if provider_error or not content_md.strip():
-        error_message = provider_error or "AI 返回内容为空"
-        db.add(
-            LearningReport(
-                class_id=payload.class_id,
-                teacher_id=staff.id,
-                lesson_plan_id=payload.lesson_plan_id,
-                title=f"{school_class.class_name} 学情报告（生成失败）",
-                content_md="",
-                status="failed",
-                error_message=error_message,
-            )
-        )
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"AI 生成学情报告失败：{error_message}",
-        )
-
-    scope_suffix = (
-        f" · {overview['scope']['plan_title']}"
-        if overview.get("scope") is not None
-        else " · 全部数据"
-    )
-    report = LearningReport(
-        class_id=payload.class_id,
-        teacher_id=staff.id,
-        lesson_plan_id=payload.lesson_plan_id,
-        title=f"{school_class.class_name} AI 学情报告{scope_suffix}",
-        content_md=content_md.strip(),
-        status="completed",
-        error_message=None,
-    )
-    db.add(report)
-    db.commit()
-    db.refresh(report)
-    return ApiResponse(
-        message="学情报告已生成",
-        data=LearningReportGenerateData(
-            report={**serialize_learning_report(report, with_content=True), "class_name": school_class.class_name}  # type: ignore[arg-type]
-        ),
-    )

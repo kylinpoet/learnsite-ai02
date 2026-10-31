@@ -1,0 +1,838 @@
+/* ===== 三套主题方向层（造型差异） =====
+   theme.css 负责调色，这里只负责「形」：
+   - 壳层深浅（深墨侧栏与顶栏 / 浅色侧栏 / 奶油侧栏）
+   - 页头形态（整幅色带 / 左侧竖标 / 橙色缎带）
+   - 卡片浮起方式（墨线 / 细描边 + 功能色顶边 / 双层软阴影）
+   - 模块功能色落到哪些元素上（只依赖壳层的 data-module）
+   只改公共类（sb-* / hero-panel / soft-card / sa-*），不动组件结构。
+
+   放在 staff-workspace.css / student-workspace.css 之后加载，靠 :root[data-theme] 提权覆盖。 */
+
+/* ---------------- 共用：页头横向出血尺寸 ---------------- */
+/* 与 .sb-content 的 padding 对齐，色带才能顶到内容区边缘 */
+.staff-layout {
+  --ls-bleed-y: 12px;
+  --ls-bleed-x: 16px;
+}
+
+.student-layout {
+  --ls-bleed-y: 20px;
+  --ls-bleed-x: 28px;
+}
+
+@media (max-width: 960px) {
+  .staff-layout {
+    --ls-bleed-y: 10px;
+    --ls-bleed-x: 12px;
+  }
+}
+
+/* ---------------- 共用：导航图标块 ----------------
+   每个菜单项带 --nav-hue（按模块功能色），三套主题决定它长成什么样：
+   墨绿画布不出块、科目色谱出浅色块、粘土童趣出橙色胶囊块。 */
+.sb-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: inherit;
+}
+
+:root[data-theme='emblem'] .sb-nav-icon {
+  background: transparent;
+}
+
+:root[data-theme='growth'] .sb-nav-icon {
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--nav-hue, #5c6f64) 14%, #ffffff);
+  color: var(--nav-hue, #5c6f64);
+}
+
+:root[data-theme='growth'] .sb-menu .n-menu-item-content--selected .sb-nav-icon {
+  background: var(--nav-hue, #5c6f64);
+  color: #ffffff;
+}
+
+:root[data-theme='clay'] .sb-nav-icon {
+  border-radius: 8px;
+  background: rgba(249, 115, 22, 0.14);
+  color: #c2410c;
+}
+
+:root[data-theme='clay'] .sb-menu .n-menu-item-content--selected .sb-nav-icon {
+  background: rgba(255, 255, 255, 0.26);
+  color: #ffffff;
+}
+
+/* ---------------- 共用：模块功能色映射（科目色谱使用） ----------------
+   绿=总览/学生/学案  青=课程/报告  蓝=课堂  橙=测验/考勤  紫=资源/助手  绯=提交/打字 */
+.soybean-shell[data-module='overview'],
+.soybean-shell[data-module='student'],
+.soybean-shell[data-module='lesson'] {
+  --ls-module: #1e7a57;
+}
+
+.soybean-shell[data-module='curriculum'],
+.soybean-shell[data-module='report'] {
+  --ls-module: #0e7c86;
+}
+
+.soybean-shell[data-module='classroom'] {
+  --ls-module: #2563b8;
+}
+
+.soybean-shell[data-module='quiz'],
+.soybean-shell[data-module='attendance'] {
+  --ls-module: #c2600f;
+}
+
+.soybean-shell[data-module='resource'],
+.soybean-shell[data-module='assistant'],
+.soybean-shell[data-module='drive'] {
+  --ls-module: #6b4eaa;
+}
+
+.soybean-shell[data-module='submission'],
+.soybean-shell[data-module='typing'],
+.soybean-shell[data-module='review'] {
+  --ls-module: #b23a48;
+}
+
+.soybean-shell[data-module='admin'] {
+  --ls-module: #5c6f64;
+}
+
+/* =====================================================================
+   方向一 · 墨绿画布（emblem）
+   深墨绿壳层 + 整幅页头色带 + 纸白墨线卡片
+   ===================================================================== */
+
+/* 顶栏：深底浅字，去掉毛玻璃 */
+:root[data-theme='emblem'] .sb-header {
+  --ls-ink: #f4f9f6;
+  --ls-text: #dcebe3;
+  --ls-muted: rgba(226, 240, 232, 0.66);
+  --ls-border: rgba(255, 255, 255, 0.16);
+  color: #dcebe3;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='emblem'] .sb-header .n-button,
+:root[data-theme='emblem'] .sb-header .n-button .n-icon {
+  --n-text-color: rgba(236, 246, 241, 0.86);
+  --n-text-color-hover: #ffffff;
+  --n-text-color-pressed: #ffffff;
+  --n-text-color-focus: #ffffff;
+  color: rgba(236, 246, 241, 0.86);
+}
+
+:root[data-theme='emblem'] .sb-header .n-button:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='emblem'] .sb-header .n-breadcrumb-item__link,
+:root[data-theme='emblem'] .sb-header .n-breadcrumb-item__separator {
+  color: rgba(226, 240, 232, 0.58);
+}
+
+:root[data-theme='emblem'] .sb-breadcrumb__current {
+  color: #ffffff;
+}
+
+/* 顶栏上的用户胶囊：深底上不能再用白底深字（会白字压白底），改成半透明胶囊 */
+:root[data-theme='emblem'] .sb-header .session-chip {
+  --ls-ink: #ffffff;
+  --ls-muted: rgba(236, 246, 241, 0.66);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+:root[data-theme='emblem'] .sb-header .session-chip:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: var(--ls-accent);
+  box-shadow: none;
+}
+
+:root[data-theme='emblem'] .sb-header .session-chip .session-name {
+  color: #ffffff;
+}
+
+:root[data-theme='emblem'] .sb-header .session-chip .session-meta,
+:root[data-theme='emblem'] .sb-header .session-chip .session-caret {
+  color: rgba(236, 246, 241, 0.7);
+}
+
+/* 页签条：与顶栏连成一段深色 */
+:root[data-theme='emblem'] .sb-tabs {
+  background: #103526;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='emblem'] .sb-tab {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: rgba(226, 240, 232, 0.78);
+}
+
+:root[data-theme='emblem'] .sb-tab:hover {
+  border-color: rgba(201, 164, 105, 0.6);
+  color: #ffffff;
+}
+
+:root[data-theme='emblem'] .sb-tab.is-active {
+  background: rgba(201, 164, 105, 0.18);
+  border-color: rgba(201, 164, 105, 0.7);
+  color: #ffffff;
+}
+
+/* 侧栏：深底、方一点、选中项左侧一条金线 */
+:root[data-theme='emblem'] .sb-menu .n-menu-item-content,
+:root[data-theme='emblem'] .sb-menu .n-menu-item-content::before {
+  border-radius: 6px;
+}
+
+:root[data-theme='emblem'] .sb-menu .n-menu-item-content.n-menu-item-content--selected::before {
+  box-shadow: inset 2px 0 0 var(--ls-accent);
+}
+
+:root[data-theme='emblem'] .sb-brand {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
+}
+
+/* 页头：整幅深墨绿色带，底部一条描边金。
+   同时覆盖 SaPageHeader（hero-panel.sa-page-header）与教师页自带的 sf-page-head。
+   深色带用 100vw 伪元素铺满视口：内容区是居中定宽的（1280/1680），
+   不加这一层的话宽屏左侧会空出一条画布色，像没对齐。 */
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head) {
+  position: relative;
+  margin: calc(var(--ls-bleed-y, 12px) * -1) calc(var(--ls-bleed-x, 16px) * -1) 0;
+  padding: 20px var(--ls-bleed-x, 16px) 18px;
+  border: 0;
+  border-bottom: 3px solid var(--ls-accent);
+  border-radius: 0;
+  background: #12362b;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: #12362b;
+  pointer-events: none;
+}
+
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head) > * {
+  position: relative;
+}
+
+/* 学生端内容列原本限宽 1280，宽屏下页头色带与内容各走各的；
+   统一到全站内容上限（1680），色带、标题、卡片才对得齐。 */
+.student-layout .sb-body .sb-content {
+  max-width: var(--ls-content-max, 1680px);
+}
+
+/* 100vw 的出血要裁在「侧栏右侧的那块区域」上：
+   裁在 .sb-content 会连同内容区外的留白一起裁掉，色带就出不去；
+   裁在 .sb-body 才是既不压住侧栏、也不产生横向滚动条。 */
+:root[data-theme='emblem'] .sb-body {
+  overflow-x: clip;
+}
+
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head) :is(h1, h2, .sa-page-header__title) {
+  color: #ffffff;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head) :is(.hero-copy, .sf-page-head__sub) {
+  color: rgba(226, 240, 232, 0.72);
+}
+
+:root[data-theme='emblem'] :is(.hero-panel.sa-page-header, .sf-page-head) .eyebrow {
+  color: var(--ls-accent);
+}
+
+/* 教师页自带的紧凑卡片（sf-panel）也跟着换成墨线小圆角 */
+:root[data-theme='emblem'] .sf-panel {
+  border: 1px solid var(--ls-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* 色带上的按钮：次要=白描边，主操作=描边金 */
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  color: #ffffff;
+}
+
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type):hover,
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type):focus {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #ffffff;
+}
+
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) .n-button__content,
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) .n-icon {
+  color: #ffffff;
+}
+
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type {
+  background-color: var(--ls-accent);
+  border: 0;
+  color: #12362b;
+  box-shadow: none;
+}
+
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type:hover {
+  background-color: #d8b97f;
+}
+
+:root[data-theme='emblem'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type .n-button__content {
+  color: #12362b;
+}
+
+/* 卡片：纸白 + 1px 墨线，没有阴影与毛玻璃 */
+:root[data-theme='emblem'] .soft-card {
+  border: 1px solid var(--ls-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='emblem'] .page-stack,
+:root[data-theme='emblem'] .page-content {
+  gap: 10px;
+}
+
+/* 面板头不用金色小图标块，压成一条墨线 */
+:root[data-theme='emblem'] .student-layout,
+:root[data-theme='emblem'] .staff-layout {
+  --ls-page-icon-chip-bg: #12362b;
+  --ls-page-icon-chip-border: transparent;
+  --ls-page-icon-chip-shadow: none;
+  --ls-page-icon-heading-shadow: none;
+}
+
+/* =====================================================================
+   方向二 · 科目色谱（growth）
+   浅色壳层 + 每页一个功能色：页头竖标 / 卡片顶边 / 导航选中
+   ===================================================================== */
+
+/* 页头：左侧 4px 功能色竖标，色只出现在这一处标题上 */
+:root[data-theme='growth'] :is(.hero-panel.sa-page-header, .sf-page-head) {
+  border-left: 4px solid var(--ls-module, #5c6f64);
+  border-radius: 10px;
+  background: #ffffff;
+  padding-left: 16px;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='growth'] .sf-page-head {
+  padding-right: 16px;
+  border-bottom: 0;
+}
+
+:root[data-theme='growth'] :is(.hero-panel.sa-page-header, .sf-page-head) .eyebrow {
+  color: var(--ls-module, var(--ls-primary));
+}
+
+/* 卡片：白底 + 1px 线 + 3px 功能色顶边 */
+:root[data-theme='growth'] .soft-card {
+  border: 1px solid var(--ls-border);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='growth'] .sa-panel,
+:root[data-theme='growth'] .soft-card,
+:root[data-theme='growth'] .sf-panel {
+  border-top: 3px solid color-mix(in srgb, var(--ls-module, #5c6f64) 62%, #ffffff);
+}
+
+:root[data-theme='growth'] .sf-panel {
+  border-radius: 10px;
+  box-shadow: none;
+  background: #ffffff;
+}
+
+/* 导航选中态跟随本页功能色 */
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected,
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover,
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected::before,
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover::before {
+  background-color: color-mix(in srgb, var(--ls-module, #5c6f64) 13%, #ffffff) !important;
+}
+
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header,
+:root[data-theme='growth'] .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon {
+  color: color-mix(in srgb, var(--ls-module, #5c6f64) 82%, #000000) !important;
+  font-weight: 600;
+}
+
+:root[data-theme='growth'] .sb-menu .n-menu-item-content,
+:root[data-theme='growth'] .sb-menu .n-menu-item-content::before {
+  border-radius: 8px;
+}
+
+/* 顶栏保持最轻：透明，不要第二层白 */
+:root[data-theme='growth'] .sb-header {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
+}
+
+/* 页头小图标块跟随功能色 */
+:root[data-theme='growth'] .student-layout,
+:root[data-theme='growth'] .staff-layout {
+  --ls-page-icon-chip-bg: color-mix(in srgb, var(--ls-module, #5c6f64) 16%, #ffffff);
+  --ls-page-icon-chip-border: transparent;
+  --ls-page-icon-chip-shadow: none;
+}
+
+/* =====================================================================
+   方向三 · 粘土童趣 2.0（clay）
+   奶油底点阵 + 橙色缎带页头 + 胶囊导航 + 软立体卡片
+   ===================================================================== */
+
+/* 底色：奶油 + 22px 点阵（base.css 的 body 背景只有两层，这里补一层带尺寸的点） */
+:root[data-theme='clay'] body {
+  background-image:
+    radial-gradient(circle at 1.5px 1.5px, rgba(154, 52, 18, 0.13) 1.3px, transparent 1.4px),
+    var(--ls-shell-wash),
+    var(--ls-shell-base);
+  background-size: 22px 22px, auto, auto;
+  background-attachment: fixed;
+  background-repeat: repeat, no-repeat, no-repeat;
+}
+
+/* 导航：胶囊，选中是实心橙 */
+:root[data-theme='clay'] .sb-menu .n-menu-item-content,
+:root[data-theme='clay'] .sb-menu .n-menu-item-content::before {
+  border-radius: 999px;
+}
+
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected,
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover,
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected::before,
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected:hover::before {
+  background-color: #f97316 !important;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.32);
+}
+
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content-header,
+:root[data-theme='clay'] .sb-menu .n-menu-item-content.n-menu-item-content--selected .n-menu-item-content__icon {
+  color: #ffffff !important;
+}
+
+/* 品牌块：软立体小方块 */
+:root[data-theme='clay'] .sb-brand__logo {
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fdba74 0%, #f97316 100%);
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.32);
+}
+
+:root[data-theme='clay'] .sb-brand {
+  border-bottom-color: rgba(154, 83, 18, 0.16);
+}
+
+/* 顶栏：奶油半透明，和点阵底连成一片 */
+:root[data-theme='clay'] .sb-header {
+  border-bottom-color: rgba(154, 83, 18, 0.12);
+  box-shadow: none;
+}
+
+:root[data-theme='clay'] .sb-tabs {
+  background: transparent;
+  border-bottom-color: transparent;
+}
+
+:root[data-theme='clay'] .sb-tab {
+  border-color: rgba(154, 83, 18, 0.18);
+  background: #ffffff;
+  color: #9a5b32;
+}
+
+:root[data-theme='clay'] .sb-tab.is-active {
+  border-color: transparent;
+  background: #f97316;
+  color: #ffffff;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.28);
+}
+
+/* 页头：橙色缎带，白色文字 */
+:root[data-theme='clay'] :is(.hero-panel.sa-page-header, .sf-page-head) {
+  border: 0;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #e8590c 0%, #b53c08 100%);
+  box-shadow: 0 12px 26px rgba(154, 52, 18, 0.22);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='clay'] .sf-page-head {
+  padding: 16px 18px;
+}
+
+:root[data-theme='clay'] :is(.hero-panel.sa-page-header, .sf-page-head) :is(h1, h2, .sa-page-header__title) {
+  color: #ffffff;
+}
+
+:root[data-theme='clay'] :is(.hero-panel.sa-page-header, .sf-page-head) :is(.hero-copy, .sf-page-head__sub) {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:root[data-theme='clay'] :is(.hero-panel.sa-page-header, .sf-page-head) .eyebrow {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+:root[data-theme='clay'] .sf-panel {
+  border: 0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(154, 52, 18, 0.1), 0 2px 0 rgba(154, 52, 18, 0.04);
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) {
+  background-color: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  color: #ffffff;
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type):hover,
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type):focus {
+  background-color: rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.8);
+  color: #ffffff;
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) .n-button__content,
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button:not(.n-button--primary-type) .n-icon {
+  color: #ffffff;
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type {
+  background-color: #ffffff;
+  border: 0;
+  color: #b53c08;
+  box-shadow: 0 4px 10px rgba(154, 52, 18, 0.18);
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type:hover {
+  background-color: #fff7ed;
+}
+
+:root[data-theme='clay'] :is(.sa-page-header, .sf-page-head) .n-button.n-button--primary-type .n-button__content {
+  color: #b53c08;
+}
+
+/* 卡片：无描边、大圆角、双层软阴影 */
+:root[data-theme='clay'] .soft-card {
+  border: 0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(154, 52, 18, 0.1), 0 2px 0 rgba(154, 52, 18, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+:root[data-theme='clay'] .sa-panel__head {
+  border-bottom-color: rgba(154, 83, 18, 0.1);
+}
+
+:root[data-theme='clay'] .sa-panel__title {
+  color: #7c2d12;
+}
+
+/* 显示字体：站酷快乐体只上标题、品牌名与大数字，正文一律留系统字，保证长文本可读 */
+:root[data-theme='clay'] :is(.hero-panel.sa-page-header, .sf-page-head) :is(h1, h2, .sa-page-header__title),
+:root[data-theme='clay'] .sb-brand__name,
+:root[data-theme='clay'] .sf-page-head h1 {
+  font-family: var(--ls-display-font);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+:root[data-theme='clay'] .metric-value,
+:root[data-theme='clay'] .sf-strip__value {
+  font-family: var(--ls-display-font);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+/* 页面小图标块：奶油底 + 橙色图案 */
+:root[data-theme='clay'] .student-layout,
+:root[data-theme='clay'] .staff-layout {
+  --ls-page-icon-chip-bg: #fff7ed;
+  --ls-page-icon-chip-border: rgba(249, 115, 22, 0.24);
+  --ls-page-icon-chip-shadow: none;
+  --ls-page-icon-heading-shadow: none;
+}
+
+/* 学生端也吃软立体：卡片圆角与阴影跟着主题走 */
+:root[data-theme='clay'] .student-layout .soft-card {
+  border: 0;
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(154, 52, 18, 0.1), 0 2px 0 rgba(154, 52, 18, 0.04);
+}
+
+:root[data-theme='clay'] .student-layout .metric-grid {
+  border: 0;
+  background: transparent;
+  gap: 10px;
+}
+
+:root[data-theme='clay'] .student-layout .metric-tile,
+:root[data-theme='clay'] .student-layout .mini-panel {
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(154, 52, 18, 0.08);
+}
+
+:root[data-theme='clay'] .student-layout .metric-tile + .metric-tile::before {
+  display: none;
+}
+
+/* 深色形态下软阴影要收敛，否则在深底上发灰 */
+:root[data-scheme='dark'][data-theme='clay'] .soft-card,
+:root[data-scheme='dark'][data-theme='clay'] .student-layout .soft-card {
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.42);
+}
+
+:root[data-scheme='dark'][data-theme='clay'] .hero-panel.sa-page-header {
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.42);
+}
+
+/* =====================================================================
+   学生端壳层（sw-*）
+   学生端页头是第三套标记（.sw-page-head），这里让三套方向同样落到它上面，
+   并把 .sw-now / .sw-panel 这类主容器纳入同一套卡片规则。
+   ===================================================================== */
+
+/* 学生端壳层把颜色交给了 --sw-* 系列，深色侧栏/顶栏必须在壳层内部翻转这套 token，
+   否则浅色导航文字会落在浅色底上（字看不见）。 */
+:root[data-theme='emblem'] .student-layout .sb-aside {
+  --sw-ink: #ffffff;
+  --sw-text: #dcebe3;
+  --sw-muted: rgba(226, 240, 232, 0.66);
+  --sw-faint: rgba(226, 240, 232, 0.45);
+  --sw-line: rgba(255, 255, 255, 0.16);
+  --sw-line-soft: rgba(255, 255, 255, 0.1);
+  --sw-surface: transparent;
+  --sw-surface-2: rgba(255, 255, 255, 0.06);
+  --sw-surface-3: rgba(255, 255, 255, 0.12);
+  background: var(--ls-sidebar-bg);
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-theme='emblem'] .student-layout .sb-body .sb-header {
+  --sw-ink: #ffffff;
+  --sw-text: #dcebe3;
+  --sw-muted: rgba(236, 246, 241, 0.66);
+  --sw-line-soft: rgba(255, 255, 255, 0.1);
+  background: #12362b;
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='emblem'] .student-layout .sb-menu .n-menu-item-content--selected,
+:root[data-theme='emblem'] .student-layout .sb-menu .n-menu-item-content--selected::before {
+  background-color: rgba(255, 255, 255, 0.11) !important;
+}
+
+:root[data-theme='emblem'] .student-layout .sb-menu .n-menu-item-content--selected .n-menu-item-content-header,
+:root[data-theme='emblem'] .student-layout .sb-menu .n-menu-item-content--selected .n-menu-item-content__icon {
+  color: #ffffff !important;
+}
+
+/* 方向一 · 墨绿画布：学生端也是深色页头带 + 墨线卡片 */
+:root[data-theme='emblem'] .sw-page-head {
+  position: relative;
+  margin: calc(var(--ls-bleed-y, 20px) * -1) calc(var(--ls-bleed-x, 28px) * -1) 0;
+  padding: 20px var(--ls-bleed-x, 28px) 18px;
+  border: 0;
+  border-bottom: 3px solid var(--ls-accent);
+  border-radius: 0;
+  background: #12362b;
+}
+
+:root[data-theme='emblem'] .sw-page-head::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 100vw;
+  transform: translateX(-50%);
+  background: #12362b;
+  pointer-events: none;
+}
+
+:root[data-theme='emblem'] .sw-page-head > * {
+  position: relative;
+}
+
+:root[data-theme='emblem'] .sw-page-head h1 {
+  color: #ffffff;
+  font-weight: 500;
+}
+
+:root[data-theme='emblem'] .sw-page-head__sub {
+  color: rgba(226, 240, 232, 0.72);
+}
+
+:root[data-theme='emblem'] :is(.sw-now, .sw-panel) {
+  border: 1px solid var(--ls-border);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* 方向二 · 科目色谱：学生端页头左侧竖标 + 主容器功能色顶边 */
+:root[data-theme='growth'] .sw-page-head {
+  border-left: 4px solid var(--ls-module, #5c6f64);
+  border-bottom: 0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  background: #ffffff;
+}
+
+:root[data-theme='growth'] :is(.sw-now, .sw-panel) {
+  border: 1px solid var(--ls-border);
+  border-top: 3px solid color-mix(in srgb, var(--ls-module, #5c6f64) 62%, #ffffff);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+/* 方向三 · 粘土童趣：学生端橙缎带 + 软立体主容器 */
+:root[data-theme='clay'] .sw-page-head {
+  border: 0;
+  border-radius: 20px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #e8590c 0%, #b53c08 100%);
+  box-shadow: 0 12px 26px rgba(154, 52, 18, 0.22);
+}
+
+:root[data-theme='clay'] .sw-page-head h1 {
+  color: #ffffff;
+  font-family: var(--ls-display-font);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+
+:root[data-theme='clay'] .sw-page-head__sub {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:root[data-theme='clay'] .sw-now__title {
+  font-family: var(--ls-display-font);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #7c2d12;
+}
+
+:root[data-theme='clay'] :is(.sw-now, .sw-panel) {
+  border: 0;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(154, 52, 18, 0.1), 0 2px 0 rgba(154, 52, 18, 0.04);
+}
+
+/* 学生端主操作按钮：学生层默认是近黑填充（achromatic ledger 的规矩），
+   在科目色谱/粘土童趣下改回主题主色，避免黑按钮和彩色壳层打架。 */
+:root[data-theme='growth'] .student-layout .n-button.n-button--primary-type {
+  background-color: var(--ls-primary) !important;
+  border-color: var(--ls-primary) !important;
+  color: #ffffff !important;
+}
+
+:root[data-theme='growth'] .student-layout .n-button.n-button--primary-type:hover {
+  background-color: color-mix(in srgb, var(--ls-primary) 86%, #ffffff) !important;
+  border-color: color-mix(in srgb, var(--ls-primary) 86%, #ffffff) !important;
+}
+
+:root[data-theme='clay'] .student-layout .n-button.n-button--primary-type {
+  border-radius: 999px;
+  background: linear-gradient(135deg, #fb923c 0%, #f97316 100%) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  box-shadow: 0 6px 14px rgba(249, 115, 22, 0.3) !important;
+}
+
+:root[data-theme='clay'] .student-layout .n-button.n-button--primary-type:hover {
+  background: linear-gradient(135deg, #fca453 0%, #fb8b2e 100%) !important;
+}
+
+:root[data-theme='emblem'] .student-layout .n-button {
+  border-radius: 6px;
+}
+
+:root[data-theme='growth'] .student-layout .n-button {
+  border-radius: 8px;
+}
+
+:root[data-theme='clay'] .student-layout .n-button:not(.n-button--primary-type) {
+  border-radius: 999px;
+}
+
+/* =====================================================================
+   登录页插画
+   左栏底部一张与主题同色系的插画：学生端是欢迎用的，教师端是引导用的。
+   图片按主题切换，装饰性内容，屏幕阅读器跳过；窄屏直接隐藏，避免挤压表单。
+   ===================================================================== */
+.auth-illustration {
+  display: block;
+  width: min(340px, 100%);
+  aspect-ratio: 1 / 1;
+  margin: 6px auto 0;
+  border-radius: 18px;
+  background-image: var(--ls-auth-illustration);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
+:root[data-theme='emblem'] .auth-illustration {
+  border-radius: 10px;
+}
+
+:root[data-theme='clay'] .auth-illustration {
+  border-radius: 22px;
+}
+
+/* 只在学生端登录页出现：教师端左栏本来就高，再放图会把卡片顶出视口 */
+.staff-login-page .auth-illustration {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .auth-illustration {
+    display: none;
+  }
+}
+
+/* 教室投影常见 1280×720/800，高度不够时优先保住表单 */
+@media (max-height: 820px) {
+  .auth-illustration {
+    display: none;
+  }
+}

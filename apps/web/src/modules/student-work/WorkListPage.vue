@@ -95,6 +95,7 @@ import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type SubmissionItem = {
   submission_id: number;
@@ -181,10 +182,7 @@ function attachmentLabel(item: SubmissionItem) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '--';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '--', sliceStart: 0, sliceEnd: 16 });
 }
 
 function teacherCommentPreview(comment: string | null) {

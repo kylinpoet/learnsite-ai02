@@ -7,11 +7,14 @@ import { useAppStore } from './stores/app';
 import { useAuthStore } from './stores/auth';
 import { authSessionExpiredEvent } from './stores/authSession';
 import './styles/theme.css';
+import './styles/clay-font.css';
 import './styles/base.css';
 import './styles/layout.css';
 import './styles/assistant.css';
 import './styles/student-workspace.css';
 import './styles/staff-workspace.css';
+import './styles/staff-admin.css';
+import './styles/theme-directions.css';
 
 const app = createApp(App);
 const pinia = createPinia();

@@ -104,6 +104,8 @@ import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
 
 type SubmissionFile = {
   id: number;
@@ -231,12 +233,7 @@ function taskTypeLabel(taskType: string) {
   return taskType;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function getDownloadFileName(contentDisposition: string | null, fallbackName: string) {
   if (!contentDisposition) {
@@ -252,16 +249,7 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
   return basicMatch?.[1] || fallbackName;
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
-}
+
 
 async function downloadFile(file: SubmissionFile) {
   if (!authStore.token) {

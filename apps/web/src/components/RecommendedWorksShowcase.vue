@@ -128,6 +128,9 @@ import { apiGetBlob } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
 import { richTextToExcerpt } from '@/utils/richText';
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
+import { detectPreviewKind, type PreviewKind } from '@/utils/filePreview';
 
 type RecommendedShowcaseFile = {
   id: number;
@@ -152,8 +155,6 @@ type RecommendedShowcaseItem = {
   updated_at: string | null;
   files: RecommendedShowcaseFile[];
 };
-
-type PreviewKind = 'pdf' | 'image' | 'text' | 'unsupported';
 
 const props = withDefaults(
   defineProps<{
@@ -207,13 +208,6 @@ function resetPreviewState() {
   previewText.value = '';
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
-
 function formatScoreText(score: number | null) {
   if (score === null) {
     return '--';
@@ -245,38 +239,11 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
   return basicMatch?.[1] || fallbackName;
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
-}
-
 function pickDefaultPreviewFile(item: RecommendedShowcaseItem | null) {
   if (!item?.files.length) {
     return null;
   }
   return item.files.find((file) => file.previewable) || item.files[0];
-}
-
-function detectPreviewKind(file: RecommendedShowcaseFile, blob: Blob): PreviewKind {
-  const ext = file.ext.toLowerCase();
-  const mediaType = blob.type || file.mime_type || '';
-
-  if (ext === 'pdf' || mediaType.includes('pdf')) {
-    return 'pdf';
-  }
-  if (mediaType.startsWith('image/') || ['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'].includes(ext)) {
-    return 'image';
-  }
-  if (mediaType.startsWith('text/') || ['md', 'txt'].includes(ext)) {
-    return 'text';
-  }
-  return 'unsupported';
 }
 
 async function loadPreview(file: RecommendedShowcaseFile | null) {

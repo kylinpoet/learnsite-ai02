@@ -73,6 +73,7 @@ import { NButton } from 'naive-ui';
 import { computed } from 'vue';
 
 import type { LiveStudent } from './dashboardTypes';
+import { formatDateTime } from '@/utils/datetime';
 
 const props = defineProps<{
   phase: 'live' | 'last' | 'idle';
@@ -133,10 +134,7 @@ const reviewNote = computed(() =>
   props.submission.pendingReview ? '学生已提交，等你打分' : '当前没有待批改作品',
 );
 
-function formatDateTime(value: string | null) {
-  if (!value) return '暂无记录';
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 </script>
 
 <style scoped>

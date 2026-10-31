@@ -243,6 +243,7 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
+import { formatDateTime } from '@/utils/datetime';
 
 type RankingPreviewItem = {
   rank: number;
@@ -387,12 +388,7 @@ function displayNumber(value: number | null) {
   return value === null ? '--' : value;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function resetAttemptState() {
   attemptMeta.value = null;

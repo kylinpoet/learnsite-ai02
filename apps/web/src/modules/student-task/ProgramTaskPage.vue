@@ -329,68 +329,12 @@ import StudentPanel from '@/components/student/StudentPanel.vue';
 import GroupDraftHistoryDialog from '@/modules/student-task/components/GroupDraftHistoryDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { normalizeRichTextHtml } from '@/utils/richText';
-
-type NavigationTask = {
-  id: number;
-  title: string;
-  task_type: string;
-};
-
-type TaskSubmissionFile = {
-  id: number;
-  name: string;
-  ext: string;
-  size_kb: number;
-  role: string;
-  mime_type: string;
-  previewable: boolean;
-};
-
-type TaskSubmission = {
-  id: number;
-  status: 'submitted' | 'reviewed';
-  score: number | null;
-  is_recommended: boolean;
-  peer_review_score: number | null;
-  submission_note: string | null;
-  teacher_comment: string | null;
-  submitted_at: string | null;
-  updated_at: string | null;
-  can_resubmit: boolean;
-  submission_scope: 'individual' | 'group';
-  group_id: number | null;
-  group_name: string | null;
-  group_no: number | null;
-  submitted_by_name: string | null;
-  submitted_by_student_no: string | null;
-  files: TaskSubmissionFile[];
-};
-
-type RecommendedSubmissionFile = TaskSubmissionFile;
-
-type RecommendedSubmissionItem = {
-  submission_id: number;
-  student_id: number;
-  student_name: string;
-  student_no: string;
-  class_name: string;
-  score: number | null;
-  submission_note: string | null;
-  teacher_comment: string | null;
-  submitted_at: string | null;
-  updated_at: string | null;
-  files: RecommendedSubmissionFile[];
-};
-
-type GroupTaskDraft = {
-  id: number;
-  submission_note: string | null;
-  source_code: string | null;
-  version_no: number;
-  updated_at: string | null;
-  updated_by_name: string | null;
-  updated_by_student_no: string | null;
-};
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
+import type { GroupTaskDraft, NavigationTask } from '@/types/domain';
+import type { TaskSubmissionFile, RecommendedSubmissionItem } from '@/types/submission';
+import type { TaskSubmission } from './taskTypes';
+import { detectFilePreviewKind, type FilePreviewKind } from '@/utils/filePreview';
 
 type ProgrammingTaskPayload = {
   id: number;
@@ -467,26 +411,8 @@ type LocalDraft = {
   updated_at: string;
 };
 
-type FilePreviewKind = 'image' | 'pdf' | 'text' | 'unsupported';
-
 const textPreviewSliceBytes = 256 * 1024;
 const CODE_FILE_EXTENSIONS = new Set(['py', 'txt', 'md', 'html', 'css', 'js', 'ts', 'json']);
-const previewableImageExtensions = new Set(['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp']);
-const previewableTextExtensions = new Set([
-  'txt',
-  'md',
-  'csv',
-  'json',
-  'log',
-  'html',
-  'css',
-  'js',
-  'ts',
-  'xml',
-  'yml',
-  'yaml',
-  'py',
-]);
 
 const route = useRoute();
 const router = useRouter();
@@ -701,13 +627,6 @@ function buildStarterCode(payload: ProgrammingTaskPayload) {
   ].join('\n');
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
-
 function formatFileSize(size: number) {
   const sizeKb = Math.max(1, Math.ceil(size / 1024));
   return `${sizeKb} KB`;
@@ -736,22 +655,6 @@ function getFileExtension(fileName: string) {
     return '';
   }
   return fileName.slice(index + 1).toLowerCase();
-}
-
-function detectFilePreviewKind(ext: string, mimeType: string): FilePreviewKind {
-  const normalizedExt = ext.toLowerCase();
-  const normalizedMimeType = mimeType.toLowerCase();
-
-  if (normalizedExt === 'pdf' || normalizedMimeType.includes('pdf')) {
-    return 'pdf';
-  }
-  if (normalizedMimeType.startsWith('image/') || previewableImageExtensions.has(normalizedExt)) {
-    return 'image';
-  }
-  if (normalizedMimeType.startsWith('text/') || previewableTextExtensions.has(normalizedExt)) {
-    return 'text';
-  }
-  return 'unsupported';
 }
 
 function resetFilePreviewTextState() {
@@ -1131,17 +1034,6 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
 
   const basicMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   return basicMatch?.[1] || fallbackName;
-}
-
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
 }
 
 async function downloadSavedFile(file: TaskSubmissionFile) {

@@ -1,3 +1,4 @@
+import type { TaskRuntimeRequestMessage, TaskRuntimeResponseMessage, TaskRuntimeSessionPayload } from '@/types/taskRuntime';
 import { onBeforeUnmount, onMounted, ref, type Ref } from 'vue';
 import { ElMessage } from '@/ui/feedback';
 
@@ -35,34 +36,8 @@ type TaskAssetUploadResponse = {
   assets: TaskAssetManifestItem[];
 };
 
-type TaskRuntimeSessionPayload = {
-  task_id: number;
-  expires_at: string | null;
-  asset_base_path: string;
-};
 
-type TaskRuntimeRequestMessage = {
-  source: 'learnsite-task-runtime-request';
-  requestId: string;
-  previewKey?: string;
-  taskId: number | null;
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  bodyKind?: 'empty' | 'text' | 'base64';
-  bodyValue?: string;
-  bodyMimeType?: string;
-};
 
-type TaskRuntimeResponseMessage = {
-  source: 'learnsite-task-runtime-response';
-  requestId: string;
-  status?: number;
-  statusText?: string;
-  headers?: Record<string, string>;
-  bodyBase64?: string;
-  error?: string;
-};
 
 type UseTaskPreviewAssetsOptions = {
   authToken: Ref<string | null | undefined>;

@@ -110,12 +110,8 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
-
-type NavigationTask = {
-  id: number;
-  title: string;
-  task_type: string;
-};
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
+import type { NavigationTask } from '@/types/domain';
 
 type ReadingResource = {
   id: number;
@@ -196,10 +192,7 @@ function buildTaskRoute(task: NavigationTask) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '待确认';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '待确认', sliceStart: 0, sliceEnd: 16 });
 }
 
 function resourceTypeLabel(resource: ReadingResource) {

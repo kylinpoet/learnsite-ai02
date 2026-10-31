@@ -70,6 +70,7 @@
 </template>
 
 <script setup lang="ts">
+import { NAlert, NButton, NFormItem, NInput, NInputNumber, NModal, NSwitch } from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 
 import { apiPost, apiPut } from '@/api/http';

@@ -1,53 +1,41 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="按班级和日期查看签到状态，可导出全量、已签到与缺席名单。"
-      eyebrow="签到管理"
-      title="教师签到与出勤"
-    >
+    <StaffPageHead title="签到考勤" :sub="pageSummary">
       <template #actions>
-        <n-button :loading="isLoading" type="primary" @click="loadAttendance">刷新</n-button>
+        <n-button :loading="isLoading" text @click="loadAttendance">刷新</n-button>
         <n-button :disabled="!attendance?.selected_class_id" secondary @click="downloadAttendance('all')">
           导出签到表
         </n-button>
-        <n-button :disabled="!attendance?.selected_class_id" secondary @click="downloadAttendance('absent')">
+        <n-button :disabled="!attendance?.selected_class_id" type="primary" @click="downloadAttendance('absent')">
           导出缺席名单
         </n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="9" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="9" animated /></div>
+    </div>
 
-    <div v-else-if="attendance" class="page-stack">
-      <div class="attendance-head">
-        <div class="ls-row">
-          <article class="metric-tile">
-            <p class="metric-label">出勤率</p>
-            <p class="metric-value">{{ overallRate }}%</p>
-            <p class="metric-note">按当天全班签到人数计算</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">已签到</p>
-            <p class="metric-value">{{ attendance.summary.present_count }}</p>
-            <p class="metric-note">当天签到记录</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">未签到</p>
-            <p class="metric-value">{{ attendance.summary.absent_count }}</p>
-            <p class="metric-note">当天缺席人数</p>
-          </article>
-          <article class="metric-tile">
-            <p class="metric-label">学生总数</p>
-            <p class="metric-value">{{ attendance.summary.student_count }}</p>
-            <p class="metric-note">{{ attendance.summary.class_count }} 个班级汇总</p>
-          </article>
+    <template v-else-if="attendance">
+      <StaffStatStrip :items="statItems" />
+
+      <section class="sf-panel">
+        <div class="sf-tabs">
+          <button
+            v-for="tab in statusTabs"
+            :key="tab.key"
+            type="button"
+            :class="['sf-tabs__item', { 'is-active': statusFilter === tab.key }]"
+            @click="statusFilter = tab.key"
+          >
+            {{ tab.label }}
+            <span class="sf-tabs__count">{{ tab.count }}</span>
+          </button>
         </div>
-        <div class="filter-row attendance-filters">
+
+        <div class="sf-toolbar">
           <n-select
             v-model:value="filters.classId"
             :options="classOptions"
@@ -57,111 +45,105 @@
           />
           <n-date-picker
             v-model:formatted-value="filters.attendanceDate"
-            class="filter-select"
+            class="filter-select filter-select--date"
             format="yyyy-MM-dd"
             type="date"
             value-format="yyyy-MM-dd"
             @update:formatted-value="loadAttendance"
           />
-          <n-select
-            v-model:value="statusFilter"
-            :options="statusOptions"
-            class="filter-select filter-select--status"
-            placeholder="状态筛选"
-          />
+          <div class="sf-toolbar__right">
+            <span>
+              {{ attendance.selected_class?.class_name || '全部班级' }} ·
+              {{ filteredRecords.length }} / {{ records.length }} 人
+            </span>
+          </div>
         </div>
-      </div>
 
-      <div class="attendance-body-grid">
-        <SaPanel class="attendance-table-panel">
-          <template #header>
-            <div class="toolbar-row">
-              <div class="info-row">
-                <span>当班签到明细</span>
-                <n-tag v-if="attendance.selected_class" round>
-                  {{ attendance.selected_class.class_name }}
-                </n-tag>
-                <n-tag v-if="attendance.selected_class" round type="success">
-                  已签到 {{ attendance.selected_class.present_count }}
-                </n-tag>
-                <n-tag v-if="attendance.selected_class" round type="warning">
-                  未签到 {{ attendance.selected_class.absent_count }}
-                </n-tag>
-              </div>
-              <span class="section-note">当前显示 {{ filteredRecords.length }} 条</span>
-            </div>
-          </template>
+        <p v-if="!records.length" class="sf-empty">
+          {{ attendance.attendance_date }} 这天还没有该班的名单数据。
+        </p>
 
-          <SaDataTable
-            :data="filteredRecords"
-            empty-text="当前日期没有签到数据"
-            row-key="user_id"
-            stripe
+        <p v-else-if="!filteredRecords.length" class="sf-empty">
+          {{ statusFilter === 'present' ? '这个班今天还没有人签到。' : '这个班今天全部已签到。' }}
+        </p>
+
+        <div v-else class="sf-rows">
+          <div class="sf-rows__head roster-cols">
+            <span>学生</span>
+            <span>座位</span>
+            <span>签到时间</span>
+            <span>来源</span>
+          </div>
+          <article
+            v-for="row in filteredRecords"
+            :key="row.user_id"
+            :class="['sf-row', 'sf-row--cols', 'roster-cols', row.status === 'absent' ? 'is-absent' : '']"
           >
-            <SaTableColumn label="学号" min-width="110" prop="student_no" />
-            <SaTableColumn label="姓名" min-width="120" prop="display_name" />
-            <SaTableColumn label="账号" min-width="120" prop="username" />
-            <SaTableColumn label="状态" min-width="110">
-              <template #default="{ row }">
-                <n-tag :type="row.status === 'present' ? 'success' : 'warning'" round>
+            <div class="sf-row__main">
+              <p class="sf-row__title">
+                <span class="sf-row__title-text">{{ row.display_name }}</span>
+                <span :class="['sf-pill', row.status === 'present' ? 'sf-pill--pos' : 'sf-pill--warn']">
+                  <span v-if="row.status === 'present'" class="sf-pill__dot" />
                   {{ row.status === 'present' ? '已签到' : '未签到' }}
-                </n-tag>
-              </template>
-            </SaTableColumn>
-            <SaTableColumn label="签到时间" min-width="170">
-              <template #default="{ row }">{{ formatDateTime(row.checked_in_at) }}</template>
-            </SaTableColumn>
-            <SaTableColumn label="签到来源" min-width="120">
-              <template #default="{ row }">{{ row.signin_source || '--' }}</template>
-            </SaTableColumn>
-            <SaTableColumn label="座位" min-width="100">
-              <template #default="{ row }">{{ row.seat_label || '--' }}</template>
-            </SaTableColumn>
-            <SaTableColumn label="机房" min-width="130">
-              <template #default="{ row }">{{ row.room_name || '--' }}</template>
-            </SaTableColumn>
-            <SaTableColumn label="登录 IP" min-width="140">
-              <template #default="{ row }">{{ row.client_ip || '--' }}</template>
-            </SaTableColumn>
-          </SaDataTable>
-        </SaPanel>
+                </span>
+              </p>
+              <p class="sf-row__meta">
+                <span>{{ row.student_no }}</span>
+                <span v-if="row.client_ip">IP {{ row.client_ip }}</span>
+              </p>
+            </div>
 
-        <div class="attendance-rail">
-          <SaPanel title="出勤率">
-            <template #actions>
-              <n-tag round :type="overallRate >= 90 ? 'success' : overallRate >= 60 ? 'warning' : 'error'">
-                {{ overallRate }}%
-              </n-tag>
-            </template>
-            <n-empty v-if="!attendance.summary.student_count" description="当天还没有可统计的签到数据。" />
-            <AppChart v-else :height="190" :option="attendanceDonutOption" />
-          </SaPanel>
-
-          <SaPanel title="各班出勤对比" description="柱高为该班学生总数，深色为已签到">
-            <n-empty v-if="!attendance.classes.length" description="暂无可对比的班级。" />
-            <AppChart v-else :height="210" :option="classAttendanceOption" />
-          </SaPanel>
+            <span class="seat-cell">{{ seatText(row) }}</span>
+            <span class="sf-row__num time-cell" data-label="签到">
+              {{ row.checked_in_at ? formatTime(row.checked_in_at) : '—' }}
+            </span>
+            <span class="source-cell">{{ row.signin_source || '—' }}</span>
+          </article>
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section class="sf-panel">
+        <header class="sf-panel__head">
+          <h2 class="sf-panel__title">
+            各班签到
+            <span class="sf-panel__count">{{ attendance.classes.length }} 个班</span>
+          </h2>
+          <span class="head-fact">
+            {{ attendance.selected_class?.class_name || '全部班级' }} 已签到
+            {{ attendance.selected_class?.present_count ?? 0 }} /
+            {{ attendance.selected_class?.student_count ?? 0 }} 人 · {{ classRateValue }}%
+          </span>
+        </header>
+        <div class="sf-panel__body class-grid">
+          <button
+            v-for="item in attendance.classes"
+            :key="item.id"
+            type="button"
+            :class="['class-cell', item.id === attendance.selected_class_id ? 'is-current' : '']"
+            @click="selectClass(item.id)"
+          >
+            <span class="class-cell__name">{{ item.class_name }}</span>
+            <span class="class-cell__value">{{ item.present_count }}/{{ item.student_count }}</span>
+            <span class="class-cell__bar">
+              <span class="class-cell__bar-fill" :style="{ width: `${classRate(item)}%` }" />
+            </span>
+          </button>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDatePicker, NEmpty, NSelect, NSkeleton, NTag } from 'naive-ui';
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue';
+import { NAlert, NButton, NDatePicker, NSelect, NSkeleton } from 'naive-ui';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
 import { apiGet, apiGetBlob } from '@/api/http';
-import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
-import SaTableColumn from '@/components/sa/SaTableColumn.vue';
-import { useChartTheme } from '@/composables/useChartTheme';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
-
-const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
 type AttendanceClassItem = {
   id: number;
@@ -210,7 +192,6 @@ type AttendancePayload = {
 
 const authStore = useAuthStore();
 const route = useRoute();
-const { axisX, axisY, base, grid, legend, palette, tokens, tooltip } = useChartTheme();
 const attendance = ref<AttendancePayload | null>(null);
 const isLoading = ref(true);
 const errorMessage = ref('');
@@ -222,24 +203,35 @@ const filters = ref({
 
 const classOptions = computed(() =>
   (attendance.value?.classes || []).map((item) => ({
-    label: `${item.class_name} · 已到 ${item.present_count} / ${item.student_count}`,
+    label: `${item.class_name} · 已到 ${item.present_count}/${item.student_count}`,
     value: item.id,
   })),
 );
 
-const statusOptions = [
-  { label: '全部', value: 'all' },
-  { label: '已签到', value: 'present' },
-  { label: '未签到', value: 'absent' },
-];
+const records = computed(() => {
+  const list = attendance.value?.records || [];
+  return [...list].sort((a, b) => {
+    if (a.status !== b.status) {
+      return a.status === 'absent' ? -1 : 1;
+    }
+    return a.student_no.localeCompare(b.student_no);
+  });
+});
 
 const filteredRecords = computed(() => {
-  const records = attendance.value?.records || [];
   if (statusFilter.value === 'all') {
-    return records;
+    return records.value;
   }
-  return records.filter((item) => item.status === statusFilter.value);
+  return records.value.filter((item) => item.status === statusFilter.value);
 });
+
+const presentInScope = computed(() => records.value.filter((item) => item.status === 'present').length);
+
+const statusTabs = computed(() => [
+  { key: 'all' as const, label: '全部', count: records.value.length },
+  { key: 'absent' as const, label: '未签到', count: records.value.length - presentInScope.value },
+  { key: 'present' as const, label: '已签到', count: presentInScope.value },
+]);
 
 const overallRate = computed(() => {
   const summary = attendance.value?.summary;
@@ -249,82 +241,85 @@ const overallRate = computed(() => {
   return Math.round((summary.present_count / summary.student_count) * 100);
 });
 
-const attendanceDonutOption = computed(() => {
-  const summary = attendance.value?.summary;
-  const present = summary?.present_count ?? 0;
-  const absent = summary?.absent_count ?? 0;
-  const rate = overallRate.value;
+const absentInScope = computed(() => attendance.value?.records.filter((item) => item.status === 'absent').length ?? 0);
 
-  return base({
-    tooltip: tooltip('item'),
-    legend: legend({ bottom: 0, top: 'auto' }),
-    series: [
-      {
-        type: 'pie',
-        radius: ['52%', '74%'],
-        center: ['50%', '44%'],
-        avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 12, borderColor: tokens.value.surface, borderWidth: 3 },
-        label: { show: false },
-        data: [
-          { value: present, name: '已签到', itemStyle: { color: palette.value[2] } },
-          { value: absent, name: '未签到', itemStyle: { color: tokens.value.border } },
-        ],
-      },
-    ],
-    graphic: [
-      {
-        type: 'text',
-        left: 'center',
-        top: '38%',
-        style: { text: `${rate}%`, fill: tokens.value.ink, fontSize: 28, fontWeight: 700 },
-      },
-      {
-        type: 'text',
-        left: 'center',
-        top: '50%',
-        style: { text: '出勤率', fill: tokens.value.muted, fontSize: 12 },
-      },
-    ],
-  });
-});
-
-const classAttendanceOption = computed(() => {
-  const classes = attendance.value?.classes || [];
-  return base({
-    tooltip: tooltip('axis'),
-    legend: legend({ top: 0 }),
-    grid: grid(),
-    xAxis: axisX(classes.map((item) => item.class_name)),
-    yAxis: axisY(),
-    series: [
-      {
-        name: '已签到',
-        type: 'bar',
-        stack: 'attendance',
-        barMaxWidth: 34,
-        itemStyle: { color: palette.value[2], borderRadius: [0, 0, 0, 0] },
-        emphasis: { focus: 'series' },
-        data: classes.map((item) => item.present_count),
-      },
-      {
-        name: '未签到',
-        type: 'bar',
-        stack: 'attendance',
-        barMaxWidth: 34,
-        itemStyle: { color: tokens.value.warning, borderRadius: [6, 6, 0, 0] },
-        emphasis: { focus: 'series' },
-        data: classes.map((item) => item.absent_count),
-      },
-    ],
-  });
-});
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '--';
+const pageSummary = computed(() => {
+  if (!attendance.value) {
+    return '按班级和日期查看签到状态，并导出缺席名单。';
   }
-  return value.replace('T', ' ').slice(0, 16);
+  const cls = attendance.value.selected_class;
+  const head = `${attendance.value.attendance_date} · ${cls?.class_name || '全部班级'}`;
+  if (!cls) {
+    return `${head} · 还没有班级名单`;
+  }
+  return `${head} · 未签到 ${absentInScope.value} 人，已签到 ${cls.present_count} 人`;
+});
+
+const statItems = computed<StaffStatItem[]>(() => {
+  const summary = attendance.value?.summary;
+  return [
+    {
+      label: '全校出勤率',
+      value: overallRate.value,
+      unit: '%',
+      note: `${attendance.value?.attendance_date || '--'} 全部 ${summary?.class_count ?? 0} 个班`,
+    },
+    {
+      label: '已签到',
+      value: summary?.present_count ?? 0,
+      unit: ` / ${summary?.student_count ?? 0}`,
+      note: '当天有签到记录的学生',
+    },
+    {
+      label: '未签到',
+      value: summary?.absent_count ?? 0,
+      note: '含未登录过的学生',
+    },
+    {
+      label: '覆盖班级',
+      value: summary?.class_count ?? 0,
+      unit: '个',
+      note: `当前查看 ${attendance.value?.selected_class?.class_name || '全部班级'}`,
+    },
+  ];
+});
+
+/** 本班出勤率：与「全校出勤率」是两个口径，分开标注 */
+const classRateValue = computed(() => {
+  const cls = attendance.value?.selected_class;
+  if (!cls?.student_count) {
+    return 0;
+  }
+  return Math.round((cls.present_count / cls.student_count) * 100);
+});
+
+function classRate(item: AttendanceClassItem) {
+  if (!item.student_count) {
+    return 0;
+  }
+  return Math.round((item.present_count / item.student_count) * 100);
+}
+
+function seatText(row: AttendanceRecordItem) {
+  if (!row.seat_label && !row.room_name) {
+    return '—';
+  }
+  return [row.seat_label, row.room_name].filter(Boolean).join(' · ');
+}
+
+function formatTime(value: string | null) {
+  if (!value) {
+    return '—';
+  }
+  return value.replace('T', ' ').slice(11, 16);
+}
+
+function selectClass(classId: number) {
+  if (filters.value.classId === classId) {
+    return;
+  }
+  filters.value.classId = classId;
+  void loadAttendance();
 }
 
 function extractFilename(disposition: string | null, fallback: string) {
@@ -423,95 +418,141 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* 顶部：摘要条与筛选并排成一行，避免「四张指标卡 + 独立筛选面板」两层留白 */
-.attendance-head {
+.filter-select {
+  width: 210px;
+}
+
+.filter-select--date {
+  width: 160px;
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 2px 12px;
+}
+
+.class-cell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
+  gap: 5px 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--sf-r-ctl, 6px);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.class-cell:hover {
+  background: var(--sf-surface-2);
+}
+
+.class-cell.is-current {
+  background: var(--sf-accent-soft);
+}
+
+.class-cell:focus-visible {
+  outline: 2px solid var(--sf-accent);
+  outline-offset: -2px;
+}
+
+.class-cell__name {
+  color: var(--sf-ink);
+  font-size: 13px;
+}
+
+.class-cell__value {
+  color: var(--sf-ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.class-cell__bar {
+  grid-column: 1 / -1;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--sf-surface-3);
+  overflow: hidden;
+}
+
+.class-cell__bar-fill {
+  display: block;
+  height: 100%;
+  background: var(--sf-accent);
+}
+
+.roster-cols {
+  grid-template-columns: minmax(0, 1fr) 140px 96px 96px;
+}
+
+.roster-cols > span:nth-child(3),
+.roster-cols > span:nth-child(4) {
+  text-align: right;
+}
+
+.sf-row.roster-cols {
   align-items: center;
-  gap: 12px;
 }
 
-.attendance-filters {
-  flex-wrap: nowrap;
+.seat-cell,
+.source-cell {
+  color: var(--sf-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 主体：签到明细为 8 列主区，出勤图表收进 4 列上下文栏 */
-.attendance-body-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
-  gap: 12px;
-  align-items: start;
+.time-cell {
+  font-size: 13px;
 }
 
-.attendance-rail {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
+.source-cell {
+  text-align: right;
 }
 
-.attendance-rail :deep(.sa-panel__body) {
-  padding: 12px;
+/* 未签到先读：只给一条左侧墨色标记，不给整行上色 */
+.sf-row.is-absent .sf-row__title-text {
+  font-weight: 600;
 }
 
-.toolbar-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  width: 100%;
+.head-fact {
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
-.info-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.filter-select {
-  width: 200px;
-}
-
-.filter-select--status {
-  width: 140px;
-}
-
-@media (max-width: 1439px) {
-  .attendance-body-grid {
+@media (max-width: 860px) {
+  .roster-cols {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .attendance-rail {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 1100px) {
-  .attendance-head {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .attendance-filters {
+  .sf-row.roster-cols {
     flex-wrap: wrap;
+    gap: 4px 12px;
   }
-}
 
-@media (max-width: 760px) {
-  .attendance-rail {
-    grid-template-columns: minmax(0, 1fr);
+  .sf-row.roster-cols .sf-row__main {
+    flex: 1 1 auto;
+  }
+
+  .seat-cell,
+  .time-cell,
+  .source-cell {
+    flex: none;
+    font-size: 12px;
+    text-align: left;
+  }
+
+  .source-cell {
+    margin-left: auto;
   }
 
   .filter-select,
-  .filter-select--status {
+  .filter-select--date {
     width: 100%;
   }
 }

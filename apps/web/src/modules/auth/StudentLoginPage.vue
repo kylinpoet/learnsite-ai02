@@ -23,6 +23,7 @@
             <li>登录成功即完成今日签到，座位按机房电脑自动识别。</li>
           </ul>
         </article>
+        <div class="auth-illustration" aria-hidden="true"></div>
       </div>
 
       <SaPanel panel-class="auth-form-panel">

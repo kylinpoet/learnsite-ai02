@@ -22,23 +22,15 @@
 </template>
 
 <script setup lang="ts">
-type RecentSession = {
-  session_id: number;
-  status: string;
-  started_at: string;
-  class: { name: string };
-  plan: { title: string; lesson_title: string };
-  submission_count: number;
-  pending_review_count: number;
-};
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
+import type { RecentSession } from './dashboardTypes';
 
 defineProps<{ sessions: RecentSession[] }>();
 
 const emit = defineEmits<{ navigate: [path: string] }>();
 
 function formatDateTime(value: string) {
-  if (!value) return '暂无记录';
-  return value.replace('T', ' ').slice(5, 16);
+  return formatDateTimeValue(value, { fallback: '暂无记录', sliceStart: 5, sliceEnd: 16 });
 }
 </script>
 

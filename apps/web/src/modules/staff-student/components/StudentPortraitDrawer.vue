@@ -45,6 +45,16 @@
 </template>
 
 <script setup lang="ts">
+import {
+  NAlert,
+  NButton,
+  NDrawer,
+  NDrawerContent,
+  NEmpty,
+  NSelect,
+  NSkeleton,
+  NTag,
+} from 'naive-ui';
 import { computed, ref, watch } from 'vue';
 
 import { apiGet, apiPut } from '@/api/http';

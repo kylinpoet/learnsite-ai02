@@ -1,18 +1,13 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader
-      compact
-      description="选择班级，AI 基于提交、评分、互评与签到数据生成结构化学情报告，可查看历史报告。"
-      eyebrow="AI 学情报告"
-      title="班级学情分析"
-    >
+    <StaffPageHead title="学情报告" :sub="pageSummary">
       <template #actions>
         <n-select
           v-model:value="selectedClassId"
           :disabled="isLoading || isGenerating"
           :options="classOptions"
+          class="class-select"
           placeholder="选择班级"
-          style="width: 220px"
           @update:value="onClassChange"
         />
         <n-button
@@ -21,101 +16,132 @@
           type="primary"
           @click="generateReport"
         >
-          {{ isGenerating ? 'AI 分析中…' : '生成学情报告' }}
+          {{ isGenerating ? 'AI 分析中…' : '生成报告' }}
         </n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
-    <SaPanel v-if="isLoading">
-      <n-skeleton :rows="6" animated />
-    </SaPanel>
+    <div v-if="isLoading" class="sf-panel">
+      <div class="sf-panel__body"><n-skeleton :rows="8" animated /></div>
+    </div>
 
-    <div v-else class="report-layout">
-      <SaPanel body-class="history-body" panel-class="history-card">
-        <template #header>
-          <div class="history-header">
-            <span>历史报告</span>
-            <n-tag v-if="historyTotal > 0" round size="small">{{ historyTotal }}</n-tag>
-          </div>
-        </template>
-        <div v-if="!reports.length" class="history-empty">该班级还没有学情报告</div>
-        <div
-          v-for="item in reports"
-          :key="item.id"
-          class="history-item"
-          :class="{ 'is-active': item.id === currentReport?.id }"
-          role="button"
-          tabindex="0"
-          @click="viewReport(item.id)"
-          @keydown.enter="viewReport(item.id)"
-        >
-          <p class="history-item-title">{{ item.title }}</p>
-          <p class="history-item-meta">
-            <span>{{ formatDateTime(item.created_at) }}</span>
-            <n-tag :type="item.status === 'completed' ? 'success' : 'error'" round size="small">
-              {{ item.status === 'completed' ? '已完成' : '生成失败' }}
-            </n-tag>
+    <template v-else>
+      <div class="report-layout">
+        <section class="sf-panel">
+          <header class="sf-panel__head">
+            <h2 class="sf-panel__title">
+              历史报告
+              <span class="sf-panel__count">{{ historyTotal }} 份</span>
+            </h2>
+          </header>
+
+          <p v-if="!reports.length" class="sf-empty">
+            该班级还没有报告。生成第一份后，这里会按时间倒序列出每次分析。
           </p>
-          <p v-if="item.error_message" class="history-item-error">{{ item.error_message }}</p>
-        </div>
-      </SaPanel>
 
-      <SaPanel panel-class="report-card">
-        <template #header>
-          <div class="report-header">
-            <div>
-              <p v-if="currentReport" class="report-title">{{ currentReport.title }}</p>
-              <p v-else class="report-title">学情报告</p>
+          <div v-else class="sf-rows">
+            <article
+              v-for="item in reports"
+              :key="item.id"
+              :class="['sf-row', 'history-row', { 'is-active': item.id === currentReport?.id }]"
+              role="button"
+              tabindex="0"
+              @click="viewReport(item.id)"
+              @keydown.enter="viewReport(item.id)"
+            >
+              <div class="sf-row__main">
+                <p class="sf-row__title">
+                  <span class="sf-row__title-text">{{ item.title }}</span>
+                </p>
+                <p class="sf-row__meta">
+                  <span>{{ formatDateTime(item.created_at) }}</span>
+                  <span>{{ item.teacher_name }}</span>
+                </p>
+              </div>
+              <span :class="['sf-pill', item.status === 'completed' ? 'sf-pill--pos' : 'sf-pill--neg']">
+                {{ item.status === 'completed' ? '已完成' : '生成失败' }}
+              </span>
+            </article>
+          </div>
+        </section>
+
+        <section class="sf-panel report-panel">
+          <header class="sf-panel__head report-head">
+            <div class="report-head__main">
+              <h2 class="sf-panel__title">{{ currentReport?.title || '班级学情报告' }}</h2>
               <p v-if="currentReport" class="report-meta">
-                {{ currentReport.class_name }} · 生成于 {{ formatDateTime(currentReport.created_at) }}
+                {{ currentReport.class_name }}
+                <span>·</span>
+                {{ formatDateTime(currentReport.created_at) }} 生成
+                <template v-if="currentReport.teacher_name">
+                  <span>·</span>
+                  {{ currentReport.teacher_name }}
+                </template>
+              </p>
+              <p v-else class="report-meta">
+                {{ selectedClass ? `${selectedClass.class_name} · 尚无报告` : '尚未选择班级' }}
               </p>
             </div>
+          </header>
+
+          <div class="report-body">
+            <div v-if="isGenerating" class="report-state">
+              <n-spin :size="24" />
+              <p class="report-state__title">正在分析本班学情</p>
+              <p class="report-state__note">
+                读取提交、评分、互评与签到数据，通常需要几十秒；生成完成后会自动出现在左侧历史里。
+              </p>
+            </div>
+
+            <template v-else-if="currentReport">
+              <n-alert
+                v-if="currentReport.status === 'failed'"
+                :closable="false"
+                :title="`上次生成失败：${currentReport.error_message || '未知原因'}`"
+                type="error"
+              />
+              <article v-else class="report-sheet">
+                <MarkdownContent :content="currentReport.content_md" />
+              </article>
+            </template>
+
+            <div v-else class="report-state report-state--empty">
+              <p class="report-state__title">这个班还没有学情报告</p>
+              <p class="report-state__note">
+                AI 会读取本班的作品提交与评分、学生互评记录和每日签到，输出结构化的班级分析。点击右上角「生成报告」即可。
+              </p>
+              <ul class="source-list">
+                <li><strong>提交与评分</strong><span>作品数量、得分分布、待评阅积压</span></li>
+                <li><strong>互评记录</strong><span>同伴互评的参与度与评分差异</span></li>
+                <li><strong>签到数据</strong><span>出勤情况与近期变化</span></li>
+              </ul>
+            </div>
           </div>
-        </template>
-
-        <div v-if="isGenerating" class="report-generating">
-          <n-spin :size="28" />
-          <p>AI 正在分析本班学情数据，通常需要几十秒，请稍候…</p>
-        </div>
-
-        <template v-else-if="currentReport">
-          <div v-if="currentReport.status === 'failed'" class="report-failed">
-            <n-alert
-              :closable="false"
-              :title="`报告生成失败：${currentReport.error_message || '未知原因'}`"
-              type="error"
-            />
-          </div>
-          <MarkdownContent v-else :content="currentReport.content_md" />
-        </template>
-
-        <n-empty
-          v-else
-          description="选择班级后点击「生成学情报告」，AI 将基于本班提交、评分、互评与签到数据输出分析报告"
-        />
-      </SaPanel>
-    </div>
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NEmpty, NSelect, NSkeleton, NSpin, NTag } from 'naive-ui';
+import { NAlert, NButton, NSelect, NSkeleton, NSpin } from 'naive-ui';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from '@/ui/feedback';
 
 import { apiGet, apiPost } from '@/api/http';
 import MarkdownContent from '@/components/MarkdownContent.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
 import { useAuthStore } from '@/stores/auth';
+import { ElMessage } from '@/ui/feedback';
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type ClassItem = {
   id: number;
   class_name: string;
   grade_no: number;
   class_no: number;
+  student_count: number;
 };
 
 type LearningReportSummary = {
@@ -143,6 +169,10 @@ type LearningReportListPayload = {
   page_size: number;
 };
 
+type AttendanceBootstrapPayload = {
+  classes: ClassItem[];
+};
+
 const authStore = useAuthStore();
 const classes = ref<ClassItem[]>([]);
 const selectedClassId = ref<number | null>(null);
@@ -157,11 +187,23 @@ const classOptions = computed(() =>
   classes.value.map((item) => ({ label: item.class_name, value: item.id })),
 );
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '--';
+const selectedClass = computed(
+  () => classes.value.find((item) => item.id === selectedClassId.value) || null,
+);
+
+const pageSummary = computed(() => {
+  if (!selectedClass.value) {
+    return '选择班级后，AI 会基于提交、评分、互评与签到数据生成结构化的班级分析。';
   }
-  return value.replace('T', ' ').slice(0, 16);
+  if (!historyTotal.value) {
+    return `${selectedClass.value.class_name} 还没有报告，生成第一份可看到完整分析。`;
+  }
+  const latest = reports.value[0];
+  return `${selectedClass.value.class_name} · 共 ${historyTotal.value} 份报告 · 最近 ${formatDateTime(latest?.created_at ?? null)}`;
+});
+
+function formatDateTime(value: string | null) {
+  return formatDateTimeValue(value, { fallback: '--', sliceStart: 0, sliceEnd: 16 });
 }
 
 async function loadClasses() {
@@ -169,7 +211,8 @@ async function loadClasses() {
     errorMessage.value = '请先登录教职工账号';
     return;
   }
-  const payload = await apiGet<{ classes: ClassItem[] }>('/staff/attendance/bootstrap', authStore.token);
+  // 班级列表与签到页共用同一个接口：它已经按教师可访问班级返回 id / 班名 / 人数。
+  const payload = await apiGet<AttendanceBootstrapPayload>('/staff/attendance', authStore.token);
   classes.value = payload.classes || [];
 }
 
@@ -261,106 +304,135 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.class-select {
+  width: 200px;
+}
+
+/* 历史在左、报告在右：报告是阅读面，宽度收在可读行宽而不是铺满 */
 .report-layout {
   display: grid;
-  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
-  gap: 16px;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
+  gap: var(--sf-section-gap);
   align-items: start;
 }
 
-.history-card :deep(.history-body) {
-  max-height: 640px;
-  overflow-y: auto;
-}
-
-.history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  font-weight: 700;
-}
-
-.history-empty {
-  padding: 18px 4px;
-  color: var(--ls-summary-label);
-  font-size: 13px;
-}
-
-.history-item {
-  padding: 12px;
-  border: 1px solid var(--ls-shell-divider, rgba(32, 60, 112, 0.12));
-  border-radius: 14px;
+.history-row {
   cursor: pointer;
-  transition: background 0.2s ease;
+  align-items: flex-start;
 }
 
-.history-item + .history-item {
-  margin-top: 10px;
+.history-row:hover {
+  background: var(--sf-surface-2);
 }
 
-.history-item:hover,
-.history-item.is-active {
-  background: var(--ls-nav-active-bg, rgba(47, 135, 255, 0.08));
+.history-row.is-active {
+  background: var(--sf-accent-soft);
 }
 
-.history-item-title {
-  margin: 0 0 6px;
+.history-row.is-active .sf-row__title {
   font-weight: 600;
-  line-height: 1.4;
 }
 
-.history-item-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin: 0;
-  color: var(--ls-summary-label);
-  font-size: 12px;
+.history-row:focus-visible {
+  outline: 2px solid var(--sf-accent);
+  outline-offset: -2px;
 }
 
-.history-item-error {
-  margin: 6px 0 0;
-  color: var(--ls-error-text);
-  font-size: 12px;
+.report-head {
+  align-items: flex-start;
 }
 
-.report-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.report-head__main {
+  min-width: 0;
 }
 
-.report-title {
-  margin: 0;
-  font-weight: 700;
+.report-head .sf-panel__title {
+  font-size: 16px;
+  line-height: 1.45;
 }
 
 .report-meta {
-  margin: 4px 0 0;
-  color: var(--ls-summary-label);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  margin: 5px 0 0;
+  color: var(--sf-muted);
   font-size: 12px;
 }
 
-.report-generating {
+.report-body {
+  min-width: 0;
+  padding: 22px 28px 28px;
+}
+
+.report-sheet {
+  max-width: 74ch;
+  color: var(--sf-text);
+  font-size: 14px;
+  line-height: 1.85;
+}
+
+.report-state {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 56ch;
+  padding: 12px 0;
+}
+
+.report-state__title {
+  margin: 0;
+  color: var(--sf-ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.report-state__note {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.report-state--empty {
+  gap: 10px;
+  padding: 18px 0 8px;
+}
+
+.source-list {
+  display: grid;
+  gap: 8px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.source-list li {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
   gap: 12px;
-  padding: 48px 0;
-  color: var(--ls-summary-label);
+  align-items: baseline;
+  font-size: 13px;
 }
 
-.report-failed {
-  padding: 8px 0;
+.source-list strong {
+  color: var(--sf-ink);
+  font-weight: 500;
 }
 
-@media (max-width: 960px) {
+.source-list span {
+  color: var(--sf-muted);
+}
+
+@media (max-width: 1100px) {
   .report-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .report-body {
+    padding: 18px;
   }
 }
 </style>

@@ -1,27 +1,5 @@
 import { onBeforeUnmount, onMounted, type Ref } from 'vue';
-
-type TaskRuntimeRequestMessage = {
-  source: 'learnsite-task-runtime-request';
-  requestId: string;
-  previewKey?: string;
-  taskId: number | null;
-  url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  bodyKind?: 'empty' | 'text' | 'base64';
-  bodyValue?: string;
-  bodyMimeType?: string;
-};
-
-type TaskRuntimeResponseMessage = {
-  source: 'learnsite-task-runtime-response';
-  requestId: string;
-  status?: number;
-  statusText?: string;
-  headers?: Record<string, string>;
-  bodyBase64?: string;
-  error?: string;
-};
+import type { TaskRuntimeRequestMessage, TaskRuntimeResponseMessage } from '@/types/taskRuntime';
 
 type UseStudentPreviewRuntimeRelayOptions = {
   /** 允许转发的活动 id 集合，避免预览页面访问到别的活动 */

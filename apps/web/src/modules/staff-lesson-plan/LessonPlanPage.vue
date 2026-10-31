@@ -1,5 +1,5 @@
 <template>
-  <div class="page-stack lesson-plan-page">
+  <div class="page-stack lesson-plan-page" :class="{ 'lesson-plan-page--editor': isEditorRoute }">
     <StaffPageHead
       v-if="!isEditorRoute"
       title="学案管理"
@@ -11,14 +11,28 @@
       </template>
     </StaffPageHead>
 
-    <StaffPageHead v-else :sub="heroSummarySubtitle" :title="pageTitle">
-      <template #back>
-        <button class="sf-back" type="button" @click="goToPlanList">← 返回学案清单</button>
-      </template>
-      <template #actions>
+    <!-- 编辑页常驻工具条：对象身份在左，唯一主操作在右；滚动时贴着外壳页头 -->
+    <header v-else class="plan-bar">
+      <div class="plan-bar__id">
+        <button class="plan-bar__back" type="button" @click="goToPlanList">← 学案清单</button>
+        <h1 class="plan-bar__title">{{ pageTitle }}</h1>
+        <p class="plan-bar__meta">
+          <span :class="['sf-pill', planStatusPillClass(planForm.status)]">{{ planStatusLabel(planForm.status) }}</span>
+          <span>{{ planBarLessonLabel }}</span>
+          <span>{{ planForm.tasks.length }} 个活动</span>
+          <span v-if="hasUnsavedChanges" class="plan-bar__dirty">有未保存的修改</span>
+        </p>
+      </div>
+      <div class="plan-bar__actions">
         <n-button secondary @click="openStudentPreview">预览学生端</n-button>
-      </template>
-    </StaffPageHead>
+        <n-button quaternary @click="cancelPlanEditing">
+          {{ editingPlanId ? '重置修改' : '取消新建' }}
+        </n-button>
+        <n-button :loading="isSavingPlan" type="primary" @click="savePlan">
+          {{ editingPlanId ? '保存修改' : '创建学案' }}
+        </n-button>
+      </div>
+    </header>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
 
@@ -123,79 +137,111 @@
         </div>
       </section>
     </div>
-    <SaPanel
+    <!-- 两栏共用一个表单上下文，标签统一在控件上方 -->
+    <n-form
       v-if="!isLoading && isEditorRoute && editorVisible"
-      id="plan-editor-card"
-      body-class="plan-editor-body"
-      panel-class="plan-editor-card"
+      class="plan-editor"
+      label-placement="top"
+      :show-feedback="false"
     >
-      <template #header>
-        <div class="info-row">
-          <div class="plan-editor-card__header">
-            <strong>{{ editingPlanId ? '编辑学案' : '新建学案' }}</strong>
-            <p class="section-note">
+      <!-- 左栏：学案信息与内容目录。目录是唯一的导航，取代原来的页签 -->
+      <div class="plan-rail">
+        <details class="sf-panel plan-rail__panel" :open="!isNarrowViewport">
+          <summary class="sf-panel__head plan-rail__summary">
+            <h2 class="sf-panel__title">学案信息</h2>
+            <span class="plan-rail__summary-tail">
+              <span class="plan-rail__summary-hint">{{ planStatusLabel(planForm.status) }}</span>
+              <span class="plan-rail__summary-caret" aria-hidden="true"></span>
+            </span>
+          </summary>
+          <div class="sf-panel__body plan-rail__body">
+            <n-form-item label="学案标题">
+              <n-input
+                v-model:value="planForm.title"
+                maxlength="120"
+                placeholder="例如：八下第一单元 第4课 智能感知体验"
+              />
+            </n-form-item>
+            <n-form-item label="绑定课次">
+              <n-select
+                v-model:value="planForm.lesson_id"
+                class="full-width"
+                clearable
+                filterable
+                :options="lessonSelectOptions"
+                placeholder="可暂不选择课次"
+              />
+            </n-form-item>
+            <n-form-item label="发布日期">
+              <n-date-picker
+                v-model:formatted-value="planForm.assigned_date"
+                class="full-width"
+                format="yyyy-MM-dd"
+                type="date"
+                value-format="yyyy-MM-dd"
+              />
+            </n-form-item>
+            <n-form-item label="保存状态">
+              <n-select v-model:value="planForm.status" class="full-width" :options="planStatusOptions" />
+            </n-form-item>
+            <p class="plan-rail__note">
               {{
-                editingPlanId
-                  ? '可以直接在当前页面修改学案导读、活动与资源，保存后立即同步。'
-                  : '可以先不绑定课次保存草稿；绑定课次后即可继续发布或开课。'
+                planForm.lesson_id
+                  ? '已绑定课次，保存后可以发布并开课。'
+                  : '不绑定课次也能存草稿；绑定后才能发布、开课。'
               }}
             </p>
           </div>
-          <div class="chip-row">
-            <n-tag round type="info">{{ editingPlanId ? '编辑中' : '新建中' }}</n-tag>
-            <n-tag v-if="editingPlanId && selectedPlanDetail?.lesson" round>
-              {{ selectedPlanDetail.lesson?.title }}
-            </n-tag>
-            <n-tag v-else-if="editingPlanId && selectedPlanDetail" round type="warning">未绑定课次</n-tag>
-            <n-tag v-if="hasUnsavedChanges" round type="warning">未保存</n-tag>
-          </div>
-        </div>
-      </template>
-      <n-form label-placement="top">
-        <div class="plan-form-grid">
-          <n-form-item label="学案标题">
-            <n-input v-model:value="planForm.title" maxlength="120" placeholder="例如：八下第一单元 第4课 智能感知体验" />
-          </n-form-item>
-          <n-form-item label="发布日期">
-            <n-date-picker
-              v-model:formatted-value="planForm.assigned_date"
-              class="full-width"
-              format="yyyy-MM-dd"
-              type="date"
-              value-format="yyyy-MM-dd"
-            />
-          </n-form-item>
-          <n-form-item label="保存状态">
-            <n-select v-model:value="planForm.status" class="full-width" :options="planStatusOptions" />
-          </n-form-item>
-        </div>
+        </details>
 
-        <n-form-item label="绑定课次">
-          <n-select
-            v-model:value="planForm.lesson_id"
-            class="full-width"
-            clearable
-            filterable
-            :options="lessonSelectOptions"
-            placeholder="可暂不选择课次"
-          />
-          <p class="section-note">
-            {{
-              planForm.lesson_id
-                ? '已绑定课次，保存后可以发布并用于开课。'
-                : '暂不绑定课次也可以保存草稿；绑定课次后才能发布、开课和进入学生端。'
-            }}
-          </p>
-        </n-form-item>
-
-        <div class="dialog-task-head editor-task-toolbar">
-          <div>
-            <h3>学案导读与活动配置</h3>
-            <p class="section-note">按“学案导读、活动 1、活动 2...”逐项配置，减少来回跳转。</p>
+        <section class="sf-panel">
+          <header class="sf-panel__head">
+            <h2 class="sf-panel__title">
+              内容目录
+              <span class="sf-panel__count">{{ planForm.tasks.length + 1 }} 项</span>
+            </h2>
+          </header>
+          <div class="sf-panel__body sf-panel__body--flush plan-outline">
+            <nav aria-label="学案内容">
+              <button
+                type="button"
+                :class="['plan-outline__item', { 'is-active': editorTaskTabKey === 'content' }]"
+                @click="selectEditorPane('content')"
+              >
+                <span class="plan-outline__badge" aria-hidden="true"></span>
+                <span class="plan-outline__text">
+                  <span class="plan-outline__label">学案导读</span>
+                  <span class="plan-outline__meta">{{ planContentSummary }}</span>
+                </span>
+              </button>
+              <button
+                v-for="(task, index) in planForm.tasks"
+                :key="task.key"
+                type="button"
+                :class="[
+                  'plan-outline__item',
+                  { 'is-active': editorTaskTabKey === `task:${task.key}`, 'is-off': !task.is_active },
+                ]"
+                @click="selectEditorPane(`task:${task.key}`)"
+              >
+                <span class="plan-outline__badge">{{ index + 1 }}</span>
+                <span class="plan-outline__text">
+                  <span class="plan-outline__label">{{ task.title.trim() || '未命名活动' }}</span>
+                  <span class="plan-outline__meta">
+                    {{ taskTypeLabel(task.task_type) }}<template v-if="!task.is_active"> · 已停用</template>
+                  </span>
+                </span>
+              </button>
+            </nav>
           </div>
-          <div class="chip-row">
-            <n-button secondary @click="addTaskRow">新增空白活动</n-button>
+          <footer class="sf-panel__foot plan-rail__add">
+            <div class="plan-rail__add-row">
+              <n-button block secondary size="small" @click="addTaskRow">新增活动</n-button>
+              <n-button block quaternary size="small" @click="openTaskTemplateLibrary">模板库</n-button>
+            </div>
             <TaskTemplatePickerDropdown
+              block
+              secondary
               :custom-task-templates-loading="customTaskTemplatesLoading"
               :custom-task-templates="customTaskTemplates"
               :dropdown-pinned-custom-task-templates="dropdownPinnedCustomTaskTemplates"
@@ -204,81 +250,85 @@
               :task-type-label="taskTypeLabel"
               :handle-task-template-command="handleTaskTemplateCommand"
             />
-            <n-button secondary @click="openTaskTemplateLibrary">模板库</n-button>
-          </div>
-        </div>
-
-        <n-tabs v-model:value="editorTaskTabKey" class="editor-tabs editor-tabs--unified" type="card">
-          <n-tab-pane name="content" tab="学案导读" display-directive="show">
-            <div class="dialog-task-head">
-              <div>
-                <h3>学案导读</h3>
-                <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
-              </div>
-              <div class="chip-row">
-                <n-button :loading="generatingPlanHtml" secondary @click="generatePlanHtmlDraft">AI 生成导读初稿</n-button>
-              </div>
-            </div>
-            <div class="content-mode-panel">
-              <RichTextEditor
-                v-model="planForm.content"
-                :min-height="320"
-                placeholder="填写学案导读、课堂流程、重点提示、参考链接等。"
-              />
-            </div>
-          </n-tab-pane>
-
-          <n-tab-pane
-            v-for="(task, index) in planForm.tasks"
-            :key="task.key"
-            :tab="taskEditorTabTitle(task, index)"
-            :name="`task:${task.key}`"
-            display-directive="show:lazy"
-          >
-            <LessonPlanTaskEditorCard
-              :task="task"
-              :index="index"
-              :task-count="planForm.tasks.length"
-              :generating-task-html-key="generatingTaskHtmlKey"
-              :task-type-label="taskTypeLabel"
-              :task-template-button-label="taskTemplateButtonLabel"
-              :is-task-scope-fixed="isTaskScopeFixed"
-              :can-upload-task-assets="canUploadTaskAssets"
-              :task-asset-generation-key="taskAssetGenerationKey"
-              :task-description-generation-key="taskDescriptionGenerationKey"
-              :asset-bindings="taskAssetBindings"
-              :data-submit-bindings="taskDataSubmitBindings"
-              :move-task-row="moveTaskRow"
-              :copy-task-row="copyTaskRow"
-              :remove-task-row="removeTaskRow"
-              :open-save-task-template-dialog="openSaveTaskTemplateDialog"
-              :handle-task-type-change="handleTaskTypeChange"
-              :generate-task-description-draft="generateTaskDescriptionDraft"
-            />
-          </n-tab-pane>
-        </n-tabs>
-
-      </n-form>
-
-      <n-alert
-        v-if="errorMessage"
-        class="editor-save-alert"
-        :closable="false"
-        :title="errorMessage"
-        type="error"
-      />
-
-      <div class="plan-editor-actions">
-        <div class="chip-row">
-          <n-button @click="cancelPlanEditing">
-            {{ editingPlanId ? '重置修改' : '取消新建' }}
-          </n-button>
-          <n-button :loading="isSavingPlan" type="primary" @click="savePlan">
-            {{ editingPlanId ? '保存修改' : '创建学案' }}
-          </n-button>
-        </div>
+          </footer>
+        </section>
       </div>
-    </SaPanel>
+
+      <!-- 右栏：同一时刻只呈现一个编辑对象，标题、说明、操作都在这一条里 -->
+      <section ref="planCanvasRef" class="sf-panel plan-canvas">
+        <header class="sf-panel__head plan-canvas__head">
+          <div class="plan-canvas__id">
+            <h2 class="plan-canvas__title">{{ currentEditorPane.title }}</h2>
+            <p class="plan-canvas__meta">{{ currentEditorPane.meta }}</p>
+          </div>
+          <div class="sf-panel__actions">
+            <n-dropdown
+              v-if="currentEditorTask"
+              :options="currentEditorTaskActions"
+              placement="bottom-end"
+              trigger="click"
+              @select="handleCurrentEditorTaskAction"
+            >
+              <n-button quaternary size="small">
+                活动操作
+                <AppIcon class="plan-canvas__caret" :icon="ChevronDown" :size="14" />
+              </n-button>
+            </n-dropdown>
+            <n-button
+              v-else
+              :loading="generatingPlanHtml"
+              secondary
+              size="small"
+              @click="generatePlanHtmlDraft"
+            >
+              AI 生成导读初稿
+            </n-button>
+          </div>
+        </header>
+
+        <div
+          v-if="visitedEditorPanes.has('content')"
+          v-show="editorTaskTabKey === 'content'"
+          class="sf-panel__body plan-canvas__body"
+        >
+          <RichTextEditor
+            v-model="planForm.content"
+            :min-height="380"
+            placeholder="填写学案导读、课堂流程、重点提示、参考链接等。"
+          />
+        </div>
+
+        <div
+          v-for="(task, index) in planForm.tasks"
+          :key="task.key"
+          v-show="editorTaskTabKey === `task:${task.key}`"
+          class="sf-panel__body plan-canvas__body"
+        >
+          <LessonPlanTaskEditorCard
+            v-if="visitedEditorPanes.has(`task:${task.key}`)"
+            :task="task"
+            :index="index"
+            :task-count="planForm.tasks.length"
+            :show-toolbar="false"
+            :generating-task-html-key="generatingTaskHtmlKey"
+            :task-type-label="taskTypeLabel"
+            :task-template-button-label="taskTemplateButtonLabel"
+            :is-task-scope-fixed="isTaskScopeFixed"
+            :can-upload-task-assets="canUploadTaskAssets"
+            :task-asset-generation-key="taskAssetGenerationKey"
+            :task-description-generation-key="taskDescriptionGenerationKey"
+            :asset-bindings="taskAssetBindings"
+            :data-submit-bindings="taskDataSubmitBindings"
+            :move-task-row="moveTaskRow"
+            :copy-task-row="copyTaskRow"
+            :remove-task-row="removeTaskRow"
+            :open-save-task-template-dialog="openSaveTaskTemplateDialog"
+            :handle-task-type-change="handleTaskTypeChange"
+            :generate-task-description-draft="generateTaskDescriptionDraft"
+          />
+        </div>
+      </section>
+    </n-form>
 
     <TaskHtmlPromptDialog
       v-model="taskHtmlPromptDialogVisible"
@@ -382,14 +432,16 @@
 </template>
 
 <script setup lang="ts">
-import { NAlert, NButton, NDatePicker, NDropdown, NForm, NFormItem, NInput, NSelect, NSkeleton, NTabPane, NTabs, NTag } from 'naive-ui';
+import type { DropdownOption } from 'naive-ui';
+import { NAlert, NButton, NDatePicker, NDropdown, NForm, NFormItem, NInput, NSelect, NSkeleton, NTag } from 'naive-ui';
+import { ChevronDown } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
+import AppIcon from '@/components/AppIcon.vue';
 import RichTextEditor from '@/components/RichTextEditor.vue';
-import SaPanel from '@/components/sa/SaPanel.vue';
 import StaffPageHead from '@/components/staff/StaffPageHead.vue';
 import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -840,18 +892,116 @@ const pageTitle = computed(() => {
   }
   return planForm.value.title.trim() || selectedPlanDetail.value?.title || '编辑学案';
 });
-const heroSummarySubtitle = computed(() => {
-  if (isCreateRoute.value) {
-    return '先保存草稿，绑定课次后再发布或开课。';
+/** 编辑页工具条第二行：课次是学生端的入口，写全称比写「已绑定」有用 */
+const planBarLessonLabel = computed(() => {
+  const plan = selectedPlanDetail.value;
+  if (!plan) {
+    return isCreateRoute.value ? '保存后可绑定课次' : '正在加载课次…';
   }
-  if (selectedPlanDetail.value) {
-    const plan = selectedPlanDetail.value;
-    const lessonLabel = planLessonDisplayLabel(plan);
-    const bound = plan.lesson ? `已绑定「${lessonLabel}」` : '未绑定课次';
-    return `${bound} · ${planStatusLabel(plan.status)} · ${plan.task_count} 个活动`;
-  }
-  return '正在加载学案详情…';
+  return plan.lesson ? planLessonDisplayLabel(plan) : '未绑定课次';
 });
+
+/** 目录里的导读占位说明：只回答「填了没有」，不重复编辑器里的内容 */
+const planContentSummary = computed(() => {
+  const text = planForm.value.content
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text ? `已填写 ${text.length} 字` : '还没填写';
+});
+
+/** 当前画布里正在编辑的活动；导读页签下为 null */
+const currentEditorTask = computed<PlanFormTask | null>(() => {
+  const key = activeTaskEditorKey.value;
+  if (editorActiveTab.value !== 'tasks' || !key) {
+    return null;
+  }
+  return planForm.value.tasks.find((task) => task.key === key) || null;
+});
+
+/** 画布头部：标题与一行事实，说明这是哪个对象、它现在是什么状态 */
+const currentEditorPane = computed(() => {
+  const task = currentEditorTask.value;
+  if (!task) {
+    return {
+      title: '学案导读',
+      meta: '学生进入学案后先看到这一段，保存后随学案一起下发。',
+    };
+  }
+  const index = planForm.value.tasks.findIndex((item) => item.key === task.key);
+  const facts = [taskTypeLabel(task.task_type), task.is_required ? '必做' : '选做', task.is_active ? '已启用' : '已停用'];
+  return {
+    title: `活动 ${index + 1} · ${task.title.trim() || '未命名活动'}`,
+    meta: facts.join(' · '),
+  };
+});
+
+/** 活动操作收进一个下拉，画布头部只留唯一主操作的位置 */
+const currentEditorTaskActions = computed<DropdownOption[]>(() => {
+  const task = currentEditorTask.value;
+  if (!task) {
+    return [];
+  }
+  const index = planForm.value.tasks.findIndex((item) => item.key === task.key);
+  return [
+    { label: '前移一位', key: 'move-up', disabled: index <= 0 },
+    { label: '后移一位', key: 'move-down', disabled: index >= planForm.value.tasks.length - 1 },
+    { label: '复制活动', key: 'copy' },
+    { label: taskTemplateButtonLabel(task), key: 'save-template' },
+    { key: 'divider', type: 'divider' },
+    { label: '删除活动', key: 'delete', disabled: planForm.value.tasks.length <= 1 },
+  ];
+});
+
+function handleCurrentEditorTaskAction(key: string) {
+  const task = currentEditorTask.value;
+  if (!task) {
+    return;
+  }
+  if (key === 'move-up') {
+    moveTaskRow(task.key, -1);
+    return;
+  }
+  if (key === 'move-down') {
+    moveTaskRow(task.key, 1);
+    return;
+  }
+  if (key === 'copy') {
+    copyTaskRow(task.key);
+    return;
+  }
+  if (key === 'save-template') {
+    openSaveTaskTemplateDialog(task);
+    return;
+  }
+  if (key === 'delete') {
+    removeTaskRow(task.key);
+  }
+}
+
+/** 画布只挂载看过的对象：CKEditor 实例较重，不随活动数量线性增长 */
+const visitedEditorPanes = ref<Set<string>>(new Set(['content']));
+const planCanvasRef = ref<HTMLElement | null>(null);
+
+/** 手机上「学案信息」默认收起，让目录和画布先出现在首屏；桌面上始终展开 */
+const NARROW_VIEWPORT_QUERY = '(max-width: 900px)';
+const isNarrowViewport = ref(false);
+let narrowViewportList: MediaQueryList | null = null;
+
+function syncNarrowViewport() {
+  if (narrowViewportList) {
+    isNarrowViewport.value = narrowViewportList.matches;
+  }
+}
+
+function selectEditorPane(key: string) {
+  editorTaskTabKey.value = key;
+  visitedEditorPanes.value.add(key);
+  if (typeof window !== 'undefined' && window.innerWidth < 1080) {
+    nextTick(() => planCanvasRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
+}
 
 function planLessonDisplayLabel(plan: Pick<PlanSummary, 'lesson'>) {
   return plan.lesson?.title || '暂未绑定课次';
@@ -1066,6 +1216,15 @@ const editorTaskTabKey = computed({
     activeTaskEditorKey.value = taskKey;
   },
 });
+
+/** 切到新的活动时把它的编辑区挂载出来；已挂载的保持原状，避免 CKEditor 反复重建 */
+watch(
+  editorTaskTabKey,
+  (key) => {
+    visitedEditorPanes.value.add(key);
+  },
+  { immediate: true }
+);
 const taskHtmlPromptPreview = computed(() => {
   const task = taskHtmlPromptDialogTask.value;
   if (!task) {
@@ -1158,10 +1317,14 @@ function activatePlanEditor(plan: PlanDetail, options?: { skipDraftRestore?: boo
   handleTaskTabDragEnd();
 }
 
-function cancelPlanEditing() {
+async function cancelPlanEditing() {
   cancelPlanEditingState(selectedPlanDetail.value);
+  // 数据提交活动的接口地址在重置后才补齐，基线要等这一步之后再对齐，
+  // 否则刚重置完仍然显示「有未保存的修改」。
   normalizeEditorDataSubmitTaskSources();
   handleTaskTabDragEnd();
+  await nextTick();
+  markEditorCommitted();
 }
 
 function isTaskIdReservationPending(task: Pick<PlanFormTask, 'key'>) {
@@ -2210,6 +2373,10 @@ async function loadPlanDetail(planId: number | null) {
   const payload = await apiGet<{ plan: PlanDetail }>(`/lesson-plans/staff/${planId}`, authStore.token);
   selectedPlanDetail.value = payload.plan;
   activatePlanEditor(payload.plan);
+  // 表单落地后还有一轮 watcher 补全（源码模式、接口地址等），等 DOM 更新完再把基线对齐，
+  // 否则刚打开学案就显示「有未保存的修改」。
+  await nextTick();
+  markEditorCommitted();
 }
 
 async function loadPage() {
@@ -2577,6 +2744,9 @@ watch(currentEditorSnapshot, () => {
 });
 
 onMounted(() => {
+  narrowViewportList = window.matchMedia(NARROW_VIEWPORT_QUERY);
+  syncNarrowViewport();
+  narrowViewportList.addEventListener('change', syncNarrowViewport);
   window.addEventListener('beforeunload', handleWindowBeforeUnload);
   window.addEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
   window.addEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
@@ -2587,6 +2757,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearDraftAutoSaveTimer();
+  narrowViewportList?.removeEventListener('change', syncNarrowViewport);
   window.removeEventListener('beforeunload', handleWindowBeforeUnload);
   window.removeEventListener(AI_PROVIDER_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
   window.removeEventListener(ASSISTANT_RUNTIME_CONFIG_UPDATED_EVENT, handleTaskHtmlPromptAssistantConfigUpdated);
@@ -2604,115 +2775,438 @@ onBeforeUnmount(() => {
   padding: 0 16px;
 }
 
-.chip-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.editor-tabs {
-  margin-top: 8px;
-}
-
-.editor-task-toolbar {
-  margin-top: 10px;
-}
-
-.content-mode-panel {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--ls-content-panel-border);
-  border-radius: 20px;
-  background: var(--ls-content-panel-bg);
-}
-
-.dialog-task-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  align-items: center;
-  margin: 8px 0 12px;
-}
-
-.dialog-task-head h3,
-.section-note {
-  margin: 0;
-}
-
-.section-note {
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-.plan-editor-body {
-  display: grid;
-  gap: 18px;
-}
-
-.plan-form-grid {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 0 16px;
-  align-items: start;
-}
-
-.plan-editor-card__header {
-  display: grid;
-  gap: 4px;
-}
-
-.plan-editor-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 20px;
-}
-
-.editor-save-alert {
-  margin-top: 8px;
-}
-
 .full-width {
   width: 100%;
 }
 
-@media (max-width: 1024px) {
-  .lesson-plan-page {
-    width: 100%;
+/* ================= 编辑页 =================
+   一屏只服务一件事：目录在左，正在编辑的那一项占满右栏，保存常驻在顶部工具条里。 */
+
+.lesson-plan-page--editor {
+  width: min(1240px, 100%);
+}
+
+/* ---------- 常驻工具条：身份在左，唯一主操作在右 ---------- */
+
+.plan-bar {
+  position: sticky;
+  top: 52px;
+  z-index: 10;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px 12px;
+  border: 1px solid var(--sf-line);
+  border-radius: var(--sf-r-card);
+  background: var(--sf-surface);
+}
+
+.plan-bar__id {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.plan-bar__back {
+  justify-self: start;
+  margin: 0 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sf-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.plan-bar__back:hover {
+  color: var(--sf-ink);
+}
+
+.plan-bar__title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--sf-ink);
+  font-family: var(--ls-font);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-bar__meta {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px 10px;
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.plan-bar__meta > span {
+  white-space: nowrap;
+}
+
+.plan-bar__dirty {
+  color: var(--sf-warn);
+}
+
+.plan-bar__dirty::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 5px;
+  border-radius: 999px;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
+.plan-bar__actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ---------- 两栏工作区 ---------- */
+
+.plan-editor {
+  display: grid;
+  grid-template-columns: 288px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.plan-rail {
+  position: sticky;
+  top: 160px;
+  display: grid;
+  gap: 12px;
+  max-height: calc(100vh - 166px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.plan-rail__body {
+  display: grid;
+  gap: 12px;
+  padding: 12px 14px 14px;
+}
+
+.plan-rail__body :deep(.n-form-item) {
+  margin-bottom: 0;
+}
+
+.plan-rail__body :deep(.n-form-item-label) {
+  padding-bottom: 4px;
+  font-size: 12px;
+  color: var(--sf-muted);
+}
+
+.plan-rail__body :deep(.n-form-item-blank) {
+  min-height: 0;
+}
+
+.plan-rail__note {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* 手机上「学案信息」可折叠：先看到目录与画布，需要改绑定关系时再展开 */
+.plan-rail__summary {
+  cursor: default;
+  list-style: none;
+}
+
+.plan-rail__summary::-webkit-details-marker {
+  display: none;
+}
+
+/* 桌面上「学案信息」始终展开，标题行不做折叠开关 */
+@media (min-width: 901px) {
+  .plan-rail__summary {
+    pointer-events: none;
+  }
+}
+
+.plan-rail__summary-tail {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-rail__summary-hint,
+.plan-rail__summary-caret {
+  display: none;
+  color: var(--sf-muted);
+  font-size: 12px;
+}
+
+/* ---------- 内容目录：唯一的导航，取代页签 ---------- */
+
+.plan-outline {
+  padding: 6px;
+}
+
+.plan-outline nav {
+  display: grid;
+  gap: 2px;
+}
+
+.plan-outline__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--sf-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.plan-outline__item:hover {
+  background: var(--sf-surface-2);
+}
+
+.plan-outline__item:focus-visible {
+  outline: 2px solid var(--sf-accent);
+  outline-offset: -2px;
+}
+
+.plan-outline__item.is-active {
+  background: var(--sf-accent-soft);
+}
+
+.plan-outline__badge {
+  flex: none;
+  width: 15px;
+  padding-top: 1px;
+  color: var(--sf-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.plan-outline__text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.plan-outline__label {
+  overflow: hidden;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-outline__meta {
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.plan-outline__item.is-active .plan-outline__label {
+  color: var(--sf-ink);
+  font-weight: 600;
+}
+
+.plan-outline__item.is-off .plan-outline__label {
+  color: var(--sf-muted);
+}
+
+.plan-rail__add {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.plan-rail__add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+/* ---------- 画布：同一时刻只有一个编辑对象 ---------- */
+
+.plan-canvas {
+  min-width: 0;
+}
+
+.plan-canvas__head {
+  align-items: flex-start;
+  padding: 12px 16px;
+}
+
+.plan-canvas__id {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-canvas__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--sf-ink);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-canvas__meta {
+  margin: 0;
+  color: var(--sf-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.plan-canvas__body {
+  padding: 16px;
+}
+
+.plan-canvas__caret {
+  margin-left: 4px;
+  opacity: 0.7;
+}
+
+/* 画布里的字段之间留一口气：表单项默认紧贴，长表单会糊成一片 */
+.plan-canvas__body :deep(.n-form-item) {
+  margin-bottom: 12px;
+}
+
+/* ---------- 窄屏 ---------- */
+
+/* 平板横屏到小桌面：两栏都留着，侧栏收一档，编辑区仍然是主角 */
+@media (max-width: 1200px) and (min-width: 901px) {
+  .plan-editor {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+}
+
+/* 平板竖屏以下：目录落到画布上方，目录项横向滚动，画布仍在首屏可及的位置 */
+@media (max-width: 900px) {
+  .plan-editor {
+    grid-template-columns: minmax(0, 1fr);
   }
 
-  .lesson-plan-hero {
-    grid-template-columns: 1fr;
+  .plan-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .plan-rail__body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px 16px;
+  }
+
+  .plan-rail__note {
+    grid-column: 1 / -1;
+  }
+
+  .plan-outline nav {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .plan-outline nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .plan-outline__item {
+    flex: none;
+    width: auto;
+    max-width: 220px;
+    background: var(--sf-surface-2);
+  }
+
+  .plan-outline__item.is-active {
+    background: var(--sf-accent-soft);
+  }
+}
+
+@media (max-width: 900px) {
+  .plan-rail__summary {
+    cursor: pointer;
+  }
+
+  .plan-rail__summary-hint {
+    display: inline;
+  }
+
+  .plan-rail__summary-caret {
+    display: block;
+    width: 7px;
+    height: 7px;
+    margin-top: -3px;
+    border-right: 1.5px solid var(--sf-muted);
+    border-bottom: 1.5px solid var(--sf-muted);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+
+  .plan-rail__panel:not([open]) .plan-rail__summary-caret {
+    margin-top: 2px;
+    transform: rotate(-45deg);
   }
 }
 
 @media (max-width: 768px) {
-  .dialog-task-head,
-  .info-row {
+  .plan-bar {
     flex-direction: column;
-    align-items: flex-start;
+    align-items: stretch;
+    gap: 10px;
+    padding: 10px 12px 12px;
   }
 
-  .plan-form-grid {
-    grid-template-columns: 1fr;
+  .plan-bar__title {
+    font-size: 18px;
+    white-space: normal;
   }
 
-  .plan-title-cell {
-    grid-template-columns: 72px minmax(0, 1fr);
+  .plan-bar__meta {
+    flex-wrap: wrap;
+    overflow: visible;
   }
 
-  .plan-title-cell__thumb-wrap {
-    width: 72px;
-    height: 52px;
+  .plan-bar__actions {
+    justify-content: flex-end;
+  }
+
+  .plan-canvas__head {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .plan-rail__body {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

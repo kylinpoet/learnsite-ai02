@@ -6,7 +6,9 @@
     :render-option="renderDropdownOption"
     @select="handleSelect"
   >
-    <n-button type="primary">从模板新增</n-button>
+    <n-button :block="props.block" :secondary="props.secondary" :type="props.secondary ? 'default' : 'primary'">
+      从模板新增
+    </n-button>
   </n-dropdown>
 </template>
 
@@ -24,15 +26,21 @@ import type {
   TaskTemplatePresetId,
 } from '../lessonPlan.types';
 
-const props = defineProps<{
-  customTaskTemplatesLoading: boolean;
-  customTaskTemplates: CustomTaskTemplate[];
-  dropdownPinnedCustomTaskTemplates: CustomTaskTemplate[];
-  dropdownRecentCustomTaskTemplates: CustomTaskTemplate[];
-  customTaskTemplateDropdownGroups: TaskTemplateGroupSection[];
-  taskTypeLabel: (taskType: string) => string;
-  handleTaskTemplateCommand: (command: TaskTemplateDropdownCommand) => void;
-}>();
+const props = withDefaults(
+  defineProps<{
+    customTaskTemplatesLoading: boolean;
+    customTaskTemplates: CustomTaskTemplate[];
+    dropdownPinnedCustomTaskTemplates: CustomTaskTemplate[];
+    dropdownRecentCustomTaskTemplates: CustomTaskTemplate[];
+    customTaskTemplateDropdownGroups: TaskTemplateGroupSection[];
+    taskTypeLabel: (taskType: string) => string;
+    handleTaskTemplateCommand: (command: TaskTemplateDropdownCommand) => void;
+    /** 放进侧栏时用次要按钮与整宽，避免和页面唯一的主操作抢注意力 */
+    secondary?: boolean;
+    block?: boolean;
+  }>(),
+  { secondary: false, block: false }
+);
 
 const optionItemStyle =
   'display: grid; gap: 2px; min-width: 260px; white-space: normal; line-height: 1.4;';

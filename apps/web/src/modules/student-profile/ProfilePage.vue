@@ -288,6 +288,7 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 type ProfileEditPermissions = {
   can_edit_name: boolean;
@@ -532,10 +533,7 @@ function formatDate(value: string | null) {
 }
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '--';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '--', sliceStart: 0, sliceEnd: 16 });
 }
 
 function formatTime(value: string | null) {

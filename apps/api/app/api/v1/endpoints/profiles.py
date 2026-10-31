@@ -6,7 +6,6 @@ from io import StringIO
 from pathlib import Path
 from typing import Literal
 import mimetypes
-from urllib.parse import quote
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
@@ -32,6 +31,7 @@ from app.models import (
 )
 from app.schemas.common import ApiResponse
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff
+from app.core.downloads import build_content_disposition
 from app.services.system_settings import read_archived_class_ids, resolve_student_profile_edit_permissions
 
 router = APIRouter()
@@ -155,11 +155,6 @@ def ensure_student_profile_edit_permission(
         detail=PROFILE_EDIT_PERMISSION_DENIED_MESSAGE[field],
     )
 
-
-def build_content_disposition(filename: str, disposition: str = "attachment") -> str:
-    encoded_name = quote(filename)
-    fallback_name = filename.encode("ascii", "ignore").decode("ascii").strip() or "download.csv"
-    return f'{disposition}; filename="{fallback_name}"; filename*=UTF-8\'\'{encoded_name}'
 
 
 def normalize_profile_audit_event_type(raw_value: str | None) -> str | None:
@@ -1414,5 +1409,5 @@ def export_profile_change_audits_for_staff(
     return Response(
         content=("\ufeff" + build_profile_change_audit_csv(items)).encode("utf-8"),
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": build_content_disposition(file_name)},
+        headers={"Content-Disposition": build_content_disposition(file_name, fallback="download.csv")},
     )

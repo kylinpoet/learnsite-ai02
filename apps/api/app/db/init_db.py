@@ -386,8 +386,12 @@ def ensure_runtime_schema() -> None:
     school_class_columns = {column["name"] for column in inspector.get_columns("school_classes")}
     profile_change_audit_columns = {column["name"] for column in inspector.get_columns("profile_change_audit_logs")}
     task_template_columns = {column["name"] for column in inspector.get_columns("task_templates")} if "task_templates" in table_names else set()
-    lesson_plan_columns = inspector.get_columns("lesson_plans") if "lesson_plans" in table_names else []
-    lesson_id_column = next((column for column in lesson_plan_columns if column["name"] == "lesson_id"), None)
+    # 这里必须是「列名集合」：重建分支之外也会用它判断 is_hidden 是否存在，
+    # 若保留 get_columns() 的字典列表，"is_hidden" not in [...] 永远为真，
+    # 已迁移过的库每次启动都会重复 ALTER TABLE 并撞上 duplicate column。
+    lesson_plan_column_rows = inspector.get_columns("lesson_plans") if "lesson_plans" in table_names else []
+    lesson_plan_columns = {column["name"] for column in lesson_plan_column_rows}
+    lesson_id_column = next((column for column in lesson_plan_column_rows if column["name"] == "lesson_id"), None)
 
     if engine.dialect.name == "sqlite" and lesson_id_column and not lesson_id_column.get("nullable", True):
         with engine.connect() as connection:

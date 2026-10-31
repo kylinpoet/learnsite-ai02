@@ -120,6 +120,7 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
+import { formatDateTime } from '@/utils/datetime';
 
 type GroupMember = {
   user_id: number;
@@ -343,12 +344,7 @@ function formatBytes(bytes = 0) {
   return `${bytes} B`;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function roleLabel(role: string | null | undefined) {
   if (role === 'leader') {

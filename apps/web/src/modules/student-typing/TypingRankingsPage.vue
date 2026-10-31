@@ -94,6 +94,7 @@ import StudentPageHead from '@/components/student/StudentPageHead.vue';
 import StudentPanel from '@/components/student/StudentPanel.vue';
 import { useChartTheme } from '@/composables/useChartTheme';
 import { useAuthStore } from '@/stores/auth';
+import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
 
 const AppChart = defineAsyncComponent(() => import('@/components/AppChart.vue'));
 
@@ -183,10 +184,7 @@ const scopeOptions = [
 ];
 
 function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无';
-  }
-  return value.replace('T', ' ').slice(0, 16);
+  return formatDateTimeValue(value, { fallback: '暂无', sliceStart: 0, sliceEnd: 16 });
 }
 
 async function loadRankings() {

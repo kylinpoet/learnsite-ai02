@@ -9,6 +9,7 @@ from app.api.v1.endpoints import (
     groups,
     guest,
     health,
+    learning_reports,
     lesson_plans,
     peer_reviews,
     portraits,
@@ -26,6 +27,7 @@ api_router = APIRouter()
 api_router.include_router(health.router, prefix="/health", tags=["health"])
 api_router.include_router(auth.router, prefix="/auth", tags=["auth"])
 api_router.include_router(staff.router, prefix="/staff", tags=["staff"])
+api_router.include_router(learning_reports.router, prefix="/staff", tags=["staff"])
 api_router.include_router(curriculum.router, prefix="/curriculum", tags=["curriculum"])
 api_router.include_router(lesson_plans.router, prefix="/lesson-plans", tags=["lesson-plans"])
 api_router.include_router(classroom.router, prefix="/classroom", tags=["classroom"])

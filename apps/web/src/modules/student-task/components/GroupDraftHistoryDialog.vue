@@ -123,6 +123,7 @@ import { computed, ref, watch } from 'vue';
 
 import { apiGet } from '@/api/http';
 import RichTextContent from '@/components/RichTextContent.vue';
+import { formatDateTime } from '@/utils/datetime';
 
 type GroupDraftHistoryItem = {
   id: number;
@@ -270,12 +271,7 @@ function summarizeDiff(lines: DiffLine[]) {
   return `+${addedCount} / -${removedCount}`;
 }
 
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
-}
+
 
 function tagType(eventType: string): 'success' | 'error' | 'info' {
   if (eventType === 'submitted') {

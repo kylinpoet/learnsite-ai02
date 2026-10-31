@@ -1,20 +1,14 @@
 <template>
   <div class="page-stack">
-    <SaPageHeader compact eyebrow="活动评分">
-      <template #title>
-        {{ taskData?.task.title || `活动 ${route.params.taskId}` }}
-      </template>
-      <p class="hero-copy">
-        {{ taskData?.task.course.title || '正在加载课程信息' }}
-        <span v-if="taskData">
-          · {{ taskData.task.course.unit_title }} · {{ taskData.task.course.lesson_title }}
-        </span>
-      </p>
+    <StaffPageHead
+      :sub="taskMeta"
+      :title="taskData?.task.title || `活动 ${route.params.taskId}`"
+    >
       <template #actions>
+        <n-button :loading="isLoading" text @click="loadTaskDetail()">刷新</n-button>
         <n-button secondary @click="router.push('/staff/submissions')">返回作品总览</n-button>
-        <n-button :loading="isLoading" type="primary" @click="loadTaskDetail()">刷新</n-button>
       </template>
-    </SaPageHeader>
+    </StaffPageHead>
 
     <n-alert v-if="errorMessage" :closable="false" :title="errorMessage" type="error" />
     <n-alert
@@ -29,28 +23,7 @@
     </SaPanel>
 
     <div v-else-if="taskData" class="page-stack">
-      <div class="ls-row">
-        <article class="metric-tile">
-          <p class="metric-label">提交总数</p>
-          <p class="metric-value">{{ taskData.summary.submission_count }}</p>
-          <p class="metric-note">本活动已收到的学生作品数量。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">已评阅</p>
-          <p class="metric-value">{{ taskData.summary.reviewed_count }}</p>
-          <p class="metric-note">已经填写分数或教师评语的作品数量。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">待评阅</p>
-          <p class="metric-value">{{ taskData.summary.pending_count }}</p>
-          <p class="metric-note">教师未评阅前，学生仍可重新提交修改。</p>
-        </article>
-        <article class="metric-tile">
-          <p class="metric-label">平均分</p>
-          <p class="metric-value">{{ taskData.summary.average_score ?? '--' }}</p>
-          <p class="metric-note">仅统计已录入分数的作品。</p>
-        </article>
-      </div>
+      <StaffStatStrip :items="statItems" />
 
       <div class="content-split">
         <SaPanel>
@@ -87,6 +60,59 @@
           <n-empty v-else-if="!filteredItems.length" description="当前筛选条件下没有作品。" />
 
           <template v-else>
+
+            <SaDataTable
+              v-model:checked-row-keys="selectedSubmissionIds"
+              :data="filteredItems"
+              :row-class-name="rowClassName"
+              :scroll-x="768"
+              row-key="submission_id"
+              stripe
+              @row-click="handleRowClick"
+              @selection-change="handleSelectionChange"
+            >
+              <SaTableColumn type="selection" width="48" />
+              <SaTableColumn label="学生" min-width="160">
+                <template #default="{ row }">
+                  <div>
+                    <strong>{{ row.student_name }}</strong>
+                    <p class="table-note">{{ row.student_no }} · {{ row.class_name }}</p>
+                  </div>
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="状态" min-width="110">
+                <template #default="{ row }">
+                  <n-space :wrap="true">
+                    <n-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</n-tag>
+                    <n-tag v-if="row.is_recommended" round type="success">推荐</n-tag>
+                  </n-space>
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="得分" min-width="90">
+                <template #default="{ row }">
+                  {{ formatScoreText(row.score) }}
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="附件" min-width="90" prop="file_count" />
+              <SaTableColumn label="最近提交" min-width="170">
+                <template #default="{ row }">
+                  {{ formatDateTime(row.updated_at) }}
+                </template>
+              </SaTableColumn>
+              <SaTableColumn label="操作" fixed="right" min-width="100">
+                <template #default="{ row }">
+                  <n-button text type="primary" @click.stop="openGradingWorkspace(row.submission_id)">
+                    进入评分
+                  </n-button>
+                </template>
+              </SaTableColumn>
+            </SaDataTable>
+
+            <details class="batch-details">
+              <summary class="batch-details__summary">
+                批量评分与打包下载
+                <span class="batch-details__hint">先勾选作品，再统一套用等级与评语</span>
+              </summary>
             <section class="batch-panel">
               <div class="batch-header">
                 <div>
@@ -220,53 +246,7 @@
                 </n-button>
               </div>
             </section>
-
-            <SaDataTable
-              v-model:checked-row-keys="selectedSubmissionIds"
-              :data="filteredItems"
-              :row-class-name="rowClassName"
-              :scroll-x="768"
-              row-key="submission_id"
-              stripe
-              @row-click="handleRowClick"
-              @selection-change="handleSelectionChange"
-            >
-              <SaTableColumn type="selection" width="48" />
-              <SaTableColumn label="学生" min-width="160">
-                <template #default="{ row }">
-                  <div>
-                    <strong>{{ row.student_name }}</strong>
-                    <p class="table-note">{{ row.student_no }} · {{ row.class_name }}</p>
-                  </div>
-                </template>
-              </SaTableColumn>
-              <SaTableColumn label="状态" min-width="110">
-                <template #default="{ row }">
-                  <n-space :wrap="true">
-                    <n-tag :type="statusTagType(row.status)" round>{{ statusLabel(row.status) }}</n-tag>
-                    <n-tag v-if="row.is_recommended" round type="success">鎺ㄨ崘</n-tag>
-                  </n-space>
-                </template>
-              </SaTableColumn>
-              <SaTableColumn label="得分" min-width="90">
-                <template #default="{ row }">
-                  {{ formatScoreText(row.score) }}
-                </template>
-              </SaTableColumn>
-              <SaTableColumn label="附件" min-width="90" prop="file_count" />
-              <SaTableColumn label="最近提交" min-width="170">
-                <template #default="{ row }">
-                  {{ formatDateTime(row.updated_at) }}
-                </template>
-              </SaTableColumn>
-              <SaTableColumn label="操作" fixed="right" min-width="100">
-                <template #default="{ row }">
-                  <n-button text type="primary" @click.stop="openGradingWorkspace(row.submission_id)">
-                    进入评分
-                  </n-button>
-                </template>
-              </SaTableColumn>
-            </SaDataTable>
+            </details>
           </template>
         </SaPanel>
 
@@ -290,7 +270,7 @@
                   <n-tag :type="statusTagType(selectedSubmission.status)" round>
                     {{ statusLabel(selectedSubmission.status) }}
                   </n-tag>
-                  <n-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</n-tag>
+                  <n-tag v-if="selectedSubmission.is_recommended" round type="success">推荐作品</n-tag>
                 </n-space>
               </div>
               <p class="section-note">
@@ -540,7 +520,7 @@
                 <n-tag :type="statusTagType(selectedSubmission.status)" round>
                   {{ statusLabel(selectedSubmission.status) }}
                 </n-tag>
-                <n-tag v-if="selectedSubmission.is_recommended" round type="success">鎺ㄨ崘浣滃搧</n-tag>
+                <n-tag v-if="selectedSubmission.is_recommended" round type="success">推荐作品</n-tag>
               </n-space>
             </div>
             <p class="section-note">
@@ -939,21 +919,16 @@ import { apiDelete, apiGet, apiGetBlob, apiPost, apiPostBlob, apiPut } from '@/a
 import RecommendedWorksShowcase from '@/components/RecommendedWorksShowcase.vue';
 import RichTextContent from '@/components/RichTextContent.vue';
 import SaDataTable from '@/components/sa/SaDataTable.vue';
-import SaPageHeader from '@/components/sa/SaPageHeader.vue';
 import SaPanel from '@/components/sa/SaPanel.vue';
 import SaTableColumn from '@/components/sa/SaTableColumn.vue';
+import StaffPageHead from '@/components/staff/StaffPageHead.vue';
+import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
-
-type TaskSubmissionFile = {
-  id: number;
-  name: string;
-  ext: string;
-  size_kb: number;
-  role: string;
-  mime_type?: string;
-  previewable?: boolean;
-};
+import { formatDateTime } from '@/utils/datetime';
+import { triggerBrowserDownload } from '@/utils/download';
+import { detectPreviewKind, type PreviewKind } from '@/utils/filePreview';
+import type { TaskSubmissionFile, RecommendedSubmissionItem } from '@/types/submission';
 
 type TaskSubmissionItem = {
   submission_id: number;
@@ -970,20 +945,6 @@ type TaskSubmissionItem = {
   submission_note: string | null;
   teacher_comment: string | null;
   file_count: number;
-  files: TaskSubmissionFile[];
-};
-
-type RecommendedSubmissionItem = {
-  submission_id: number;
-  student_id: number;
-  student_name: string;
-  student_no: string;
-  class_name: string;
-  score: number | null;
-  submission_note: string | null;
-  teacher_comment: string | null;
-  submitted_at: string | null;
-  updated_at: string | null;
   files: TaskSubmissionFile[];
 };
 
@@ -1022,7 +983,6 @@ type BatchScoreResponse = {
   task_ids: number[];
 };
 
-type PreviewKind = 'pdf' | 'image' | 'text' | 'unsupported';
 type ReviewTarget = 'single' | 'batch';
 type TemplateApplyMode = 'replace' | 'insert';
 type TemplateCreateSource = ReviewTarget | 'blank';
@@ -1138,6 +1098,24 @@ const focusAlertType = computed(() =>
   String(route.query.focus || '') === 'pending_submit' ? 'warning' : 'info'
 );
 
+const taskMeta = computed(() => {
+  if (!taskData.value) {
+    return '正在加载课程信息';
+  }
+  const course = taskData.value.task.course;
+  return `${course.title} · ${course.unit_title} · ${course.lesson_title}`;
+});
+
+const statItems = computed<StaffStatItem[]>(() => {
+  const summary = taskData.value?.summary;
+  return [
+    { label: '待评阅', value: summary?.pending_count ?? 0, unit: '份', note: '未填写分数或评语的作品' },
+    { label: '已评阅', value: summary?.reviewed_count ?? 0, unit: ` / ${summary?.submission_count ?? 0}`, note: '学生仍可在批改前重新提交' },
+    { label: '提交', value: summary?.submission_count ?? 0, unit: '份', note: `最近提交 ${formatDateTime(summary?.latest_submitted_at ?? null)}` },
+    { label: '平均分', value: summary?.average_score ?? '--', note: '仅统计已打分作品' },
+  ];
+});
+
 const selectedSubmission = computed(() => {
   if (selectedSubmissionId.value === null) {
     return null;
@@ -1249,13 +1227,6 @@ function statusLabel(status: TaskSubmissionItem['status']) {
 
 function statusTagType(status: TaskSubmissionItem['status']) {
   return status === 'reviewed' ? 'success' : 'warning';
-}
-
-function formatDateTime(value: string | null) {
-  if (!value) {
-    return '暂无记录';
-  }
-  return value.replace('T', ' ').slice(0, 16);
 }
 
 function getScoreGradeOption(score: number | null) {
@@ -1982,33 +1953,6 @@ function getDownloadFileName(contentDisposition: string | null, fallbackName: st
   return basicMatch?.[1] || fallbackName;
 }
 
-function triggerBrowserDownload(blob: Blob, fileName: string) {
-  const downloadUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = downloadUrl;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(downloadUrl);
-}
-
-function detectPreviewKind(file: TaskSubmissionFile, blob: Blob): PreviewKind {
-  const ext = file.ext.toLowerCase();
-  const mediaType = blob.type || file.mime_type || '';
-
-  if (ext === 'pdf' || mediaType.includes('pdf')) {
-    return 'pdf';
-  }
-  if (mediaType.startsWith('image/') || ['gif', 'jpeg', 'jpg', 'png', 'svg', 'webp'].includes(ext)) {
-    return 'image';
-  }
-  if (mediaType.startsWith('text/') || ['md', 'txt'].includes(ext)) {
-    return 'text';
-  }
-  return 'unsupported';
-}
-
 async function loadGradingPreview(file: TaskSubmissionFile | null) {
   if (!file) {
     resetGradingPreviewState();
@@ -2325,8 +2269,8 @@ onBeforeUnmount(() => {
 
 .content-split {
   display: grid;
-  grid-template-columns: minmax(0, 15fr) minmax(0, 9fr);
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  gap: var(--sf-section-gap, 20px);
   align-items: start;
 }
 
@@ -2351,14 +2295,52 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
+.batch-details {
+  border-top: 1px solid var(--sf-line-soft, rgba(30, 60, 45, 0.1));
+}
+
+.batch-details__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 12px 16px;
+  color: var(--sf-ink, var(--ls-ink));
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+
+.batch-details__summary::-webkit-details-marker {
+  display: none;
+}
+
+.batch-details__summary::before {
+  content: '＋';
+  color: var(--sf-muted, var(--ls-muted));
+  font-weight: 400;
+}
+
+.batch-details[open] .batch-details__summary::before {
+  content: '－';
+}
+
+.batch-details__summary:hover {
+  background: var(--sf-surface-2, rgba(30, 60, 45, 0.03));
+}
+
+.batch-details__hint {
+  color: var(--sf-muted, var(--ls-muted));
+  font-size: 12px;
+  font-weight: 400;
+}
+
 .batch-panel {
-  margin-bottom: 18px;
-  padding: 18px;
-  border: 1px solid rgba(67, 109, 185, 0.12);
-  border-radius: 20px;
-  background:
-    linear-gradient(135deg, rgba(67, 109, 185, 0.08), rgba(111, 179, 149, 0.1)),
-    var(--ls-card);
+  padding: 4px 16px 16px;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .batch-header {

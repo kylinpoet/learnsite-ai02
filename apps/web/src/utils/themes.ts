@@ -1,6 +1,6 @@
 export const themeOptions = [
-  { code: 'emblem', name: '校徽映翠' },
-  { code: 'growth', name: '青禾成长' },
+  { code: 'emblem', name: '墨绿画布' },
+  { code: 'growth', name: '科目色谱' },
   { code: 'clay', name: '粘土童趣' },
 ] as const;
 

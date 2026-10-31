@@ -1,16 +1,27 @@
 <template>
-  <n-form-item :label="props.label">
-    <div class="description-toolbar">
-      <p class="section-note">使用 CKEditor 富文本编辑；如需改源码，可在编辑器工具栏里切换源码视图。</p>
-      <n-button :loading="props.generating" secondary @click="props.generateTaskDescriptionDraft(props.task)">
-        AI 生成说明
-      </n-button>
+  <n-form-item>
+    <!-- 字段动作跟着标签走，正文区只放编辑器，避免在内容上方再压一行说明 -->
+    <template #label>
+      <span class="description-label">
+        {{ props.label }}
+        <n-button
+          text
+          size="tiny"
+          type="primary"
+          :loading="props.generating"
+          @click="props.generateTaskDescriptionDraft(props.task)"
+        >
+          {{ props.generateLabel }}
+        </n-button>
+      </span>
+    </template>
+    <div class="description-body">
+      <RichTextEditor
+        v-model="props.task.description"
+        :min-height="props.minHeight"
+        :placeholder="props.placeholder"
+      />
     </div>
-    <RichTextEditor
-      v-model="props.task.description"
-      :min-height="props.minHeight"
-      :placeholder="props.placeholder"
-    />
   </n-form-item>
 </template>
 
@@ -27,11 +38,13 @@ const props = withDefaults(
     generating: boolean;
     generateTaskDescriptionDraft: (task: PlanFormTask) => void;
     label?: string;
+    generateLabel?: string;
     minHeight?: number;
     placeholder?: string;
   }>(),
   {
     label: '活动说明',
+    generateLabel: 'AI 生成说明',
     minHeight: 220,
     placeholder: '填写活动目标、步骤与提交要求。',
   }
@@ -39,25 +52,14 @@ const props = withDefaults(
 </script>
 
 <style scoped>
-.description-toolbar {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
+.description-body {
+  width: 100%;
+  min-width: 0;
+}
+
+.description-label {
+  display: inline-flex;
   align-items: center;
-  margin-bottom: 10px;
-  flex-wrap: wrap;
-}
-
-.section-note {
-  margin: 0;
-  color: var(--ls-muted);
-  line-height: 1.7;
-}
-
-@media (max-width: 768px) {
-  .description-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+  gap: 8px;
 }
 </style>
