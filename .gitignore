@@ -25,3 +25,15 @@ coverage/
 .pytest-runtime/
 apps/api/learnsite_api.egg-info/SOURCES.txt
 apps/web/openapi.json
+
+# 本地视觉回归截图（保留 README 说明文档入库）
+docs/visual-regression/**/*.png
+docs/visual-regression/**/*.jpg
+docs/visual-regression/**/*.jpeg
+
+# 本地数据库备份
+*.db.bak*
+*.bak.db
+
+# 临时探测产物
+apps/api/tts_probe.mp3
