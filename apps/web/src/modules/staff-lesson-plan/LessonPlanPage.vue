@@ -51,6 +51,13 @@
             clearable
             placeholder="搜索学案标题 / 课次 / 单元"
           />
+          <n-select
+            v-model:value="planSemesterFilter"
+            class="filter-select filter-select--wide"
+            clearable
+            :options="planSemesterOptions"
+            placeholder="全部学期"
+          />
           <div class="sf-toolbar__right">
             <span class="sf-toolbar__count">{{ filteredPlans.length }} / {{ plans.length }} 份</span>
           </div>
@@ -98,6 +105,7 @@
                 <span>{{ planLessonDisplayLabel(plan) }}</span>
                 <span v-if="plan.lesson?.unit_title">{{ plan.lesson.unit_title }}</span>
                 <span>{{ plan.assigned_date }}</span>
+                <span class="sf-pill">{{ plan.semester_label }}</span>
               </p>
             </div>
 
@@ -179,6 +187,15 @@
                 format="yyyy-MM-dd"
                 type="date"
                 value-format="yyyy-MM-dd"
+              />
+            </n-form-item>
+            <n-form-item label="所属学期">
+              <n-select
+                v-model:value="planForm.semester_key"
+                class="full-width"
+                clearable
+                :options="planSemesterFormOptions"
+                placeholder="默认为当前学期"
               />
             </n-form-item>
             <n-form-item label="保存状态">
@@ -447,6 +464,7 @@ import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStat
 import { useAuthStore } from '@/stores/auth';
 import { streamCompanionReply } from '@/utils/companionStream';
 import { richTextToExcerpt, richTextToPlainText } from '@/utils/richText';
+import { formatSemesterKey, formatSemesterKeyLabel, semesterOptions } from '@/utils/semester';
 import TaskHtmlPromptDialog from './components/TaskHtmlPromptDialog.vue';
 import LessonPlanTaskEditorCard from './components/LessonPlanTaskEditorCard.vue';
 import StudentViewPreviewDrawer from './components/student-view/StudentViewPreviewDrawer.vue';
@@ -460,8 +478,7 @@ import TaskTemplateLibraryDialog from './components/TaskTemplateLibraryDialog.vu
 import TaskTemplateSaveDialog from './components/TaskTemplateSaveDialog.vue';
 import { taskHtmlPromptTemplateOptions } from './lessonPlan.constants';
 import { useLessonPlanEditorState } from './composables/useLessonPlanEditorState';
-import { useLessonPlanTaskRows } from './composables/useLessonPlanTaskRows';
-import { useTaskPreviewAssets } from './composables/useTaskPreviewAssets';
+import { useLessonPlanTaskRows } from './composables/useLessonPlanTaskRows';import { useTaskPreviewAssets } from './composables/useTaskPreviewAssets';
 import { useTaskTemplateLibrary } from './composables/useTaskTemplateLibrary';
 import {
   buildDataSubmitFormStarterHtml,
@@ -647,6 +664,7 @@ const {
   normalizeTaskSubmissionScope,
   generateTaskEndpointToken,
   ensureDataSubmitTaskConfig,
+  defaultSemesterKey: () => currentSemesterKey.value,
 });
 
 const {
@@ -1056,10 +1074,34 @@ const planStatItems = computed<StaffStatItem[]>(() => [  { label: '学案', valu
 
 const planKeyword = ref('');
 const planStatusFilter = ref<'all' | 'draft' | 'published' | 'unbound'>('all');
+// 学期筛选：空串表示全部学期，其余按 semester_key 等值匹配。
+const planSemesterFilter = ref<string>('');
+const currentSemesterKey = ref<string | null>(null);
+
+const planSemesterOptions = computed(() => {
+  const seen = new Map<string, string>();
+  plans.value.forEach((plan) => {
+    if (plan.semester_key) {
+      seen.set(plan.semester_key, plan.semester_label);
+    }
+  });
+  if (currentSemesterKey.value && !seen.has(currentSemesterKey.value)) {
+    seen.set(
+      currentSemesterKey.value,
+      formatSemesterKeyLabel(currentSemesterKey.value),
+    );
+  }
+  return Array.from(seen, ([value, label]) => ({ label, value })).sort((a, b) =>
+    b.value.localeCompare(a.value)
+  );
+});
 
 const filteredPlans = computed(() => {
   const keyword = planKeyword.value.trim().toLowerCase();
   return plans.value.filter((plan) => {
+    if (planSemesterFilter.value && plan.semester_key !== planSemesterFilter.value) {
+      return false;
+    }
     if (planStatusFilter.value === 'draft' && plan.status !== 'draft') {
       return false;
     }
@@ -1158,6 +1200,32 @@ const planStatusOptions = computed(() => [
     disabled: !editingPlanId.value || !planForm.value.lesson_id,
   },
 ]);
+
+// 学案所属学期：以当前学期所在学年为基准给出两个学期，并保留历史学年选项，
+// 让编辑旧学案时不会因为列表里没有该学年而丢失归属。
+const planSemesterFormOptions = computed(() => {
+  const options: Array<{ label: string; value: string }> = [];
+  const seen = new Set<string>();
+  const pushOption = (semesterKey: string | null) => {
+    if (!semesterKey || seen.has(semesterKey)) {
+      return;
+    }
+    seen.add(semesterKey);
+    options.push({ label: formatSemesterKeyLabel(semesterKey), value: semesterKey });
+  };
+
+  const currentKey = currentSemesterKey.value;
+  if (currentKey) {
+    const schoolYear = Number(currentKey.split('-')[0]);
+    if (Number.isFinite(schoolYear)) {
+      semesterOptions().forEach((item) => pushOption(`${schoolYear}-${item.value}`));
+      semesterOptions().forEach((item) => pushOption(`${schoolYear - 1}-${item.value}`));
+    }
+  }
+  pushOption(planForm.value.semester_key);
+  plans.value.forEach((plan) => pushOption(plan.semester_key));
+  return options;
+});
 const taskHtmlPromptDialogTask = computed(
   () => planForm.value.tasks.find((task) => task.key === taskHtmlPromptDialogState.value.task_key) || null
 );
@@ -2352,13 +2420,21 @@ async function loadPlans() {
     return;
   }
 
-  const [planPayload, curriculumPayload] = await Promise.all([
-    apiGet<{ plans: PlanSummary[] }>('/lesson-plans/staff/list', authStore.token),
+  const [planPayload, curriculumPayload, systemPayload] = await Promise.all([
+    apiGet<{ plans: PlanSummary[]; current_semester_key?: string | null }>(
+      '/lesson-plans/staff/list',
+      authStore.token
+    ),
     apiGet<{ books: CurriculumBook[] }>('/curriculum/tree', authStore.token),
+    apiGet<{ current_school_year: number; current_semester_no: number }>('/settings/system', authStore.token),
   ]);
 
   plans.value = planPayload.plans;
   curriculumBooks.value = curriculumPayload.books;
+  // 优先用列表接口回传的当前学期标识；缺失时按系统设置现算。
+  currentSemesterKey.value =
+    planPayload.current_semester_key ??
+    formatSemesterKey(systemPayload.current_school_year, systemPayload.current_semester_no);
 }
 
 async function loadPlanDetail(planId: number | null) {
@@ -2494,6 +2570,7 @@ function buildPayload() {
     title: planForm.value.title.trim(),
     content: normalizeHtmlValue(planForm.value.content, 'visual'),
     assigned_date: planForm.value.assigned_date,
+    semester_key: planForm.value.semester_key,
     status: planForm.value.status,
     is_hidden: planForm.value.is_hidden,
     tasks,

@@ -44,6 +44,7 @@ from app.models import (
 )
 from app.schemas.common import ApiResponse
 from app.services.class_code import regenerate_class_code
+from app.services.class_cohort import format_class_label
 from app.services.drive_files import (
     guess_drive_media_type,
     stored_drive_file_path,
@@ -538,6 +539,8 @@ def serialize_seat_map(
     return {
         "class_id": school_class.id,
         "class_name": school_class.class_name,
+        "class_label": format_class_label(school_class.class_name, school_class.entry_year),
+        "entry_year": school_class.entry_year,
         "grade_no": school_class.grade_no,
         "class_no": school_class.class_no,
         "student_count": len(school_class.students),
@@ -867,6 +870,8 @@ def build_staff_attendance_payload(
             {
                 "id": school_class.id,
                 "class_name": school_class.class_name,
+                "class_label": format_class_label(school_class.class_name, school_class.entry_year),
+                "entry_year": school_class.entry_year,
                 "grade_no": school_class.grade_no,
                 "class_no": school_class.class_no,
                 "student_count": student_count,

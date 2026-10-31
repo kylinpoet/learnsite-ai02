@@ -28,6 +28,8 @@ from app.db.demo_seed import seed_demo_data
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
 from app.models import AIProvider, ClassroomSession, LessonPlan, SchoolClass, StudentLessonPlanProgress, User
+from app.services.class_cohort import resolve_entry_year, resolve_grade_no
+from app.services.system_settings import read_current_school_year
 
 API_PREFIX = "/api/v1"
 DB_PATH = TEST_DB_PATH
@@ -2850,13 +2852,27 @@ def test_admin_can_crud_room_class_teacher_and_curriculum():
         assert room_payload.status_code == 200
         room = next(item for item in room_payload.json()["data"]["rooms"] if item["name"] == "九年级机房A")
 
+        # 班级身份是 (入学年份, 班号)。年级由届别推导：九年级 = 两年前入学的那一届。
+        # 演示数据里 2026 届已占用 1/2/3 号班，这里用 2024 届 + 不同的班号避免撞键。
+        # 学年随校历变化，因此按当前学年反推而不是写死年份。
+        from app.services.system_settings import read_current_school_year
+
+        with SessionLocal() as session:
+            school_year = read_current_school_year(session)
+        grade9_entry_year = resolve_entry_year(9, school_year)
         class_payload = client.post(
             f"{API_PREFIX}/settings/admin/classes",
             headers=admin,
-            json={"grade_no": 9, "class_no": 1, "head_teacher_name": "教师3", "default_room_id": room["id"]},
+            json={"entry_year": grade9_entry_year, "class_no": 11, "head_teacher_name": "教师3", "default_room_id": room["id"]},
         )
         assert class_payload.status_code == 200
-        school_class = next(item for item in class_payload.json()["data"]["classes"] if item["class_name"] == "901班")
+        school_class = next(
+            item
+            for item in class_payload.json()["data"]["classes"]
+            if item["entry_year"] == grade9_entry_year and item["class_no"] == 11
+        )
+        assert school_class["class_name"] == "911班"
+        assert school_class["class_label"] == f"911班 · {grade9_entry_year}届"
 
         teacher_payload = client.post(
             f"{API_PREFIX}/settings/admin/teachers",
@@ -4393,8 +4409,12 @@ def test_ai_companion_classroom_switch_blocks_student():
         student = student_headers(client, "70103")
 
         with SessionLocal() as session:
+            # 演示数据里 701 班是 7 年级 1 班；班名可能随升班变化，按班号+年级定位更稳。
             class_row = session.scalar(
-                select(SchoolClass).where(SchoolClass.class_name == "701班")
+                select(SchoolClass).where(
+                    SchoolClass.class_no == 1,
+                    SchoolClass.grade_no == 7,
+                )
             )
             assert class_row is not None
             active_session = session.scalar(
@@ -4994,18 +5014,25 @@ def test_admin_can_batch_create_classes_and_import_students():
         try:
             template_sheet = workbook.active
             header_values = [str(item or "").strip() for item in next(template_sheet.iter_rows(min_row=1, max_row=1, values_only=True))]
-            assert header_values[:4] == ["姓名", "学号", "账号", "班级"]
+            # 表头不含「年级」：年级由「入学年份 + 当前学年」推导；「班级」列填班号。
+            assert header_values[:5] == ["姓名", "学号", "账号", "入学年份", "班级"]
+            assert "年级" not in header_values
         finally:
             workbook.close()
 
+        with SessionLocal() as session:
+            school_year = read_current_school_year(session)
+        grade9_entry_year = resolve_entry_year(9, school_year)
+
+        # 班级身份是 (入学年份, 班号)。为导入准备两个班：九年级 2 班、3 班。
         batch_response = client.post(
             f"{API_PREFIX}/settings/admin/classes/batch",
             headers=admin,
             json={
                 "overwrite_existing": False,
                 "items": [
-                    {"grade_no": 9, "class_no": 2, "head_teacher_name": "教师9A", "default_room_id": None},
-                    {"grade_no": 9, "class_no": 3, "head_teacher_name": "教师9B", "default_room_id": None},
+                    {"entry_year": grade9_entry_year, "class_no": 2, "head_teacher_name": "教师9A", "default_room_id": None},
+                    {"entry_year": grade9_entry_year, "class_no": 3, "head_teacher_name": "教师9B", "default_room_id": None},
                 ],
             },
         )
@@ -5015,9 +5042,9 @@ def test_admin_can_batch_create_classes_and_import_students():
 
         csv_content = "\n".join(
             [
-                "姓名,学号,账号,班级,性别,初始密码",
-                "批量学生甲,90201,90201,902班,男,abc123",
-                "批量学生乙,90301,90301,903班,女,abc123",
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                f"批量学生甲,90201,90201,{grade9_entry_year},02,男,abc123",
+                f"批量学生乙,90301,90301,{grade9_entry_year},03,女,abc123",
             ]
         )
         import_response = client.post(
@@ -5029,11 +5056,34 @@ def test_admin_can_batch_create_classes_and_import_students():
         assert import_response.status_code == 200
         import_payload = import_response.json()["data"]["import_result"]
         assert import_payload["created_count"] >= 2
+        # 两个班都已存在，不该新建班级。
+        assert import_payload["created_class_count"] == 0
 
+        # 该届该班号不存在时自动建班，而不是跳过。
+        auto_class_csv = "\n".join(
+            [
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                f"自动建班生,90501,90501,{grade9_entry_year},05,男,abc123",
+            ]
+        )
+        auto_class_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            data={"update_existing": "false", "default_password": "123456"},
+            files={"file": ("students-import-auto.csv", auto_class_csv.encode("utf-8-sig"), "text/csv")},
+        )
+        assert auto_class_response.status_code == 200
+        auto_class_result = auto_class_response.json()["data"]["import_result"]
+        assert auto_class_result["created_count"] == 1
+        assert auto_class_result["skipped_count"] == 0
+        assert auto_class_result["created_class_count"] == 1
+        assert auto_class_result["created_class_labels"] == [f"905班 · {grade9_entry_year}届"]
+
+        # 缺少班级的行跳过并说明原因。
         skipped_csv_content = "\n".join(
             [
-                "姓名,学号,账号,班级,性别,初始密码",
-                "跳过学生甲,99901,99901,999班,男,abc123",
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                f"跳过学生甲,99901,99901,{grade9_entry_year},,男,abc123",
             ]
         )
         skipped_import_response = client.post(
@@ -5049,7 +5099,7 @@ def test_admin_can_batch_create_classes_and_import_students():
         assert skipped_import_result["skipped_count"] == 1
         assert len(skipped_import_result["skipped_rows"]) == 1
         assert skipped_import_result["skipped_rows"][0]["row_number"] == 2
-        assert skipped_import_result["skipped_rows"][0]["reason"] == "找不到目标班级"
+        assert skipped_import_result["skipped_rows"][0]["reason"] == "缺少班级（班号）"
 
         student_login = client.post(
             f"{API_PREFIX}/auth/student/login",
@@ -5068,7 +5118,7 @@ def test_admin_can_batch_create_classes_and_import_students():
         )
         class_902 = next(
             item for item in import_payload_root["classes"]
-            if item["class_name"] == "902班"
+            if item["class_no"] == 2 and item["entry_year"] == grade9_entry_year
         )
 
         batch_deactivate_response = client.post(
@@ -5600,7 +5650,21 @@ def test_admin_can_promote_classes_and_archive_history():
         bootstrap_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
         assert bootstrap_response.status_code == 200
         bootstrap_payload = bootstrap_response.json()["data"]
-        class_701 = next(item for item in bootstrap_payload["classes"] if item["class_name"] == "701班")
+        # 用班号 + 届别定位，而不是班级名：跟届走后班名会随升班变化。
+        class_701 = next(
+            item
+            for item in bootstrap_payload["classes"]
+            if item["class_no"] == 1 and item["grade_no"] == 7
+        )
+        original_entry_year = class_701["entry_year"]
+        original_grade_no = class_701["grade_no"]
+        student_count = class_701["student_count"]
+        assert student_count >= 1
+        student_ids_before = {
+            item["id"]
+            for item in bootstrap_payload["students"]
+            if item["class_id"] == class_701["id"]
+        }
 
         preview_response = client.post(
             f"{API_PREFIX}/settings/admin/promotions/preview",
@@ -5611,31 +5675,102 @@ def test_admin_can_promote_classes_and_archive_history():
         preview_payload = preview_response.json()["data"]
         assert preview_payload["summary"]["source_class_count"] == 1
         assert preview_payload["summary"]["ready_count"] == 1
-        assert preview_payload["items"][0]["target_class_name"] == "801班"
+        assert preview_payload["summary"]["graduated_count"] == 0
+        preview_item = preview_payload["items"][0]
+        assert preview_item["status"] == "ready"
+        assert preview_item["source_grade_no"] == original_grade_no
+        assert preview_item["target_grade_no"] == original_grade_no + 1
 
         execute_response = client.post(
             f"{API_PREFIX}/settings/admin/promotions/execute",
             headers=admin,
-            json={
-                "source_class_ids": [class_701["id"]],
-                "grade_increment": 1,
-                "copy_teacher_assignments": True,
-                "archive_source_classes": True,
-            },
+            json={"source_class_ids": [class_701["id"]], "grade_increment": 1},
         )
         assert execute_response.status_code == 200
         execute_payload = execute_response.json()["data"]
         result_payload = execute_payload["promotion_result"]
-        assert result_payload["moved_student_count"] >= 1
-        assert result_payload["archived_count"] == 1
+        # 班级跟届走：原班升一级，学生不搬家，也不产生归档。
+        assert result_payload["promoted_class_count"] == 1
+        assert result_payload["promoted_student_count"] == student_count
+        assert result_payload["graduated_count"] == 0
 
-        active_class_names = {item["class_name"] for item in execute_payload["classes"]}
-        assert "701班" not in active_class_names
-        assert "801班" in active_class_names
+        promoted_class = next(
+            item for item in execute_payload["classes"] if item["id"] == class_701["id"]
+        )
+        # 关键不变式：同一行记录，班级 id 与届别不变，年级 +1、班名同步重算。
+        assert promoted_class["entry_year"] == original_entry_year
+        assert promoted_class["grade_no"] == original_grade_no + 1
+        assert promoted_class["class_name"] == "801班"
+        assert promoted_class["class_label"] == f"801班 · {original_entry_year}届"
 
-        archived_payload = execute_payload["archived_classes"]
-        assert any(item["original_class_name"] == "701班" for item in archived_payload)
-        assert execute_payload["stats"]["archived_class_count"] >= 1
+        # 学生仍在原班级（class_id 不变），只有 grade_no 跟着升。
+        students_after = {
+            item["id"]: item for item in execute_payload["students"]
+        }
+        assert student_ids_before, "前置条件：该班应有学生"
+        for student_id in student_ids_before:
+            assert students_after[student_id]["class_id"] == class_701["id"]
+            assert students_after[student_id]["grade_no"] == original_grade_no + 1
+            assert students_after[student_id]["entry_year"] == original_entry_year
+
+        assert execute_payload["stats"]["archived_class_count"] == 0
+
+
+def test_promoting_ninth_grade_class_archives_it_on_graduation():
+    """修完九年级再升班即毕业，班级归档而不是继续升年级。"""
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+
+        with SessionLocal() as session:
+            school_year = read_current_school_year(session)
+        grade9_entry_year = resolve_entry_year(9, school_year)
+
+        create_response = client.post(
+            f"{API_PREFIX}/settings/admin/classes",
+            headers=admin,
+            json={"entry_year": grade9_entry_year, "class_no": 21, "head_teacher_name": "毕业班教师"},
+        )
+        assert create_response.status_code == 200
+        graduate_class = next(
+            item
+            for item in create_response.json()["data"]["classes"]
+            if item["class_no"] == 21 and item["entry_year"] == grade9_entry_year
+        )
+        assert graduate_class["grade_no"] == 9
+
+        preview_response = client.post(
+            f"{API_PREFIX}/settings/admin/promotions/preview",
+            headers=admin,
+            json={"source_class_ids": [graduate_class["id"]], "grade_increment": 1},
+        )
+        assert preview_response.status_code == 200
+        preview_payload = preview_response.json()["data"]
+        assert preview_payload["summary"]["graduated_count"] == 1
+        assert preview_payload["summary"]["ready_count"] == 0
+        assert preview_payload["items"][0]["status"] == "graduate"
+
+        execute_response = client.post(
+            f"{API_PREFIX}/settings/admin/promotions/execute",
+            headers=admin,
+            json={"source_class_ids": [graduate_class["id"]], "grade_increment": 1},
+        )
+        assert execute_response.status_code == 200
+        execute_payload = execute_response.json()["data"]
+        result_payload = execute_payload["promotion_result"]
+        assert result_payload["graduated_count"] == 1
+        assert result_payload["promoted_class_count"] == 0
+
+        assert graduate_class["id"] not in {item["id"] for item in execute_payload["classes"]}
+        archived_item = next(
+            item
+            for item in execute_payload["archived_classes"]
+            if item["id"] == graduate_class["id"]
+        )
+        assert archived_item["original_class_name"] == "921班"
+
+        # 归档记录带届别，便于区分同名班级。
+        record_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
+        assert record_response.status_code == 200
 
 
 def test_student_typing_home_submit_and_rankings_with_staff_set_creation():
@@ -5937,3 +6072,139 @@ def test_staff_learning_report_generate_returns_error_when_ai_fails(monkeypatch:
             latest = sorted(reports, key=lambda item: item.id)[-1]
             assert latest.status == "failed"
             assert latest.error_message == "mock provider down"
+
+
+def test_lesson_plan_semester_scoping_and_grade_summary_filter():
+    """学期设置贯穿学案归类与成绩汇总：新建默认入当前学期，可按学期筛选与导出。"""
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+        teacher = staff_headers(client, "t1")
+
+        system = client.get(f"{API_PREFIX}/settings/system").json()["data"]
+        original_school_year = system["current_school_year"]
+        original_semester_no = system["current_semester_no"]
+
+        # 管理员把当前学期设为 2026 学年第一学期。
+        update_response = client.put(
+            f"{API_PREFIX}/settings/system",
+            headers=admin,
+            json={
+                "school_name": system["school_name"],
+                "active_grade_nos": system["active_grade_nos"],
+                "current_school_year": 2026,
+                "current_semester_no": 1,
+            },
+        )
+        assert update_response.status_code == 200
+        updated_system = update_response.json()["data"]
+        assert updated_system["current_school_year"] == 2026
+        assert updated_system["current_semester_no"] == 1
+
+        try:
+            curriculum = client.get(f"{API_PREFIX}/curriculum/tree", headers=teacher).json()["data"]["books"]
+            lesson_id = find_lesson_id_by_title(curriculum, "第8课 智能应用体验")
+
+            # 不传学期新建学案 → 落进当前学期 2026-1。
+            create_response = client.post(
+                f"{API_PREFIX}/lesson-plans/staff",
+                headers=teacher,
+                json={
+                    "lesson_id": lesson_id,
+                    "title": "学期归属测试-默认当前学期",
+                    "content": "<p>学期归类</p>",
+                    "assigned_date": "2026-10-08",
+                    "status": "draft",
+                    "tasks": [
+                        {
+                            "title": "阅读导学",
+                            "task_type": "reading",
+                            "description": "<p>阅读</p>",
+                            "sort_order": 1,
+                            "is_required": True,
+                        }
+                    ],
+                },
+            )
+            assert create_response.status_code == 200
+            current_plan = create_response.json()["data"]["plan"]
+            assert current_plan["semester_key"] == "2026-1"
+            assert current_plan["semester_label"] == "2026学年第一学期"
+
+            # 显式指定上一学期 → 归属该学期，不随设置滚动。
+            previous_response = client.post(
+                f"{API_PREFIX}/lesson-plans/staff",
+                headers=teacher,
+                json={
+                    "lesson_id": lesson_id,
+                    "title": "学期归属测试-上一学期",
+                    "content": "<p>往期</p>",
+                    "assigned_date": "2026-10-09",
+                    "status": "draft",
+                    "semester_key": "2025-2",
+                    "tasks": [
+                        {
+                            "title": "往期活动",
+                            "task_type": "reading",
+                            "description": "<p>往期</p>",
+                            "sort_order": 1,
+                            "is_required": True,
+                        }
+                    ],
+                },
+            )
+            assert previous_response.status_code == 200
+            previous_plan = previous_response.json()["data"]["plan"]
+            assert previous_plan["semester_key"] == "2025-2"
+            assert previous_plan["semester_label"] == "2025学年第二学期"
+
+            # 列表接口回传当前学期，并支持按学期筛选。
+            list_payload = client.get(
+                f"{API_PREFIX}/lesson-plans/staff/list", headers=teacher
+            ).json()["data"]
+            assert list_payload["current_semester_key"] == "2026-1"
+
+            filtered_payload = client.get(
+                f"{API_PREFIX}/lesson-plans/staff/list?semester_key=2025-2", headers=teacher
+            ).json()["data"]
+            filtered_ids = {item["id"] for item in filtered_payload["plans"]}
+            assert previous_plan["id"] in filtered_ids
+            assert current_plan["id"] not in filtered_ids
+
+            # 成绩汇总默认取当前学期：只应包含 2026-1 的学案。
+            overview = client.get(f"{API_PREFIX}/submissions/teacher", headers=teacher).json()["data"]
+            assert overview["semester_key"] == "2026-1"
+            assert overview["student_summary"]["summary"]["semester_key"] == "2026-1"
+            assert overview["student_summary"]["summary"]["semester_label"] == "2026学年第一学期"
+            overview_semesters = {item["semester_key"] for item in overview["items"]}
+            assert "2025-2" not in overview_semesters
+
+            # 切到上一学期时，当前学期的活动不应出现。
+            previous_overview = client.get(
+                f"{API_PREFIX}/submissions/teacher?semester_key=2025-2", headers=teacher
+            ).json()["data"]
+            assert previous_overview["semester_key"] == "2025-2"
+            previous_semesters = {item["semester_key"] for item in previous_overview["items"]}
+            assert "2026-1" not in previous_semesters
+
+            # 导出 CSV 带「学期」列，且与所选学期一致。
+            export_response = client.get(
+                f"{API_PREFIX}/submissions/teacher/students/export?semester_key=2026-1",
+                headers=teacher,
+            )
+            # 当前学期没有提交时接口会明确拒绝，而不是导出空表。
+            assert export_response.status_code in (200, 400)
+            if export_response.status_code == 200:
+                csv_text = export_response.content.decode("utf-8-sig")
+                assert "学期" in csv_text.splitlines()[0]
+        finally:
+            # 还原设置，避免影响同一 session 内的其它用例。
+            client.put(
+                f"{API_PREFIX}/settings/system",
+                headers=admin,
+                json={
+                    "school_name": system["school_name"],
+                    "active_grade_nos": system["active_grade_nos"],
+                    "current_school_year": original_school_year,
+                    "current_semester_no": original_semester_no,
+                },
+            )

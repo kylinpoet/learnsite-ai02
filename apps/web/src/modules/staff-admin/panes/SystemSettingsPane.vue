@@ -32,6 +32,20 @@
               <n-select v-model:value="systemForm.active_grade_nos" :options="gradeOptions" multiple />
               <template #feedback>只有勾选的年级对外开放注册。</template>
             </n-form-item>
+            <n-form-item label="当前学年">
+              <n-input-number v-model:value="systemForm.current_school_year" :max="2100" :min="2000" />
+              <template #feedback>
+                用于把「入学年份」换算成年级（七年级 = 当前学年 − 入学年份 + 7）。
+                每学年开学时更新一次，升班与导入都依赖它。
+              </template>
+            </n-form-item>
+            <n-form-item label="当前学期">
+              <n-select v-model:value="systemForm.current_semester_no" :options="semesterOptions" />
+              <template #feedback>
+                当前统计学期：{{ currentSemesterLabel }}。课堂教学与成绩汇总都以它为准，
+                新建学案默认归入该学期。每学期开学时更新一次。
+              </template>
+            </n-form-item>
           </div>
         </div>
       </section>
@@ -120,11 +134,17 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import { NButton, NFormItem, NInput, NInputNumber, NSelect, NSwitch } from 'naive-ui';
 
 import { useAdminBootstrap } from '../composables/useAdminBootstrap';
+import { formatGrade } from '@/utils/grade';
+import { formatSemesterLabel, semesterOptions } from '@/utils/semester';
 
 const { systemForm, themeOptions, isSavingSystem, saveSystemSettings } = useAdminBootstrap();
 
-const gradeOptions = [7, 8, 9].map((grade) => ({ label: `${grade} 年级`, value: grade }));
+const gradeOptions = [7, 8, 9].map((grade) => ({ label: formatGrade(grade), value: grade }));
+const currentSemesterLabel = computed(() =>
+  formatSemesterLabel(systemForm.value.current_school_year, systemForm.value.current_semester_no)
+);
 </script>

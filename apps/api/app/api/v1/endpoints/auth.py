@@ -34,6 +34,7 @@ from app.schemas.auth import (
 from app.schemas.common import ApiResponse
 from app.services.attendance import ensure_student_login_attendance, resolve_client_ip
 from app.services.class_code import find_class_by_code, normalize_class_code
+from app.services.class_cohort import format_class_label
 from app.services.staff_access import build_staff_roles, is_admin_staff
 from app.services.system_settings import read_system_settings
 
@@ -208,7 +209,7 @@ def class_login_options(db: Session = Depends(get_db)) -> ApiResponse[list[Class
     只暴露班级名称与编号——不含人数、学生姓名或班级码，避免未登录状态泄露名单。
     """
     classes = db.scalars(
-        select(SchoolClass).order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())
+        select(SchoolClass).order_by(SchoolClass.entry_year.asc(), SchoolClass.class_no.asc())
     ).all()
     grouped: dict[int, list[ClassOptionItem]] = {}
     for school_class in classes:
@@ -216,6 +217,8 @@ def class_login_options(db: Session = Depends(get_db)) -> ApiResponse[list[Class
             ClassOptionItem(
                 id=school_class.id,
                 class_name=school_class.class_name,
+                class_label=format_class_label(school_class.class_name, school_class.entry_year),
+                entry_year=school_class.entry_year,
                 grade_no=school_class.grade_no,
                 class_no=school_class.class_no,
             )

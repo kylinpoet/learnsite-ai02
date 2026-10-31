@@ -36,17 +36,12 @@
 
         <div class="st-switch-row">
           <div class="st-switch-row__main">
-            <p class="st-switch-row__title">同步教师与班级关联</p>
-            <p class="st-switch-row__desc">新班级沿用原班级的教师分配。</p>
+            <p class="st-switch-row__title">班级跟届走</p>
+            <p class="st-switch-row__desc">
+              升班只把班级原地升入下一年级，学生、分组、座位与教师分配全部保持不变；
+              修完九年级的班级自动归档。
+            </p>
           </div>
-          <n-switch v-model:value="promotionForm.copy_teacher_assignments" />
-        </div>
-        <div class="st-switch-row">
-          <div class="st-switch-row__main">
-            <p class="st-switch-row__title">将原班级归档</p>
-            <p class="st-switch-row__desc">原班级标记为历史，不再出现在班级下拉里。</p>
-          </div>
-          <n-switch v-model:value="promotionForm.archive_source_classes" />
         </div>
       </div>
 
@@ -55,20 +50,21 @@
         <div class="sf-panel__body">
           <p class="st-summary">
             {{ promotionPreview.summary.source_class_count }} 个班级 ·
-            可执行 <strong>{{ promotionPreview.summary.ready_count }}</strong> 个 ·
-            阻塞 <strong>{{ promotionPreview.summary.blocked_count }}</strong> 个 ·
+            升班 <strong>{{ promotionPreview.summary.ready_count }}</strong> 个 ·
+            毕业归档 <strong>{{ promotionPreview.summary.graduated_count }}</strong> 个 ·
             涉及 <strong>{{ promotionPreview.summary.student_count }}</strong> 名学生
           </p>
         </div>
         <div class="sf-panel__body sf-panel__body--flush">
-          <SaDataTable :data="promotionPreview.items" :scroll-x="680" row-key="source_class_id">
-            <SaTableColumn label="来源班级" min-width="140" prop="source_class_name" />
-            <SaTableColumn label="目标班级" min-width="140" prop="target_class_name" />
+          <SaDataTable :data="promotionPreview.items" :scroll-x="700" row-key="class_id">
+            <SaTableColumn label="班级" min-width="160" prop="class_label" />
+            <SaTableColumn label="原年级" min-width="80" prop="source_grade_no" />
+            <SaTableColumn label="新年级" min-width="80" prop="target_grade_no" />
             <SaTableColumn label="学生" min-width="80" prop="student_count" />
             <SaTableColumn label="状态" min-width="100">
               <template #default="{ row }">
                 <span :class="['sf-pill', row.status === 'ready' ? 'sf-pill--pos' : 'sf-pill--warn']">
-                  {{ row.status === 'ready' ? '可执行' : '阻塞' }}
+                  {{ row.status === 'ready' ? '升班' : '毕业归档' }}
                 </span>
               </template>
             </SaTableColumn>
@@ -87,12 +83,10 @@
       </header>
       <div class="sf-panel__body sf-panel__body--flush">
         <p v-if="!archivedClasses.length" class="sf-empty">还没有归档记录。</p>
-        <SaDataTable v-else :data="archivedClasses" :scroll-x="700" row-key="id">
-          <SaTableColumn label="原班级" min-width="130" prop="original_class_name" />
+        <SaDataTable v-else :data="archivedClasses" :scroll-x="720" row-key="id">
+          <SaTableColumn label="原班级" min-width="150" prop="class_label" />
           <SaTableColumn label="归档名称" min-width="180" prop="class_name" />
-          <SaTableColumn label="升入班级" min-width="130" prop="promoted_to_class_name" />
-          <SaTableColumn label="迁移人数" min-width="90" prop="moved_student_count" />
-          <SaTableColumn label="归档时间" min-width="170" prop="archived_at" />
+          <SaTableColumn label="毕业时间" min-width="170" prop="archived_at" />
         </SaDataTable>
       </div>
     </section>
@@ -100,7 +94,7 @@
 </template>
 
 <script setup lang="ts">
-import { NButton, NFormItem, NInputNumber, NSelect, NSwitch } from 'naive-ui';
+import { NButton, NFormItem, NInputNumber, NSelect } from 'naive-ui';
 import { computed } from 'vue';
 
 import SaDataTable from '@/components/sa/SaDataTable.vue';

@@ -48,6 +48,11 @@ from app.models import (
     ClassroomSession,
 )
 from app.schemas.common import ApiResponse
+from app.services.semester import (
+    format_semester_key_label,
+    normalize_semester_key,
+)
+from app.services.system_settings import read_current_semester_key
 from app.services.task_assets import clear_task_dir, clear_slot_dir, normalize_relative_path, write_asset_file
 
 router = APIRouter()
@@ -98,6 +103,8 @@ class LessonPlanUpsertPayload(BaseModel):
     assigned_date: date
     status: str = Field(default="draft", min_length=1, max_length=30)
     is_hidden: bool = False
+    # 所属学期（如 "2026-1"）；不传则取「当前学期」设置。
+    semester_key: str | None = Field(default=None, max_length=16)
     tasks: list[LessonPlanTaskPayload] = Field(default_factory=list, min_length=1)
 
 
@@ -640,7 +647,7 @@ def load_task_template_for_staff(template_id: int, staff_user_id: int, db: Sessi
     )
 
 
-def apply_plan_payload(plan: LessonPlan, payload: LessonPlanUpsertPayload) -> None:
+def apply_plan_payload(plan: LessonPlan, payload: LessonPlanUpsertPayload, db: Session) -> None:
     title = normalize_title(payload.title)
     if not title:
         raise HTTPException(
@@ -660,6 +667,13 @@ def apply_plan_payload(plan: LessonPlan, payload: LessonPlanUpsertPayload) -> No
     plan.assigned_date = payload.assigned_date
     plan.status = normalized_status
     plan.is_hidden = payload.is_hidden
+    # 学期在建/改时冻结：显式传了就用传入值，否则沿用原值，新建时回落到「当前学期」。
+    # 这样管理员滚动学期设置后，编辑旧学案不会把它的历史归属改掉。
+    plan.semester_key = (
+        normalize_semester_key(payload.semester_key)
+        or plan.semester_key
+        or read_current_semester_key(db)
+    )
 
 
 def delete_task_related_records(task_ids: list[int], db: Session) -> None:
@@ -775,6 +789,8 @@ def serialize_staff_plan(plan: LessonPlan) -> dict:
         "status": plan.status,
         "is_hidden": plan.is_hidden,
         "assigned_date": plan.assigned_date.isoformat(),
+        "semester_key": plan.semester_key,
+        "semester_label": format_semester_key_label(plan.semester_key),
         "task_count": len(plan.tasks),
         "preview_image_url": preview_image_url,
         "content_excerpt": content_excerpt,
@@ -844,10 +860,11 @@ def build_default_plan_content(plan: LessonPlan) -> str:
 
 @router.get("/staff/list", response_model=ApiResponse)
 def staff_plan_list(
+    semester_key: str | None = Query(default=None, max_length=16),
     _: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    plans = db.scalars(
+    statement = (
         select(LessonPlan)
         .options(
             selectinload(LessonPlan.lesson)
@@ -857,8 +874,19 @@ def staff_plan_list(
             selectinload(LessonPlan.progresses),
         )
         .order_by(LessonPlan.assigned_date.desc(), LessonPlan.id.desc())
-    ).all()
-    return ApiResponse(data={"plans": [serialize_staff_plan(plan) for plan in plans]})
+    )
+    # 学期筛选是等值匹配；传了无法解析的值时按「查不到」处理，避免误返回全部。
+    normalized_semester_key = normalize_semester_key(semester_key)
+    if semester_key is not None:
+        statement = statement.where(LessonPlan.semester_key == normalized_semester_key)
+    plans = db.scalars(statement).all()
+    return ApiResponse(
+        data={
+            "plans": [serialize_staff_plan(plan) for plan in plans],
+            "semester_key": normalized_semester_key,
+            "current_semester_key": read_current_semester_key(db),
+        }
+    )
 
 
 @router.get("/staff/task-templates", response_model=ApiResponse)
@@ -1120,7 +1148,7 @@ def create_lesson_plan(
     db.add(plan)
     db.flush()
 
-    apply_plan_payload(plan, payload)
+    apply_plan_payload(plan, payload, db)
     sync_plan_tasks(plan, payload.tasks, db)
     db.commit()
 
@@ -1148,7 +1176,7 @@ def update_lesson_plan(
 
     if payload.lesson_id is not None:
         load_lesson(payload.lesson_id, db)
-    apply_plan_payload(plan, payload)
+    apply_plan_payload(plan, payload, db)
     sync_plan_tasks(plan, payload.tasks, db)
     db.commit()
 
@@ -1564,10 +1592,16 @@ def student_home(
         )
     ).all()
 
+    # 课堂教学按学期进行：学生端只呈现当前学期的学案与活动，
+    # 上学期的遗留学案不再占用「待完成」列表。
+    current_semester_key = read_current_semester_key(db)
+
     pending_items = []
     completed_items = []
     for progress in progresses:
         if progress.lesson_plan.is_hidden:
+            continue
+        if progress.lesson_plan.semester_key != current_semester_key:
             continue
         item = {
             "id": progress.lesson_plan.id,
@@ -1687,6 +1721,9 @@ def student_home(
             continue
 
         plan = submission.task.lesson_plan
+        # 成绩汇总与学生端可见学案保持同一口径：只统计当前学期。
+        if plan.semester_key != current_semester_key:
+            continue
         score_bucket = plan_score_map.setdefault(
             plan.id,
             {
@@ -1727,6 +1764,8 @@ def student_home(
     scored_plan_values = [float(item["score"]) for item in scored_plans]
 
     payload = {
+        "semester_key": current_semester_key,
+        "semester_label": format_semester_key_label(current_semester_key),
         "pending_courses": pending_items,
         "completed_courses": completed_items,
         "attendance_today": attendance_today,

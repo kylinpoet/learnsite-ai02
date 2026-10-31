@@ -3,11 +3,17 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import SystemSetting
+from app.services.semester import (
+    format_semester_key,
+    is_valid_semester_no,
+    resolve_semester_no_for_date,
+)
 
 SYSTEM_THEME_PRESETS: list[dict[str, str]] = [
     {"code": "emblem", "name": "墨绿画布", "description": "深墨绿侧栏与页头色带、鼠尾草画布、纸白墨线卡片，平台默认，重量在框架上"},
@@ -77,6 +83,26 @@ DEFAULT_CLASS_TRANSFER_UNREVIEW_REASON_PRESETS_TEXT = "\n".join(
     ]
 )
 
+def default_current_school_year() -> int:
+    """按国内校历推算当前学年：9 月开学进入新学年，之前仍属上一学年。"""
+    today = date.today()
+    return today.year if today.month >= 9 else today.year - 1
+
+
+def default_current_semester_no() -> int:
+    """按国内校历推算当前学期：9~12 月与 1 月为第一学期，其余为第二学期。"""
+    return resolve_semester_no_for_date(date.today())
+
+
+# 学年是 4 位年份，不能走 INT_SETTING_KEYS 的「>=1」下限校验，单独约束范围。
+CURRENT_SCHOOL_YEAR_KEY = "current_school_year"
+MIN_SCHOOL_YEAR = 2000
+MAX_SCHOOL_YEAR = 2100
+
+# 学期序号只有 1（第一学期）与 2（第二学期），同样不走 INT_SETTING_KEYS 的通用校验。
+CURRENT_SEMESTER_NO_KEY = "current_semester_no"
+
+
 SYSTEM_SETTING_DEFAULTS: dict[str, object] = {
     "platform_name": "OW³教学评AI平台",
     "school_name": "信息科技学习平台测试校",
@@ -93,6 +119,10 @@ SYSTEM_SETTING_DEFAULTS: dict[str, object] = {
     "group_drive_allowed_extensions": ",".join(DEFAULT_GROUP_DRIVE_ALLOWED_EXTENSIONS),
     "class_transfer_review_note_presets_text": DEFAULT_CLASS_TRANSFER_REVIEW_NOTE_PRESETS_TEXT,
     "class_transfer_unreview_reason_presets_text": DEFAULT_CLASS_TRANSFER_UNREVIEW_REASON_PRESETS_TEXT,
+    # 当前学年：年级与届别的换算基准，随校历每年更新，不再硬编码。
+    CURRENT_SCHOOL_YEAR_KEY: default_current_school_year(),
+    # 当前学期：课堂教学与成绩汇总的统计范围基准，每学期开学时更新一次。
+    CURRENT_SEMESTER_NO_KEY: default_current_semester_no(),
 }
 
 BOOL_SETTING_KEYS = {
@@ -169,6 +199,50 @@ def load_int_setting(setting_key: str, default_value: int, db: Session, *, minim
         return default_value
 
 
+def normalize_school_year(value: object, fallback: int) -> int:
+    """把任意输入收敛成合法的 4 位学年；无法解析时回退。"""
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return fallback
+    if parsed < MIN_SCHOOL_YEAR or parsed > MAX_SCHOOL_YEAR:
+        return fallback
+    return parsed
+
+
+def read_current_school_year(db: Session, *, fallback: int | None = None) -> int:
+    """读取当前学年。用于年级/届别换算，缺省时按校历推算而不是写死年份。"""
+    resolved_fallback = default_current_school_year() if fallback is None else fallback
+    raw = load_setting_value(CURRENT_SCHOOL_YEAR_KEY, db)
+    return normalize_school_year(raw, resolved_fallback)
+
+
+def normalize_semester_no(value: object, fallback: int) -> int:
+    """把任意输入收敛成合法的学期序号（1 或 2）；无法解析时回退。"""
+    try:
+        parsed = int(str(value).strip())
+    except (TypeError, ValueError):
+        return fallback
+    if not is_valid_semester_no(parsed):
+        return fallback
+    return parsed
+
+
+def read_current_semester_no(db: Session, *, fallback: int | None = None) -> int:
+    """读取当前学期序号。用于学案归类与成绩汇总范围，缺省时按校历推算。"""
+    resolved_fallback = default_current_semester_no() if fallback is None else fallback
+    raw = load_setting_value(CURRENT_SEMESTER_NO_KEY, db)
+    return normalize_semester_no(raw, resolved_fallback)
+
+
+def read_current_semester_key(db: Session) -> str:
+    """当前学年 + 当前学期拼成的学期标识，例如 "2026-1"。"""
+    return format_semester_key(
+        read_current_school_year(db),
+        read_current_semester_no(db),
+    )
+
+
 def read_system_settings(db: Session) -> dict:
     rows = db.scalars(select(SystemSetting)).all()
     payload = SYSTEM_SETTING_DEFAULTS.copy()
@@ -185,6 +259,16 @@ def read_system_settings(db: Session) -> dict:
                 payload[row.setting_key] = int(row.setting_value)
             except ValueError:
                 payload[row.setting_key] = SYSTEM_SETTING_DEFAULTS[row.setting_key]
+        elif row.setting_key == CURRENT_SCHOOL_YEAR_KEY:
+            payload[row.setting_key] = normalize_school_year(
+                row.setting_value,
+                default_current_school_year(),
+            )
+        elif row.setting_key == CURRENT_SEMESTER_NO_KEY:
+            payload[row.setting_key] = normalize_semester_no(
+                row.setting_value,
+                default_current_semester_no(),
+            )
         elif row.setting_key == "group_drive_allowed_extensions":
             payload[row.setting_key] = normalize_allowed_extensions_text(row.setting_value)
         elif row.setting_key in {"class_transfer_review_note_presets_text", "class_transfer_unreview_reason_presets_text"}:
@@ -209,6 +293,20 @@ def build_system_setting_write_values(payload: Mapping[str, object]) -> dict[str
         values["active_grade_nos"] = json.dumps(grade_nos, ensure_ascii=False)
     if "theme_code" in payload:
         values["theme_code"] = normalize_theme_code(str(payload.get("theme_code") or ""))
+    if CURRENT_SCHOOL_YEAR_KEY in payload:
+        values[CURRENT_SCHOOL_YEAR_KEY] = str(
+            normalize_school_year(
+                payload.get(CURRENT_SCHOOL_YEAR_KEY),
+                default_current_school_year(),
+            )
+        )
+    if CURRENT_SEMESTER_NO_KEY in payload:
+        values[CURRENT_SEMESTER_NO_KEY] = str(
+            normalize_semester_no(
+                payload.get(CURRENT_SEMESTER_NO_KEY),
+                default_current_semester_no(),
+            )
+        )
     if "remote_proxy_url" in payload:
         values["remote_proxy_url"] = str(payload.get("remote_proxy_url") or "").strip()
     for setting_key in BOOL_SETTING_KEYS:
@@ -246,7 +344,20 @@ def write_system_settings(payload: Mapping[str, object], db: Session) -> None:
 
 
 def ensure_system_setting_defaults(db: Session) -> None:
-    write_system_settings(SYSTEM_SETTING_DEFAULTS, db)
+    """只为缺失的设置项补默认值，不覆盖已有值。
+
+    历史实现直接调用 write_system_settings(SYSTEM_SETTING_DEFAULTS)，
+    而该函数会无条件覆盖同名键，导致每次启动都把管理员保存过的
+    设置（校名、开放年级、当前学年等）重置回默认值。
+    """
+    existing_keys = set(db.scalars(select(SystemSetting.setting_key)).all())
+    missing = {
+        setting_key: setting_value
+        for setting_key, setting_value in SYSTEM_SETTING_DEFAULTS.items()
+        if setting_key not in existing_keys
+    }
+    if missing:
+        write_system_settings(missing, db)
 
 
 def read_archived_class_ids(db: Session) -> set[int]:

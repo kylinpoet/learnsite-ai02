@@ -20,6 +20,7 @@ from app.models import (
 )
 from app.services import ai_provider_client
 from app.services.assistant_settings import read_assistant_runtime_settings
+from app.services.semester import format_semester_key_label, semester_date_range
 from app.services.system_settings import read_system_settings
 
 logger = logging.getLogger(__name__)
@@ -56,8 +57,13 @@ def build_class_learning_overview(
     db: Session,
     *,
     lesson_plan_id: int | None = None,
+    semester_key: str | None = None,
 ) -> dict:
-    """聚合班级学情统计：提交/评分/互评/签到/学案进度（教师视角，供 AI prompt 组装）。"""
+    """聚合班级学情统计：提交/评分/互评/签到/学案进度（教师视角，供 AI prompt 组装）。
+
+    semester_key 给定时统计范围限定在该学期：提交与互评经学案学期过滤，
+    签到按学期日期区间过滤。不传则沿用全部历史（历史行为）。
+    """
     profiles = sorted(school_class.students, key=lambda item: item.student_no)
     student_ids = [profile.user_id for profile in profiles]
     no_student_filter = student_ids or [-1]
@@ -68,6 +74,15 @@ def build_class_learning_overview(
         plan = db.get(LessonPlan, lesson_plan_id)
         task_ids = list(
             db.scalars(select(Task.id).where(Task.plan_id == lesson_plan_id)).all()
+        ) or [-1]
+    elif semester_key is not None:
+        # 未指定单份学案时，学期通过「该学期的学案 → 活动」圈定统计范围。
+        task_ids = list(
+            db.scalars(
+                select(Task.id)
+                .join(Task.lesson_plan)
+                .where(LessonPlan.semester_key == semester_key)
+            ).all()
         ) or [-1]
 
     submission_filters = [Submission.student_id.in_(no_student_filter)]
@@ -118,6 +133,12 @@ def build_class_learning_overview(
     attendance_filters = [AttendanceRecord.class_id == school_class.id]
     if plan is not None:
         attendance_filters.append(AttendanceRecord.attendance_date == plan.assigned_date)
+    elif semester_key is not None:
+        date_range = semester_date_range(semester_key)
+        if date_range is not None:
+            semester_start, semester_end = date_range
+            attendance_filters.append(AttendanceRecord.attendance_date >= semester_start)
+            attendance_filters.append(AttendanceRecord.attendance_date < semester_end)
     attendance_rows = db.scalars(select(AttendanceRecord).where(*attendance_filters)).all()
     attendance_count_by_student: dict[int, int] = defaultdict(int)
     attendance_dates: set = set()
@@ -127,13 +148,17 @@ def build_class_learning_overview(
 
     completed_plans_by_student: dict[int, int] = defaultdict(int)
     if lesson_plan_id is None:
-        progress_rows = db.scalars(
-            select(StudentLessonPlanProgress).where(
+        progress_statement = (
+            select(StudentLessonPlanProgress)
+            .join(StudentLessonPlanProgress.lesson_plan)
+            .where(
                 StudentLessonPlanProgress.student_id.in_(no_student_filter),
                 StudentLessonPlanProgress.progress_status == "completed",
             )
-        ).all()
-        for progress in progress_rows:
+        )
+        if semester_key is not None:
+            progress_statement = progress_statement.where(LessonPlan.semester_key == semester_key)
+        for progress in db.scalars(progress_statement).all():
             completed_plans_by_student[progress.student_id] += 1
 
     grade_counts: dict[str, int] = defaultdict(int)
@@ -168,6 +193,8 @@ def build_class_learning_overview(
             if plan is not None
             else None
         ),
+        "semester_key": semester_key,
+        "semester_label": format_semester_key_label(semester_key) if semester_key is not None else None,
         "submission": {
             "total": len(submission_rows),
             "reviewed": sum(reviewed_count_by_student.values()),
@@ -208,6 +235,8 @@ def format_overview_as_prompt_text(overview: dict) -> str:
         lines.append(
             f"统计范围：学案《{scope['plan_title']}》（布置日期 {scope['assigned_date']}，plan_id={scope['plan_id']}）"
         )
+    elif overview.get("semester_label"):
+        lines.append(f"统计范围：{overview['semester_label']}（该学期内的学案、活动、评分与签到）")
     else:
         lines.append("统计范围：该班级全部历史数据")
 

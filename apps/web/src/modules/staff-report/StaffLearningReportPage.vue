@@ -10,6 +10,13 @@
           placeholder="选择班级"
           @update:value="onClassChange"
         />
+        <n-select
+          v-model:value="selectedSemester"
+          :disabled="isLoading || isGenerating"
+          :options="semesterOptions"
+          class="semester-select"
+          placeholder="统计学期"
+        />
         <n-button
           :disabled="!selectedClassId || isGenerating"
           :loading="isGenerating"
@@ -135,6 +142,12 @@ import StaffPageHead from '@/components/staff/StaffPageHead.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
 import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
+import {
+  MAX_SEMESTER_NO,
+  MIN_SEMESTER_NO,
+  formatSemesterKey,
+  formatSemesterKeyLabel,
+} from '@/utils/semester';
 
 type ClassItem = {
   id: number;
@@ -176,6 +189,9 @@ type AttendanceBootstrapPayload = {
 const authStore = useAuthStore();
 const classes = ref<ClassItem[]>([]);
 const selectedClassId = ref<number | null>(null);
+// 统计学期：为空时后端按「当前学期」设置统计。生成报告时随请求提交。
+const selectedSemester = ref<string>('');
+const currentSemesterKey = ref<string>('');
 const reports = ref<LearningReportSummary[]>([]);
 const historyTotal = ref(0);
 const currentReport = ref<LearningReportDetail | null>(null);
@@ -186,6 +202,32 @@ const errorMessage = ref('');
 const classOptions = computed(() =>
   classes.value.map((item) => ({ label: item.class_name, value: item.id })),
 );
+
+/**
+ * 学期选项：以当前学期为基准给出相邻两个学年，便于生成往期报告。
+ * 当前学期来自系统设置的「当前学年 / 当前学期」，与前端的校历推算口径一致。
+ */
+const semesterOptions = computed(() => {
+  const options: Array<{ label: string; value: string }> = [];
+  const seen = new Set<string>();
+  const pushOption = (semesterKey: string) => {
+    if (!semesterKey || seen.has(semesterKey)) {
+      return;
+    }
+    seen.add(semesterKey);
+    options.push({ label: formatSemesterKeyLabel(semesterKey), value: semesterKey });
+  };
+
+  const schoolYear = Number((currentSemesterKey.value || '').split('-')[0]);
+  if (Number.isFinite(schoolYear)) {
+    [schoolYear, schoolYear - 1].forEach((year) => {
+      [MIN_SEMESTER_NO, MAX_SEMESTER_NO].forEach((semesterNo) =>
+        pushOption(formatSemesterKey(year, semesterNo))
+      );
+    });
+  }
+  return options;
+});
 
 const selectedClass = computed(
   () => classes.value.find((item) => item.id === selectedClassId.value) || null,
@@ -214,6 +256,18 @@ async function loadClasses() {
   // 班级列表与签到页共用同一个接口：它已经按教师可访问班级返回 id / 班名 / 人数。
   const payload = await apiGet<AttendanceBootstrapPayload>('/staff/attendance', authStore.token);
   classes.value = payload.classes || [];
+
+  // 「当前学期」来自系统设置；读取失败不影响班级选择，仅退化为不预选学期。
+  try {
+    const system = await apiGet<{ current_school_year: number; current_semester_no: number }>(
+      '/settings/system',
+      authStore.token
+    );
+    currentSemesterKey.value = formatSemesterKey(system.current_school_year, system.current_semester_no);
+    selectedSemester.value = currentSemesterKey.value;
+  } catch {
+    currentSemesterKey.value = '';
+  }
 }
 
 async function loadReports(classId: number) {
@@ -273,7 +327,7 @@ async function generateReport() {
   try {
     const payload = await apiPost<{ report: LearningReportDetail }>(
       '/staff/learning-reports/generate',
-      { class_id: selectedClassId.value },
+      { class_id: selectedClassId.value, semester_key: selectedSemester.value || null },
       authStore.token
     );
     currentReport.value = payload.report;
@@ -306,6 +360,10 @@ onMounted(async () => {
 <style scoped>
 .class-select {
   width: 200px;
+}
+
+.semester-select {
+  width: 170px;
 }
 
 /* 历史在左、报告在右：报告是阅读面，宽度收在可读行宽而不是铺满 */

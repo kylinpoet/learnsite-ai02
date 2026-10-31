@@ -20,7 +20,9 @@ from app.services.learning_reports import (
     provider_is_demo as learning_report_provider_is_demo,
     resolve_report_provider,
 )
+from app.services.semester import normalize_semester_key
 from app.services.staff_access import get_accessible_class_ids, staff_can_access_class
+from app.services.system_settings import read_current_semester_key
 
 router = APIRouter()
 
@@ -28,6 +30,8 @@ router = APIRouter()
 class LearningReportGeneratePayload(BaseModel):
     class_id: int = Field(ge=1)
     lesson_plan_id: int | None = Field(default=None, ge=1)
+    # 统计学期（如 "2026-1"）；不传则取「当前学期」设置。指定 lesson_plan_id 时以学案为准。
+    semester_key: str | None = Field(default=None, max_length=16)
 
 
 class LearningReportSummary(BaseModel):
@@ -172,6 +176,17 @@ def generate_learning_report(
         if plan is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="学案不存在")
 
+    # 指定了单份学案时以学案为准；否则按所选学期（缺省为当前学期）统计。
+    resolved_semester_key = (
+        None
+        if payload.lesson_plan_id is not None
+        else (
+            read_current_semester_key(db)
+            if payload.semester_key is None
+            else normalize_semester_key(payload.semester_key)
+        )
+    )
+
     provider = resolve_report_provider(db)
     if provider is None or learning_report_provider_is_demo(provider):
         raise HTTPException(
@@ -183,6 +198,7 @@ def generate_learning_report(
         school_class,
         db,
         lesson_plan_id=payload.lesson_plan_id,
+        semester_key=resolved_semester_key,
     )
     content_md, provider_error = call_provider_for_learning_report(provider, overview, db)
     if provider_error or not content_md.strip():
@@ -204,11 +220,12 @@ def generate_learning_report(
             detail=f"AI 生成学情报告失败：{error_message}",
         )
 
-    scope_suffix = (
-        f" · {overview['scope']['plan_title']}"
-        if overview.get("scope") is not None
-        else " · 全部数据"
-    )
+    if overview.get("scope") is not None:
+        scope_suffix = f" · {overview['scope']['plan_title']}"
+    elif overview.get("semester_label"):
+        scope_suffix = f" · {overview['semester_label']}"
+    else:
+        scope_suffix = " · 全部数据"
     report = LearningReport(
         class_id=payload.class_id,
         teacher_id=staff.id,

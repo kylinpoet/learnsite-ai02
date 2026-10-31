@@ -14,6 +14,8 @@ type UseLessonPlanEditorStateOptions = {
   normalizeTaskSubmissionScope: (taskType: string, currentScope?: string) => string;
   generateTaskEndpointToken: () => string;
   ensureDataSubmitTaskConfig: (task: PlanFormTask) => void;
+  /** 新建学案的默认学期标识（来自系统设置的当前学期）。 */
+  defaultSemesterKey: () => string | null;
 };
 
 export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOptions) {
@@ -31,6 +33,8 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
     content: '',
     content_mode: 'visual' as 'visual' | 'source',
     assigned_date: new Date().toISOString().slice(0, 10),
+    // 新建学案默认归入当前学期；切换学期由页面按 bootstrap 设置回填。
+    semester_key: null as string | null,
     status: 'draft',
     is_hidden: false,
     tasks: [] as PlanFormTask[],
@@ -215,6 +219,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content: planForm.value.content,
       content_mode: planForm.value.content_mode,
       assigned_date: planForm.value.assigned_date,
+      semester_key: planForm.value.semester_key,
       status: planForm.value.status,
       is_hidden: planForm.value.is_hidden,
       tasks: planForm.value.tasks.map((task) => clonePlanFormTask(task)),
@@ -334,6 +339,10 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content_mode:
         state.content_mode === 'source' || shouldUseSourceMode(state.content) ? 'source' : 'visual',
       assigned_date: state.assigned_date || new Date().toISOString().slice(0, 10),
+      semester_key:
+        typeof state.semester_key === 'string' && state.semester_key
+          ? state.semester_key
+          : options.defaultSemesterKey(),
       status: state.status || 'draft',
       is_hidden: state.is_hidden === true,
       tasks: nextTasks,
@@ -384,6 +393,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content: plan.content || '',
       content_mode: shouldUseSourceMode(plan.content) ? 'source' : 'visual',
       assigned_date: plan.assigned_date,
+      semester_key: plan.semester_key ?? options.defaultSemesterKey(),
       status: plan.status,
       is_hidden: plan.is_hidden === true,
       tasks,
@@ -400,6 +410,7 @@ export function useLessonPlanEditorState(options: UseLessonPlanEditorStateOption
       content: '',
       content_mode: 'visual',
       assigned_date: new Date().toISOString().slice(0, 10),
+      semester_key: options.defaultSemesterKey(),
       status: 'draft',
       is_hidden: false,
       tasks: [initialTask],

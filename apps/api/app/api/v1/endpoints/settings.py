@@ -55,12 +55,23 @@ from app.services.assistant_settings import (
     write_assistant_runtime_settings,
 )
 from app.services import ai_provider_client
+from app.services.class_cohort import (
+    format_class_label,
+    format_class_name,
+    format_grade_label,
+    is_graduated,
+    resolve_entry_year,
+    resolve_grade_no,
+)
 from app.services.system_settings import (
     DEFAULT_STUDENT_PROFILE_EDIT_PERMISSIONS,
+    default_current_school_year,
+    default_current_semester_no,
     normalize_student_profile_edit_permissions,
     normalize_theme_code,
     read_archived_class_ids,
     read_class_archive_records,
+    read_current_school_year,
     read_student_profile_edit_permissions_by_class,
     read_system_settings as load_system_settings_payload,
     theme_presets_payload,
@@ -92,25 +103,24 @@ SEAT_IMPORT_HEADER_ALIASES = {
 }
 TRUTHY_TEXTS = {"", "1", "true", "yes", "y", "on", "是", "启用", "已启用"}
 FALSY_TEXTS = {"0", "false", "no", "n", "off", "否", "禁用", "停用", "未启用"}
-STUDENT_IMPORT_REQUIRED_FIELDS = ("display_name",)
+STUDENT_IMPORT_REQUIRED_FIELDS = ("display_name", "class_no")
 STUDENT_IMPORT_HEADER_LABELS = {
     "student_no": "学号",
     "username": "账号",
     "display_name": "姓名",
-    "grade_no": "年级",
-    "class_no": "班号",
-    "class_name": "班级",
+    "class_no": "班级",
     "gender": "性别",
     "password": "初始密码",
     "entry_year": "入学年份",
 }
+# 导入表不再收「年级」：年级由「当前学年 − 入学年份」推导（初中入学即七年级），
+# 学生自己填年级反而会与届别冲突。「班级」列写的是班号（01、02），
+# 班级身份由 (入学年份, 班号) 决定；找不到则按届别自动补建。
 STUDENT_IMPORT_HEADER_ALIASES = {
     "student_no": {"student_no", "student", "学号", "学生编号"},
     "username": {"username", "account", "账号", "登录账号"},
     "display_name": {"name", "display_name", "姓名", "学生姓名"},
-    "grade_no": {"grade", "grade_no", "年级", "年级号"},
-    "class_no": {"class", "class_no", "班号"},
-    "class_name": {"class_name", "classname", "班级", "班级名称"},
+    "class_no": {"class", "class_no", "班级", "班号", "班级号"},
     "gender": {"gender", "sex", "性别"},
     "password": {"password", "pwd", "初始密码"},
     "entry_year": {"entry_year", "入学年份", "入学年"},
@@ -121,6 +131,10 @@ class SystemSettingsPayload(BaseModel):
     platform_name: str = Field(default="OW³教学评AI平台", min_length=1, max_length=160)
     school_name: str = Field(min_length=1, max_length=120)
     active_grade_nos: list[int] = Field(min_length=1)
+    # 当前学年：年级与届别换算的基准，随校历每年更新。
+    current_school_year: int = Field(default_factory=default_current_school_year, ge=2000, le=2100)
+    # 当前学期：课堂教学与成绩汇总的统计范围基准，每学期开学时更新。
+    current_semester_no: int = Field(default_factory=default_current_semester_no, ge=1, le=2)
     theme_code: str = Field(default="emblem", min_length=1, max_length=30)
     student_register_enabled: bool = False
     assistant_enabled: bool = True
@@ -149,7 +163,11 @@ class AssistantRuntimeSettingsPayload(BaseModel):
 
 
 class AdminClassPayload(BaseModel):
-    grade_no: int = Field(ge=1, le=12)
+    # 入学年份即「届」，是班级的稳定身份；班级跟届走，年级是派生量：
+    # 年级 = 当前学年 − 入学年份 + 7。因此 grade_no 可省略（按届别推导），
+    # 显式给出时会校验是否与届别自洽，避免出现「2026 届的九年级」这种矛盾数据。
+    entry_year: int = Field(default_factory=default_current_school_year, ge=2000, le=2100)
+    grade_no: int | None = Field(default=None, ge=1, le=12)
     class_no: int = Field(ge=1, le=99)
     head_teacher_name: str | None = Field(default=None, max_length=100)
     default_room_id: int | None = Field(default=None, ge=1)
@@ -177,6 +195,9 @@ class AdminPromotionPreviewPayload(BaseModel):
 
 
 class AdminPromotionExecutePayload(AdminPromotionPreviewPayload):
+    # 班级跟届走后升班不再新建班级、也不搬学生，故无需「复制教师关联」；
+    # 归档只在修完九年级（毕业）时自动发生，不再是可选开关。
+    # 两个字段保留仅为兼容旧前端，接收后忽略。
     copy_teacher_assignments: bool = True
     archive_source_classes: bool = True
 
@@ -497,12 +518,40 @@ def resolve_student_import_headers(header_row: list[object]) -> dict[str, int]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="学生导入表头需要至少包含“学号”或“账号”字段",
         )
-    if "class_name" not in header_map and not {"grade_no", "class_no"}.issubset(header_map):
+    return header_map
+
+
+def parse_student_import_class_no(
+    value: object,
+    *,
+    row_number: int,
+    field_label: str = "班级",
+) -> int | None:
+    """解析导入表「班级」列的班号。
+
+    老师习惯写成 01、1、1班 等，统一剥离「班」字后按整数解析。
+    班级身份是 (入学年份, 班号)，所以这里只要拿到班号即可。
+    """
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    normalized = text.rstrip("班").strip()
+    # 表格里可能写成「01班」「1 班」或纯数字；Excel 数值单元格会带 .0。
+    try:
+        parsed = int(float(normalized))
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="学生导入表头需要提供“班级”字段，或同时提供“年级”和“班号”字段",
+            detail=f"第 {row_number} 行的{field_label}必须是班号数字（如 01），当前为“{text}”",
+        ) from exc
+
+    if parsed < 1 or parsed > 99:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"第 {row_number} 行的{field_label}必须在 1~99 之间",
         )
-    return header_map
+    return parsed
 
 
 def parse_student_import_optional_int(
@@ -569,13 +618,14 @@ def build_student_import_preview(
 
     header_map = resolve_student_import_headers(rows[0])
     archived_class_ids = read_archived_class_ids(db)
+    current_school_year = read_current_school_year(db)
     classes = [
         item
-        for item in db.scalars(select(SchoolClass).order_by(SchoolClass.grade_no.asc(), SchoolClass.class_no.asc())).all()
+        for item in db.scalars(select(SchoolClass).order_by(SchoolClass.entry_year.asc(), SchoolClass.class_no.asc())).all()
         if item.id not in archived_class_ids
     ]
-    class_by_name = {item.class_name: item for item in classes}
-    class_by_grade_no = {(item.grade_no, item.class_no): item for item in classes}
+    # 班级身份是 (入学年份, 班号)：同一班号在不同届是不同班级。
+    class_by_identity = {(item.entry_year, item.class_no): item for item in classes}
 
     users = db.scalars(
         select(User)
@@ -592,6 +642,8 @@ def build_student_import_preview(
     seen_row_keys: set[tuple[str, str]] = set()
     imported_rows: list[dict] = []
     skipped_rows: list[dict] = []
+    created_class_names: set[str] = set()
+    created_class_labels: set[str] = set()
 
     for row_number, row in enumerate(rows[1:], start=2):
         if not any(str(cell or "").strip() for cell in row):
@@ -622,33 +674,11 @@ def build_student_import_preview(
                 detail=f"第 {row_number} 行缺少学号或账号",
             )
 
-        class_name = parse_import_text(
-            get_row_value(row, header_map.get("class_name")),
-            field_label="班级",
-            row_number=row_number,
-            allow_empty=True,
-        )
-        grade_no = parse_student_import_optional_int(
-            get_row_value(row, header_map.get("grade_no")),
-            row_number=row_number,
-            field_label="年级",
-            min_value=1,
-            max_value=12,
-        )
-        class_no = parse_student_import_optional_int(
+        class_no = parse_student_import_class_no(
             get_row_value(row, header_map.get("class_no")),
             row_number=row_number,
-            field_label="班号",
-            min_value=1,
-            max_value=99,
         )
-        target_class = None
-        if class_name:
-            target_class = class_by_name.get(class_name)
-        elif grade_no is not None and class_no is not None:
-            target_class = class_by_grade_no.get((grade_no, class_no))
-
-        if target_class is None:
+        if class_no is None:
             skipped_rows.append(
                 {
                     "row_number": row_number,
@@ -656,10 +686,44 @@ def build_student_import_preview(
                     "username": resolved_username,
                     "display_name": display_name,
                     "status": "skipped",
-                    "reason": "找不到目标班级",
+                    "reason": "缺少班级（班号）",
                 }
             )
             continue
+
+        entry_year = parse_student_import_optional_int(
+            get_row_value(row, header_map.get("entry_year")),
+            row_number=row_number,
+            field_label="入学年份",
+            min_value=2000,
+            max_value=2100,
+        )
+        if entry_year is None:
+            # 未填入学年份时按当前学年（即新生入学）处理，不再依赖写死的年份。
+            entry_year = current_school_year
+
+        grade_no = resolve_grade_no(entry_year, current_school_year)
+        identity = (entry_year, class_no)
+        target_class = class_by_identity.get(identity)
+        class_created = False
+        if target_class is None:
+            # 该届该班号还没建班：按届别自动补建，年级由入学年份推导。
+            target_class = SchoolClass(
+                entry_year=entry_year,
+                grade_no=grade_no,
+                class_no=class_no,
+                class_name=make_class_display_name(grade_no, class_no),
+                class_code=generate_unique_class_code(db),
+            )
+            db.add(target_class)
+            db.flush()
+            class_by_identity[identity] = target_class
+            class_created = True
+            created_class_names.add(target_class.class_name)
+            created_class_labels.add(format_class_label(target_class.class_name, entry_year))
+        else:
+            # 班级已存在则以其当前年级为准：班级跟届走，学生跟着班级的进度。
+            grade_no = target_class.grade_no
 
         gender = normalize_student_import_gender(
             parse_import_text(
@@ -669,13 +733,6 @@ def build_student_import_preview(
                 allow_empty=True,
             )
         )
-        entry_year = parse_student_import_optional_int(
-            get_row_value(row, header_map.get("entry_year")),
-            row_number=row_number,
-            field_label="入学年份",
-            min_value=2000,
-            max_value=2100,
-        ) or (2026 - (target_class.grade_no - 6))
         row_password = parse_import_text(
             get_row_value(row, header_map.get("password")),
             field_label="初始密码",
@@ -727,10 +784,12 @@ def build_student_import_preview(
                 "display_name": display_name,
                 "class_id": target_class.id,
                 "class_name": target_class.class_name,
-                "grade_no": target_class.grade_no,
+                "class_label": format_class_label(target_class.class_name, target_class.entry_year),
+                "grade_no": grade_no,
                 "gender": gender,
                 "entry_year": entry_year,
                 "password": password,
+                "class_created": class_created,
                 "existing_profile": existing_profile,
                 "existing_user": existing_user,
             }
@@ -798,6 +857,9 @@ def build_student_import_preview(
         "skipped_count": len(skipped_rows),
         "skipped_rows": skipped_rows,
         "processed_count": len(imported_rows) + len(skipped_rows),
+        # 自动补建的班级：导入表只写 (入学年份, 班号)，没有的班级按届别补出来。
+        "created_class_count": len(created_class_labels),
+        "created_class_labels": sorted(created_class_labels),
     }
 
 
@@ -1152,9 +1214,12 @@ def serialize_class(
 ) -> dict:
     return {
         "id": school_class.id,
+        "entry_year": school_class.entry_year,
         "grade_no": school_class.grade_no,
         "class_no": school_class.class_no,
         "class_name": school_class.class_name,
+        # 带届别的标签：班级跟届走后同一班号可能跨届重名，列表与选择器用它消歧。
+        "class_label": format_class_label(school_class.class_name, school_class.entry_year),
         "head_teacher_name": school_class.head_teacher_name,
         "default_room_id": school_class.default_room_id,
         "student_count": len(school_class.students),
@@ -1173,9 +1238,11 @@ def serialize_archived_class(
 ) -> dict:
     return {
         "id": school_class.id,
+        "entry_year": school_class.entry_year,
         "grade_no": school_class.grade_no,
         "class_no": school_class.class_no,
         "class_name": school_class.class_name,
+        "class_label": format_class_label(school_class.class_name, school_class.entry_year),
         "head_teacher_name": school_class.head_teacher_name,
         "default_room_id": school_class.default_room_id,
         "student_count": len(school_class.students),
@@ -1231,8 +1298,14 @@ def serialize_student(user: User) -> dict:
         "display_name": user.display_name,
         "student_no": profile.student_no if profile is not None else "",
         "grade_no": profile.grade_no if profile is not None else None,
+        "entry_year": profile.entry_year if profile is not None else None,
         "class_id": profile.class_id if profile is not None else None,
         "class_name": school_class.class_name if school_class is not None else "",
+        "class_label": (
+            format_class_label(school_class.class_name, school_class.entry_year)
+            if school_class is not None
+            else ""
+        ),
         "is_active": user.is_active,
     }
 
@@ -1309,7 +1382,46 @@ def serialize_curriculum_snapshot(db: Session) -> list[dict]:
 
 
 def make_class_display_name(grade_no: int, class_no: int) -> str:
-    return f"{grade_no}{class_no:02d}班"
+    return format_class_name(grade_no, class_no)
+
+
+def resolve_class_grade_no(entry_year: int, grade_no: int | None, db: Session) -> int:
+    """确定班级年级：优先按届别推导，显式给出的年级需与届别自洽。
+
+    班级跟届走时年级 = 当前学年 − 入学年份 + 7。允许显式传入年级是为了
+    支持「跨届插班后手动修正」等场景，但两者矛盾时直接报错，
+    避免写进「2026 届的九年级」这类无法自圆其说的数据。
+    """
+    derived = resolve_grade_no(entry_year, read_current_school_year(db))
+    if grade_no is None:
+        return derived
+    if grade_no != derived:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"{entry_year} 届对应的是 {format_grade_label(derived)}，"
+                f"与填写的 {format_grade_label(grade_no)} 不一致。"
+                f"若确需保留该年级，请同步修改入学年份。"
+            ),
+        )
+    return grade_no
+
+
+def class_identity_taken(
+    entry_year: int,
+    class_no: int,
+    db: Session,
+    *,
+    exclude_class_id: int | None = None,
+) -> bool:
+    """判断某一届的某个班号是否已被占用（身份即 (届别, 班号)）。"""
+    query = select(SchoolClass.id).where(
+        SchoolClass.entry_year == entry_year,
+        SchoolClass.class_no == class_no,
+    )
+    if exclude_class_id is not None:
+        query = query.where(SchoolClass.id != exclude_class_id)
+    return db.scalar(query) is not None
 
 
 def make_archived_class_name(base_name: str, archived_at: datetime, existing_names: set[str]) -> str:
@@ -1325,49 +1437,36 @@ def make_archived_class_name(base_name: str, archived_at: datetime, existing_nam
 
 def build_promotion_preview(
     source_classes: list[SchoolClass],
-    active_classes_by_grade_no: dict[tuple[int, int], SchoolClass],
     *,
     grade_increment: int,
 ) -> dict:
-    preview_items: list[dict] = []
-    blocked_count = 0
-    for school_class in sorted(source_classes, key=lambda item: (item.grade_no, item.class_no, item.id)):
-        target_grade_no = school_class.grade_no + grade_increment
-        if target_grade_no > 12:
-            blocked_count += 1
-            preview_items.append(
-                {
-                    "source_class_id": school_class.id,
-                    "source_class_name": school_class.class_name,
-                    "source_grade_no": school_class.grade_no,
-                    "source_class_no": school_class.class_no,
-                    "student_count": len(school_class.students),
-                    "target_grade_no": target_grade_no,
-                    "target_class_no": school_class.class_no,
-                    "target_class_name": make_class_display_name(target_grade_no, school_class.class_no),
-                    "target_class_id": None,
-                    "target_exists": False,
-                    "status": "blocked",
-                    "reason": "目标年级超过 12，无法继续升班",
-                }
-            )
-            continue
+    """班级跟届走：升班就是把该班的年级原地加一级，学生不换班、不新建班级。
 
-        target = active_classes_by_grade_no.get((target_grade_no, school_class.class_no))
+    超过九年级即毕业，对应班级归档（不再是「搬到新班级并归档原班」）。
+    """
+    preview_items: list[dict] = []
+    graduated_count = 0
+    for school_class in sorted(source_classes, key=lambda item: (item.entry_year, item.class_no, item.id)):
+        target_grade_no = school_class.grade_no + grade_increment
+        graduating = is_graduated(target_grade_no)
+        if graduating:
+            graduated_count += 1
         preview_items.append(
             {
-                "source_class_id": school_class.id,
-                "source_class_name": school_class.class_name,
+                "class_id": school_class.id,
+                "class_name": school_class.class_name,
+                "class_label": format_class_label(school_class.class_name, school_class.entry_year),
+                "entry_year": school_class.entry_year,
                 "source_grade_no": school_class.grade_no,
-                "source_class_no": school_class.class_no,
-                "student_count": len(school_class.students),
                 "target_grade_no": target_grade_no,
-                "target_class_no": school_class.class_no,
-                "target_class_name": make_class_display_name(target_grade_no, school_class.class_no),
-                "target_class_id": target.id if target is not None else None,
-                "target_exists": target is not None,
-                "status": "ready",
-                "reason": "将迁移学生并创建/复用目标班级",
+                "class_no": school_class.class_no,
+                "student_count": len(school_class.students),
+                "status": "graduate" if graduating else "ready",
+                "reason": (
+                    f"已修完九年级，将归档（{school_class.entry_year}届毕业）"
+                    if graduating
+                    else "原班升一级，学生与班级数据保持不变"
+                ),
             }
         )
 
@@ -1376,8 +1475,8 @@ def build_promotion_preview(
         "items": preview_items,
         "summary": {
             "source_class_count": len(source_classes),
-            "blocked_count": blocked_count,
-            "ready_count": len(source_classes) - blocked_count,
+            "ready_count": len(source_classes) - graduated_count,
+            "graduated_count": graduated_count,
             "student_count": sum(len(item.students) for item in source_classes),
         },
     }
@@ -1758,15 +1857,8 @@ def preview_promotions(
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="所选班级中包含已归档班级，无法升班")
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"存在不存在或已归档的班级 ID: {missing_ids}")
 
-    all_classes = db.scalars(select(SchoolClass)).all()
-    active_by_grade_no = {
-        (item.grade_no, item.class_no): item
-        for item in all_classes
-        if item.id not in archived_class_ids
-    }
     preview = build_promotion_preview(
         source_classes,
-        active_by_grade_no,
         grade_increment=payload.grade_increment,
     )
     return ApiResponse(data=preview)
@@ -1784,142 +1876,82 @@ def execute_promotions(
     if missing_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"存在不存在或已归档的班级 ID: {missing_ids}")
 
-    all_classes = db.scalars(select(SchoolClass)).all()
-    active_by_grade_no = {
-        (item.grade_no, item.class_no): item
-        for item in all_classes
-        if item.id not in archived_class_ids
-    }
     preview = build_promotion_preview(
         source_classes,
-        active_by_grade_no,
         grade_increment=payload.grade_increment,
     )
 
     now = datetime.now()
     archive_records = read_class_archive_records(db)
-    source_student_ids_by_class = {
-        item.id: [profile.user_id for profile in item.students]
-        for item in source_classes
+    active_class_names = {
+        item.class_name
+        for item in db.scalars(select(SchoolClass)).all()
+        if item.id not in archived_class_ids
     }
-    existing_class_names = {item.class_name for item in all_classes}
-    created_target_count = 0
-    reused_target_count = 0
-    moved_student_count = 0
-    archived_count = 0
-    blocked_count = 0
+    promoted_count = 0
+    graduated_count = 0
+    promoted_student_count = 0
     details: list[dict] = []
 
     for item in preview["items"]:
-        source_class_id = int(item["source_class_id"])
-        source = source_by_id[source_class_id]
-        if item.get("status") != "ready":
-            blocked_count += 1
-            details.append(
-                {
-                    "source_class_id": source.id,
-                    "source_class_name": source.class_name,
-                    "status": "blocked",
-                    "reason": item.get("reason") or "当前班级不满足升班条件",
-                }
-            )
-            continue
-
+        source = source_by_id[int(item["class_id"])]
         target_grade_no = int(item["target_grade_no"])
-        target_class_no = int(item["target_class_no"])
-        target = active_by_grade_no.get((target_grade_no, target_class_no))
-        target_created = False
-        if target is None:
-            target = SchoolClass(
-                grade_no=target_grade_no,
-                class_no=target_class_no,
-                class_name=make_class_display_name(target_grade_no, target_class_no),
-                class_code=generate_unique_class_code(db),
-                head_teacher_name=source.head_teacher_name,
-                default_room_id=source.default_room_id,
-            )
-            db.add(target)
-            db.flush()
-            active_by_grade_no[(target_grade_no, target_class_no)] = target
-            created_target_count += 1
-            target_created = True
-        else:
-            reused_target_count += 1
+        student_count = len(source.students)
 
-        source_student_ids = source_student_ids_by_class.get(source.id, [])
-        source_student_count = len(source_student_ids)
-        if source_student_ids:
-            profiles = db.scalars(
-                select(StudentProfile).where(
-                    StudentProfile.user_id.in_(source_student_ids),
-                    StudentProfile.class_id == source.id,
-                )
-            ).all()
-            for profile in profiles:
-                profile.class_id = target.id
-                profile.grade_no = target_grade_no
-            moved_student_count += len(profiles)
-            db.execute(
-                delete(ClassSeatAssignment).where(
-                    ClassSeatAssignment.class_id == source.id,
-                    ClassSeatAssignment.student_user_id.in_(source_student_ids),
-                )
-            )
-
-        db.execute(delete(StudentGroup).where(StudentGroup.class_id == source.id))
-
-        if payload.copy_teacher_assignments:
-            source_teacher_ids = {
-                assignment.staff_user_id
-                for assignment in source.teacher_assignments
-            }
-            target_teacher_ids = set(
-                db.scalars(
-                    select(TeacherClassAssignment.staff_user_id).where(
-                        TeacherClassAssignment.class_id == target.id
-                    )
-                ).all()
-            )
-            for staff_user_id in source_teacher_ids:
-                if staff_user_id in target_teacher_ids:
-                    continue
-                db.add(
-                    TeacherClassAssignment(
-                        staff_user_id=staff_user_id,
-                        class_id=target.id,
-                    )
-                )
-
-        db.execute(delete(TeacherClassAssignment).where(TeacherClassAssignment.class_id == source.id))
-
-        if payload.archive_source_classes:
+        if item["status"] == "graduate":
+            # 九年级修完 → 归档。学生与班级记录保留，班级移出在用列表。
             source_name_before_archive = source.class_name
-            archived_class_name = make_archived_class_name(source_name_before_archive, now, existing_class_names)
+            # 归档名要避开当前在用的班级名；先释放本班原名再挑新名。
+            archived_class_name = make_archived_class_name(
+                source_name_before_archive,
+                now,
+                active_class_names - {source_name_before_archive},
+            )
             source.class_name = archived_class_name
-            existing_class_names.add(archived_class_name)
             archived_class_ids.add(source.id)
-            archived_count += 1
+            graduated_count += 1
             archive_records.insert(
                 0,
                 {
                     "source_class_id": source.id,
                     "source_class_name": source_name_before_archive,
-                    "target_class_id": target.id,
-                    "target_class_name": target.class_name,
-                    "moved_student_count": source_student_count,
+                    "entry_year": source.entry_year,
+                    "graduated_grade_no": source.grade_no,
+                    "moved_student_count": student_count,
                     "grade_increment": payload.grade_increment,
                     "archived_at": now.isoformat(timespec="seconds"),
                 },
             )
+            details.append(
+                {
+                    "class_id": source.id,
+                    "class_name": source_name_before_archive,
+                    "entry_year": source.entry_year,
+                    "archived_class_name": archived_class_name,
+                    "student_count": student_count,
+                    "status": "graduated",
+                }
+            )
+            continue
 
+        # 班级跟届走：年级原地加一级，班名同步重算；学生留在原班，只同步年级。
+        old_class_name = source.class_name
+        source.grade_no = target_grade_no
+        source.class_name = make_class_display_name(target_grade_no, source.class_no)
+        active_class_names.discard(old_class_name)
+        active_class_names.add(source.class_name)
+        for profile in source.students:
+            profile.grade_no = target_grade_no
+        promoted_count += 1
+        promoted_student_count += student_count
         details.append(
             {
-                "source_class_id": source.id,
-                "source_class_name": item["source_class_name"],
-                "target_class_id": target.id,
-                "target_class_name": target.class_name,
-                "target_created": target_created,
-                "moved_student_count": source_student_count,
+                "class_id": source.id,
+                "class_name": source.class_name,
+                "previous_class_name": old_class_name,
+                "entry_year": source.entry_year,
+                "target_grade_no": target_grade_no,
+                "student_count": student_count,
                 "status": "completed",
             }
         )
@@ -1929,19 +1961,16 @@ def execute_promotions(
     db.commit()
     return ApiResponse(
         message=(
-            f"升班完成：迁移学生 {moved_student_count} 人，"
-            f"新建班级 {created_target_count} 个，复用班级 {reused_target_count} 个，"
-            f"归档班级 {archived_count} 个，阻塞 {blocked_count} 个。"
+            f"升班完成：{promoted_count} 个班级升入新年级（涉及 {promoted_student_count} 名学生，"
+            f"学生与班级归属保持不变），归档毕业班级 {graduated_count} 个。"
         ),
         data={
             **bootstrap_payload(db),
             "promotion_preview": preview,
             "promotion_result": {
-                "created_target_count": created_target_count,
-                "reused_target_count": reused_target_count,
-                "moved_student_count": moved_student_count,
-                "archived_count": archived_count,
-                "blocked_count": blocked_count,
+                "promoted_class_count": promoted_count,
+                "promoted_student_count": promoted_student_count,
+                "graduated_count": graduated_count,
                 "details": details,
             },
         },
@@ -1956,11 +1985,18 @@ def create_class(
 ) -> ApiResponse:
     if payload.default_room_id is not None and db.get(ComputerRoom, payload.default_room_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="机房不存在")
+    if class_identity_taken(payload.entry_year, payload.class_no, db):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{payload.entry_year}届 {payload.class_no}班 已存在，请改用其他班号",
+        )
+    grade_no = resolve_class_grade_no(payload.entry_year, payload.grade_no, db)
 
     school_class = SchoolClass(
-        grade_no=payload.grade_no,
+        entry_year=payload.entry_year,
+        grade_no=grade_no,
         class_no=payload.class_no,
-        class_name=make_class_display_name(payload.grade_no, payload.class_no),
+        class_name=make_class_display_name(grade_no, payload.class_no),
         class_code=generate_unique_class_code(db),
         head_teacher_name=(payload.head_teacher_name or "").strip() or None,
         default_room_id=payload.default_room_id,
@@ -1976,7 +2012,7 @@ def create_classes_batch(
     _: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    seen_names: set[str] = set()
+    seen_keys: set[tuple[int, int]] = set()
     created_count = 0
     updated_count = 0
     skipped_count = 0
@@ -1984,39 +2020,82 @@ def create_classes_batch(
 
     room_cache = {room.id: room for room in db.scalars(select(ComputerRoom)).all()}
     archived_class_ids = read_archived_class_ids(db)
-    class_by_name = {
-        item.class_name: item
+    # 身份是届别 + 班号，不是班级名：跟届走后同名班级可以跨届并存。
+    class_by_identity = {
+        (item.entry_year, item.class_no): item
         for item in db.scalars(select(SchoolClass)).all()
         if item.id not in archived_class_ids
     }
 
     for item in payload.items:
-        class_name = f"{item.grade_no}{item.class_no:02d}班"
-        if class_name in seen_names:
+        identity = (item.entry_year, item.class_no)
+        if identity in seen_keys:
             skipped_count += 1
-            details.append({"class_name": class_name, "status": "skipped", "reason": "批次内重复"})
+            details.append(
+                {
+                    "class_name": make_class_display_name(item.entry_year, item.class_no),
+                    "entry_year": item.entry_year,
+                    "class_label": format_class_label(
+                        make_class_display_name(item.entry_year, item.class_no), item.entry_year
+                    ),
+                    "status": "skipped",
+                    "reason": "批次内重复",
+                }
+            )
             continue
-        seen_names.add(class_name)
+        seen_keys.add(identity)
 
         if item.default_room_id is not None and item.default_room_id not in room_cache:
             skipped_count += 1
-            details.append({"class_name": class_name, "status": "skipped", "reason": "默认机房不存在"})
+            details.append(
+                {
+                    "entry_year": item.entry_year,
+                    "class_no": item.class_no,
+                    "status": "skipped",
+                    "reason": "默认机房不存在",
+                }
+            )
             continue
 
-        existing = class_by_name.get(class_name)
+        # 年级由届别推导；显式给出但与届别矛盾的行跳过并说明原因，不整批失败。
+        try:
+            grade_no = resolve_class_grade_no(item.entry_year, item.grade_no, db)
+        except HTTPException as exc:
+            skipped_count += 1
+            details.append(
+                {
+                    "entry_year": item.entry_year,
+                    "class_no": item.class_no,
+                    "status": "skipped",
+                    "reason": str(exc.detail),
+                }
+            )
+            continue
+
+        class_name = make_class_display_name(grade_no, item.class_no)
+        detail = {
+            "class_name": class_name,
+            "entry_year": item.entry_year,
+            "class_label": format_class_label(class_name, item.entry_year),
+        }
+
+        existing = class_by_identity.get(identity)
         if existing is not None:
             if payload.overwrite_existing:
+                existing.grade_no = grade_no
+                existing.class_name = class_name
                 existing.head_teacher_name = (item.head_teacher_name or "").strip() or None
                 existing.default_room_id = item.default_room_id
                 updated_count += 1
-                details.append({"class_name": class_name, "status": "updated", "reason": "已更新现有班级"})
+                details.append({**detail, "status": "updated", "reason": "已更新现有班级"})
             else:
                 skipped_count += 1
-                details.append({"class_name": class_name, "status": "skipped", "reason": "班级已存在"})
+                details.append({**detail, "status": "skipped", "reason": "该届该班号已存在"})
             continue
 
         school_class = SchoolClass(
-            grade_no=item.grade_no,
+            entry_year=item.entry_year,
+            grade_no=grade_no,
             class_no=item.class_no,
             class_name=class_name,
             class_code=generate_unique_class_code(db),
@@ -2025,9 +2104,9 @@ def create_classes_batch(
         )
         db.add(school_class)
         db.flush()
-        class_by_name[class_name] = school_class
+        class_by_identity[identity] = school_class
         created_count += 1
-        details.append({"class_name": class_name, "status": "created", "reason": "已创建"})
+        details.append({**detail, "status": "created", "reason": "已创建"})
 
     db.commit()
     return ApiResponse(
@@ -2059,12 +2138,29 @@ def update_class(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="已归档班级不可编辑")
     if payload.default_room_id is not None and db.get(ComputerRoom, payload.default_room_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="机房不存在")
+    if class_identity_taken(
+        payload.entry_year,
+        payload.class_no,
+        db,
+        exclude_class_id=class_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{payload.entry_year}届 {payload.class_no}班 已存在，请改用其他班号",
+        )
 
-    school_class.grade_no = payload.grade_no
+    grade_no = resolve_class_grade_no(payload.entry_year, payload.grade_no, db)
+
+    school_class.entry_year = payload.entry_year
+    school_class.grade_no = grade_no
     school_class.class_no = payload.class_no
-    school_class.class_name = make_class_display_name(payload.grade_no, payload.class_no)
+    school_class.class_name = make_class_display_name(grade_no, payload.class_no)
     school_class.head_teacher_name = (payload.head_teacher_name or "").strip() or None
     school_class.default_room_id = payload.default_room_id
+    # 届别是学生的稳定身份，班级改届时同步学生，避免两边漂移。
+    for profile in school_class.students:
+        profile.entry_year = payload.entry_year
+        profile.grade_no = grade_no
     db.commit()
     return ApiResponse(message="班级已更新", data=bootstrap_payload(db))
 
@@ -2292,10 +2388,10 @@ async def import_students(
     )
 
 
-STUDENT_IMPORT_TEMPLATE_HEADERS = ("姓名", "学号", "账号", "班级", "性别", "初始密码")
+STUDENT_IMPORT_TEMPLATE_HEADERS = ("姓名", "学号", "账号", "入学年份", "班级", "性别", "初始密码")
 STUDENT_IMPORT_TEMPLATE_SAMPLE_ROWS = (
-    ("张三", "90201", "90201", "902班", "男", "abc123"),
-    ("李四", "90301", "90301", "903班", "女", "abc123"),
+    ("张三", "20260101", "20260101", "2026", "01", "男", "abc123"),
+    ("李四", "20260102", "20260102", "2026", "02", "女", "abc123"),
 )
 
 
@@ -2317,6 +2413,18 @@ def download_student_import_template(
     sheet.append(list(STUDENT_IMPORT_TEMPLATE_HEADERS))
     for sample_row in STUDENT_IMPORT_TEMPLATE_SAMPLE_ROWS:
         sheet.append(list(sample_row))
+    # 把填写规则写进第二张表，避免老师在「班级」列写班级名而不是班号。
+    help_sheet = workbook.create_sheet("填写说明")
+    for line in (
+        "姓名：必填。",
+        "学号 / 账号：至少填一个，两者都填时以学号作学号、账号作登录名。",
+        "入学年份：该届学生的入学年份，例如 2026。留空则按系统「当前学年」处理。",
+        "班级：只填班号，例如 01、02（不要写“701班”）。",
+        "      班级由「入学年份 + 班号」确定；该届该班号还不存在时会自动建班。",
+        "性别：选填，男 / 女。",
+        "初始密码：选填，留空使用导入时填写的默认密码，至少 6 位。",
+    ):
+        help_sheet.append([line])
 
     buffer = BytesIO()
     workbook.save(buffer)

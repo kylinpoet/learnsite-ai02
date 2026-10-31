@@ -10,6 +10,10 @@ export type BootstrapPayload = {
     platform_name: string;
     school_name: string;
     active_grade_nos: number[];
+    /** 当前学年，年级与届别换算的基准。 */
+    current_school_year: number;
+    /** 当前学期序号（1 = 第一学期，2 = 第二学期），成绩汇总与课堂的统计基准。 */
+    current_semester_no: number;
     theme_code: string;
     student_register_enabled: boolean;
     assistant_enabled: boolean;
@@ -34,9 +38,12 @@ export type BootstrapPayload = {
   };
   classes: Array<{
     id: number;
+    entry_year: number;
     grade_no: number;
     class_no: number;
     class_name: string;
+    /** 带届别的标签（如「701班 · 2026届」），跨届重名时用于消歧。 */
+    class_label: string;
     head_teacher_name: string | null;
     default_room_id: number | null;
     student_count: number;
@@ -44,7 +51,9 @@ export type BootstrapPayload = {
   }>;
   archived_classes: Array<{
     id: number;
+    entry_year: number;
     class_name: string;
+    class_label: string;
     original_class_name: string;
     promoted_to_class_name: string;
     moved_student_count: number;
@@ -57,8 +66,10 @@ export type BootstrapPayload = {
     display_name: string;
     student_no: string;
     grade_no: number | null;
+    entry_year: number | null;
     class_id: number | null;
     class_name: string;
+    class_label: string;
     is_active: boolean;
   }>;
   rooms: Array<{ id: number; name: string; row_count: number; col_count: number; description: string | null; seats: Array<{ id?: number; row_no: number; col_no: number; seat_label: string; ip_address: string; hostname: string | null; is_enabled: boolean }> }>;
@@ -91,19 +102,40 @@ export type AssistantRuntimeSettings = {
 export type PromotionPreviewPayload = {
   grade_increment: number;
   items: Array<{
-    source_class_id: number;
-    source_class_name: string;
+    class_id: number;
+    class_name: string;
+    class_label: string;
+    entry_year: number;
+    source_grade_no: number;
+    target_grade_no: number;
+    class_no: number;
     student_count: number;
-    target_class_name: string;
-    status: 'ready' | 'blocked';
+    /** graduate = 修完九年级将归档；ready = 原班升一级。 */
+    status: 'ready' | 'graduate';
     reason: string;
   }>;
   summary: {
     source_class_count: number;
-    blocked_count: number;
     ready_count: number;
+    graduated_count: number;
     student_count: number;
   };
+};
+
+export type PromotionResultPayload = {
+  promoted_class_count: number;
+  promoted_student_count: number;
+  graduated_count: number;
+  details: Array<{
+    class_id: number;
+    class_name: string;
+    previous_class_name?: string;
+    archived_class_name?: string;
+    entry_year: number;
+    target_grade_no?: number;
+    student_count: number;
+    status: 'completed' | 'graduated';
+  }>;
 };
 
 export type AIProviderRecord = {
@@ -163,6 +195,9 @@ export type StudentImportResult = {
   skipped_count: number;
   processed_count: number;
   skipped_rows?: StudentImportSkippedRow[];
+  /** 导入时按 (入学年份, 班号) 自动补建的班级数量。 */
+  created_class_count?: number;
+  created_class_labels?: string[];
 };
 
 export type RoomSeat = BootstrapPayload['rooms'][number]['seats'][number];

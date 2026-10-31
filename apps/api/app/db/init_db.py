@@ -63,7 +63,12 @@ from app.services.class_code import (
     ensure_class_code,
     generate_unique_class_code,
 )
-from app.services.system_settings import ensure_system_setting_defaults
+from app.services.class_cohort import format_class_name, resolve_entry_year
+from app.services.semester import resolve_semester_key_for_date
+from app.services.system_settings import (
+    default_current_school_year,
+    ensure_system_setting_defaults,
+)
 from app.services.submission_files import stored_file_path
 
 
@@ -231,11 +236,19 @@ def create_staff_user(session, username: str, display_name: str, title: str, is_
     return user
 
 
-def create_class(session, grade_no: int, class_no: int, room: ComputerRoom, head_teacher_name: str | None) -> SchoolClass:
+def create_class(
+    session,
+    grade_no: int,
+    class_no: int,
+    room: ComputerRoom,
+    head_teacher_name: str | None,
+    entry_year: int,
+) -> SchoolClass:
     school_class = SchoolClass(
+        entry_year=entry_year,
         grade_no=grade_no,
         class_no=class_no,
-        class_name=f"{grade_no}{class_no:02d}班",
+        class_name=format_class_name(grade_no, class_no),
         class_code=generate_unique_class_code(session),
         head_teacher_name=head_teacher_name,
         default_room_id=room.id,
@@ -264,7 +277,8 @@ def create_students_for_class(session, school_class: SchoolClass, names: list[st
                 grade_no=school_class.grade_no,
                 class_id=school_class.id,
                 gender="未知",
-                entry_year=2026 - (school_class.grade_no - 6),
+                # 届别以班级为准，学生自己不再单独推导（历史上这里硬编码 2026 且差一年）。
+                entry_year=school_class.entry_year,
             )
         )
         students.append(user)
@@ -435,7 +449,69 @@ def ensure_runtime_schema() -> None:
         # 重建后列集合已变化，重新探测，避免下面重复 ADD COLUMN
         lesson_plan_columns = {column["name"] for column in inspect(engine).get_columns("lesson_plans")}
 
+    # 班级跟届走改造：旧库的 school_classes 只有 class_name 唯一约束、没有 entry_year。
+    # 身份要改为 (entry_year, class_no)，而 SQLite 无法就地删除 UNIQUE 约束，只能重建表。
+    if engine.dialect.name == "sqlite" and "school_classes" in table_names and "entry_year" not in school_class_columns:
+        with engine.connect() as connection:
+            connection.execute(text("PRAGMA foreign_keys=OFF"))
+            connection.commit()
+            with connection.begin():
+                connection.execute(
+                    text(
+                        """
+                        CREATE TABLE school_classes_runtime_new (
+                            id INTEGER NOT NULL,
+                            entry_year INTEGER NOT NULL,
+                            grade_no INTEGER NOT NULL,
+                            class_no INTEGER NOT NULL,
+                            class_name VARCHAR(50) NOT NULL,
+                            class_code VARCHAR(12),
+                            head_teacher_name VARCHAR(100),
+                            default_room_id INTEGER,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+                            PRIMARY KEY (id),
+                            CONSTRAINT uq_school_classes_entry_year_class_no UNIQUE (entry_year, class_no),
+                            FOREIGN KEY(default_room_id) REFERENCES computer_rooms (id)
+                        )
+                        """
+                    )
+                )
+                # entry_year 由年级反推：七年级为当年入学，每高一年级早一年。
+                # 不回填学生表里的现有值——那批值本身来自旧的错误公式，普遍差一年。
+                connection.execute(
+                    text(
+                        """
+                        INSERT INTO school_classes_runtime_new (
+                            id, entry_year, grade_no, class_no, class_name, class_code,
+                            head_teacher_name, default_room_id, created_at, updated_at
+                        )
+                        SELECT
+                            id,
+                            CAST(strftime('%Y', 'now') AS INTEGER) - (grade_no - 7),
+                            grade_no, class_no, class_name, class_code,
+                            head_teacher_name, default_room_id, created_at, updated_at
+                        FROM school_classes
+                        """
+                    )
+                )
+                connection.execute(text("DROP TABLE school_classes"))
+                connection.execute(text("ALTER TABLE school_classes_runtime_new RENAME TO school_classes"))
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+            connection.commit()
+        # 重建后列集合已变化，重新探测，避免下面重复 ADD COLUMN / 重复建索引
+        school_class_columns = {column["name"] for column in inspect(engine).get_columns("school_classes")}
+
     with engine.begin() as connection:
+        if "entry_year" not in school_class_columns:
+            connection.execute(
+                text("ALTER TABLE school_classes ADD COLUMN entry_year INTEGER NOT NULL DEFAULT 0")
+            )
+            connection.execute(
+                text(
+                    "UPDATE school_classes SET entry_year = CAST(strftime('%Y', 'now') AS INTEGER) - (grade_no - 7)"
+                )
+            )
         if "class_code" not in school_class_columns:
             connection.execute(
                 text("ALTER TABLE school_classes ADD COLUMN class_code VARCHAR(12)")
@@ -443,6 +519,13 @@ def ensure_runtime_schema() -> None:
         if "is_hidden" not in lesson_plan_columns:
             connection.execute(
                 text("ALTER TABLE lesson_plans ADD COLUMN is_hidden BOOLEAN NOT NULL DEFAULT 0")
+            )
+        if "semester_key" not in lesson_plan_columns:
+            connection.execute(
+                text("ALTER TABLE lesson_plans ADD COLUMN semester_key VARCHAR(16)")
+            )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_lesson_plans_semester_key ON lesson_plans (semester_key)")
             )
         if "is_active" not in task_columns:
             connection.execute(
@@ -499,6 +582,29 @@ def ensure_runtime_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_submissions_group_id ON submissions (group_id)"))
         connection.execute(
             text("CREATE UNIQUE INDEX IF NOT EXISTS ix_school_classes_class_code ON school_classes (class_code)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_school_classes_entry_year ON school_classes (entry_year)")
+        )
+        # 学生的届别以所属班级为准（幂等）：班级跟届走后年级会随升班变化，
+        # 而届别不变，历史库里的 student_profiles.entry_year 来自旧的错误公式，需要对齐一次。
+        connection.execute(
+            text(
+                """
+                UPDATE student_profiles
+                SET entry_year = (
+                    SELECT school_classes.entry_year
+                    FROM school_classes
+                    WHERE school_classes.id = student_profiles.class_id
+                )
+                WHERE class_id IN (SELECT id FROM school_classes)
+                  AND entry_year IS NOT (
+                    SELECT school_classes.entry_year
+                    FROM school_classes
+                    WHERE school_classes.id = student_profiles.class_id
+                  )
+                """
+            )
         )
         if task_template_columns:
             connection.execute(
@@ -583,6 +689,9 @@ def seed_lesson_plans(session, lessons: dict[str, CurriculumLesson]) -> list[Les
         LessonPlan(id=18, lesson_id=lessons["grade8_iot"].id, title="八下第二单元 第6课 物联网", status="active", assigned_date=date(2026, 3, 28)),
         LessonPlan(id=22, lesson_id=lessons["grade8_sensing"].id, title="八下第二单元 第7课 智能感知", status="published", assigned_date=date(2026, 3, 30)),
     ]
+    # 演示学案的所属学期同样由发布日期推导，保证种子数据与生产回填口径一致。
+    for plan in plans:
+        plan.semester_key = resolve_semester_key_for_date(plan.assigned_date)
     session.add_all(plans)
     session.flush()
 
@@ -1244,12 +1353,13 @@ def seed_fresh_demo_data(session) -> None:
         "t2": create_staff_user(session, "t2", "教师2", "信息科技教师", False),
     }
 
+    demo_school_year = default_current_school_year()
     classes_by_name = {
-        "701班": create_class(session, 7, 1, room_by_name["七年级机房A"], "教师1"),
-        "702班": create_class(session, 7, 2, room_by_name["七年级机房A"], "教师1"),
-        "703班": create_class(session, 7, 3, room_by_name["七年级机房B"], "教师2"),
-        "809班": create_class(session, 8, 9, room_by_name["八年级机房A"], "教师2"),
-        "812班": create_class(session, 8, 12, room_by_name["八年级机房B"], None),
+        "701班": create_class(session, 7, 1, room_by_name["七年级机房A"], "教师1", resolve_entry_year(7, demo_school_year)),
+        "702班": create_class(session, 7, 2, room_by_name["七年级机房A"], "教师1", resolve_entry_year(7, demo_school_year)),
+        "703班": create_class(session, 7, 3, room_by_name["七年级机房B"], "教师2", resolve_entry_year(7, demo_school_year)),
+        "809班": create_class(session, 8, 9, room_by_name["八年级机房A"], "教师2", resolve_entry_year(8, demo_school_year)),
+        "812班": create_class(session, 8, 12, room_by_name["八年级机房B"], None, resolve_entry_year(8, demo_school_year)),
     }
 
     create_teacher_class_assignments(session, teachers["t1"], [classes_by_name["701班"], classes_by_name["702班"]])
@@ -1358,6 +1468,27 @@ def ensure_class_codes(session) -> int:
     return filled
 
 
+def backfill_lesson_plan_semester_keys(session) -> int:
+    """为历史学案按发布日期补所属学期（幂等）。
+
+    学期是新增概念，旧学案的 semester_key 为空。这里按 assigned_date
+    推导一次就冻结，之后不再改动——管理员滚动「当前学期」设置时，
+    历史学案仍归属它当初所在的学期。
+    """
+    plans = session.scalars(
+        select(LessonPlan).where(LessonPlan.semester_key.is_(None))
+    ).all()
+    filled = 0
+    for plan in plans:
+        if plan.assigned_date is None:
+            continue
+        plan.semester_key = resolve_semester_key_for_date(plan.assigned_date)
+        filled += 1
+    if filled:
+        session.commit()
+    return filled
+
+
 def ensure_default_portrait_template(session) -> None:
     """首次启动时写入一份系统默认画像模板；已有系统模板则不重复创建。"""
     existing = session.scalar(
@@ -1389,3 +1520,4 @@ def init_db() -> None:
         ensure_default_portrait_template(session)
         migrate_ai_provider_api_keys(session)
         ensure_class_codes(session)
+        backfill_lesson_plan_semester_keys(session)

@@ -46,6 +46,13 @@
 
           <div class="sf-toolbar">
             <n-select
+              v-model:value="selectedSemester"
+              class="filter-select filter-select--wide"
+              clearable
+              :options="semesterOptions"
+              placeholder="全部学期"
+            />
+            <n-select
               v-model:value="selectedCourse"
               :options="courseOptions.map((option) => ({ label: option, value: option }))"
               class="filter-select"
@@ -188,6 +195,12 @@ import StaffPageHead from '@/components/staff/StaffPageHead.vue';
 import StaffStatStrip, { type StaffStatItem } from '@/components/staff/StaffStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage } from '@/ui/feedback';
+import {
+  MAX_SEMESTER_NO,
+  MIN_SEMESTER_NO,
+  formatSemesterKey,
+  formatSemesterKeyLabel,
+} from '@/utils/semester';
 
 defineProps<{
   eyebrow?: string;
@@ -239,6 +252,8 @@ type StudentSummaryPayload = {
 };
 
 type OverviewPayload = {
+  semester_key: string | null;
+  current_semester_key: string | null;
   summary: {
     task_count: number;
     submission_count: number;
@@ -256,12 +271,13 @@ const overview = ref<OverviewPayload | null>(null);
 const activeTab = ref<'pending' | 'all'>('pending');
 const selectedCourse = ref('');
 const selectedLesson = ref('');
+// 学期筛选：空串表示全部学期；成绩汇总按学期统计，默认跟随当前学期。
+const selectedSemester = ref('');
 const isLoading = ref(true);
 const isExportingStudentSummary = ref(false);
 const errorMessage = ref('');
 
-const overviewItems = computed(() => overview.value?.items || []);
-const studentSummaryItems = computed(() =>
+const overviewItems = computed(() => overview.value?.items || []);const studentSummaryItems = computed(() =>
   [...(overview.value?.student_summary?.items || [])].sort((a, b) => {
     if (b.pending_count !== a.pending_count) {
       return b.pending_count - a.pending_count;
@@ -299,17 +315,20 @@ const latestSubmitted = computed(() => {
 
 const pageSummary = computed(() => {
   const summary = overview.value?.summary;
+  const semesterLabel = selectedSemester.value
+    ? `统计范围：${formatSemesterKeyLabel(selectedSemester.value)}`
+    : '统计范围：全部学期';
   if (!summary) {
-    return '汇总所有已有学生提交的活动，优先处理未评阅的作品。';
+    return `汇总学生提交的活动，优先处理未评阅的作品。${semesterLabel}`;
   }
   if (!summary.submission_count) {
-    return '还没有学生提交作品，提交后会进入待批队列。';
+    return `${semesterLabel}，还没有学生提交作品，提交后会进入待批队列。`;
   }
   const pending = summary.pending_count;
   if (!pending) {
-    return `${summary.submission_count} 份作品已全部批改完成，最近提交 ${formatRelative(latestSubmitted.value)}`;
+    return `${semesterLabel} · ${summary.submission_count} 份作品已全部批改完成，最近提交 ${formatRelative(latestSubmitted.value)}`;
   }
-  return `${pending} 份作品待评阅，分布在 ${pendingItems.value.length} 个活动 · 最近提交 ${formatRelative(latestSubmitted.value)}`;
+  return `${semesterLabel} · ${pending} 份作品待评阅，分布在 ${pendingItems.value.length} 个活动 · 最近提交 ${formatRelative(latestSubmitted.value)}`;
 });
 
 const statItems = computed<StaffStatItem[]>(() => {
@@ -364,6 +383,32 @@ const lessonOptions = computed(() => {
 
 const hasFilters = computed(() => Boolean(selectedCourse.value || selectedLesson.value));
 
+/**
+ * 学期下拉选项：以当前学期为基准给出相邻两个学年，
+ * 并把后端回传的当前统计学期并入，避免选项里选不中正在看的那一学期。
+ */
+const semesterOptions = computed(() => {
+  const options: Array<{ label: string; value: string }> = [];
+  const seen = new Set<string>();
+  const pushOption = (semesterKey: string | null | undefined) => {
+    if (!semesterKey || seen.has(semesterKey)) {
+      return;
+    }
+    seen.add(semesterKey);
+    options.push({ label: formatSemesterKeyLabel(semesterKey), value: semesterKey });
+  };
+
+  pushOption(overview.value?.current_semester_key);
+  pushOption(overview.value?.semester_key);
+  const schoolYear = Number((overview.value?.current_semester_key || '').split('-')[0]);
+  if (Number.isFinite(schoolYear)) {
+    [schoolYear, schoolYear - 1].forEach((year) => {
+      [MIN_SEMESTER_NO, MAX_SEMESTER_NO].forEach((semesterNo) => pushOption(formatSemesterKey(year, semesterNo)));
+    });
+  }
+  return options;
+});
+
 const filteredItems = computed(() => {
   return queueItems.value.filter((item) => {
     if (activeTab.value === 'pending' && item.pending_count <= 0) {
@@ -415,6 +460,11 @@ function resetFilters() {
   selectedLesson.value = '';
 }
 
+/** 学期是服务端过滤条件（成绩汇总按学期统计），切换后需要重新拉取。 */
+function buildSemesterQuery() {
+  return selectedSemester.value ? `?semester_key=${encodeURIComponent(selectedSemester.value)}` : '';
+}
+
 function extractFilename(disposition: string | null, fallback: string) {
   if (!disposition) {
     return fallback;
@@ -443,7 +493,10 @@ async function downloadStudentSummary() {
 
   isExportingStudentSummary.value = true;
   try {
-    const response = await apiGetBlob('/submissions/teacher/students/export', authStore.token);
+    const response = await apiGetBlob(
+      `/submissions/teacher/students/export${buildSemesterQuery()}`,
+      authStore.token
+    );
     const blob = await response.blob();
     const filename = extractFilename(
       response.headers.get('content-disposition'),
@@ -474,7 +527,14 @@ async function loadOverview() {
   errorMessage.value = '';
 
   try {
-    overview.value = await apiGet<OverviewPayload>('/submissions/teacher', authStore.token);
+    overview.value = await apiGet<OverviewPayload>(
+      `/submissions/teacher${buildSemesterQuery()}`,
+      authStore.token
+    );
+    // 首次加载把筛选器对到后端实际生效的学期，用户看到的就是正在统计的范围。
+    if (!selectedSemester.value && overview.value.current_semester_key) {
+      selectedSemester.value = overview.value.semester_key ?? '';
+    }
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '加载作品总览失败';
   } finally {
@@ -496,6 +556,13 @@ watch(lessonOptions, (options) => {
   if (selectedLesson.value && !options.some((option) => option.value === selectedLesson.value)) {
     selectedLesson.value = '';
   }
+});
+
+// 学期是服务端过滤条件，切换后重新拉取（且清掉依赖旧数据的课次选择）。
+watch(selectedSemester, () => {
+  selectedCourse.value = '';
+  selectedLesson.value = '';
+  void loadOverview();
 });
 
 onMounted(loadOverview);

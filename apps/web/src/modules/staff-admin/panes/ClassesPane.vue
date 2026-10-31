@@ -27,7 +27,8 @@
           @update:page="classListPage = $event"
           @update:pageSize="classListPageSize = $event"
         >
-          <SaTableColumn label="班级" min-width="110" prop="class_name" />
+          <SaTableColumn label="班级" min-width="140" prop="class_label" />
+          <SaTableColumn label="入学年份" min-width="90" prop="entry_year" />
           <SaTableColumn label="年级" min-width="76" prop="grade_no" />
           <SaTableColumn label="班主任" min-width="110">
             <template #default="{ row }">{{ row.head_teacher_name || '—' }}</template>
@@ -57,7 +58,16 @@
 
     <n-modal v-model:show="classDialogVisible" :title="editingClassId ? '编辑班级' : '新增班级'" preset="card" style="width: 520px">
       <n-form label-placement="top">
-        <n-form-item label="年级"><n-input-number v-model:value="classForm.grade_no" :max="12" :min="1" /></n-form-item>
+        <n-form-item label="入学年份（届）">
+          <n-input-number v-model:value="classForm.entry_year" :max="2100" :min="2000" />
+          <template #feedback>
+            该届学生的入学年份，例如 2026 届填 2026。班级跟届走，升班时不变。
+          </template>
+        </n-form-item>
+        <n-form-item label="年级">
+          <n-tag round type="info">{{ derivedGradeLabel }}</n-tag>
+          <template #feedback>由「当前学年 − 入学年份 + 7」推导，升班时更新。</template>
+        </n-form-item>
         <n-form-item label="班号"><n-input-number v-model:value="classForm.class_no" :max="99" :min="1" /></n-form-item>
         <n-form-item label="班主任"><n-input v-model:value="classForm.head_teacher_name" /></n-form-item>
         <n-form-item label="默认机房">
@@ -118,11 +128,11 @@
           <n-input
             v-model:value="classBatchForm.lines"
             :rows="10"
-            placeholder="格式：年级,班号,班主任(可选),默认机房ID(可选)&#10;示例：7,4,教师4,1"
+            placeholder="格式：入学年份,班号,班主任(可选),默认机房ID(可选)&#10;示例：2026,4,教师4,1"
             type="textarea"
           />
         </n-form-item>
-        <n-form-item label="覆盖同名班级">
+        <n-form-item label="覆盖该届该班号已存在的班级">
           <n-switch v-model:value="classBatchForm.overwrite_existing" />
         </n-form-item>
       </n-form>
@@ -145,8 +155,9 @@ import { apiDelete, apiPost, apiPut } from '@/api/http';
 import SaDataTable from '@/components/sa/SaDataTable.vue';
 import SaTableColumn from '@/components/sa/SaTableColumn.vue';
 import { useAuthStore } from '@/stores/auth';
+import { formatGrade, resolveGradeNo } from '@/utils/grade';
 import type { BootstrapPayload, ClassProfileEditPermissions } from '../adminTypes';
-import { useAdminBootstrap } from '../composables/useAdminBootstrap';
+import { currentSchoolYearFallback, useAdminBootstrap } from '../composables/useAdminBootstrap';
 
 const authStore = useAuthStore();
 const { bootstrap, roomOptions } = useAdminBootstrap();
@@ -173,7 +184,13 @@ const isSavingClassBatch = ref(false);
 const isSavingClassProfilePermission = ref(false);
 const editingClassId = ref<number | null>(null);
 const editingClassProfilePermissionId = ref<number | null>(null);
-const classForm = ref({ grade_no: 7, class_no: 1, head_teacher_name: '', default_room_id: null as number | null });
+// 年级不是独立输入：它由「入学年份 + 当前学年」推导，避免填出「2026 届的九年级」。
+const classForm = ref({
+  entry_year: currentSchoolYearFallback(),
+  class_no: 1,
+  head_teacher_name: '',
+  default_room_id: null as number | null,
+});
 const classProfilePermissionForm = ref<ClassProfileEditPermissions>({ ...defaultClassProfileEditPermissions });
 const classBatchForm = ref({ lines: '', overwrite_existing: false });
 
@@ -188,8 +205,11 @@ const editingClassProfilePermissionName = computed(() => {
   if (!classId) {
     return '';
   }
-  return bootstrap.value?.classes.find((item) => item.id === classId)?.class_name || '';
+  return bootstrap.value?.classes.find((item) => item.id === classId)?.class_label || '';
 });
+
+/** 表单里展示推导出的年级：班级跟届走时年级 = 当前学年 − 入学年份 + 7。 */
+const derivedGradeLabel = computed(() => formatGrade(resolveGradeNo(classForm.value.entry_year)));
 
 function isDialogCancelled(error: unknown) {
   return error === 'cancel' || error === 'close';
@@ -228,8 +248,18 @@ function profilePermissionSummary(item: BootstrapPayload['classes'][number]) {
 function openClassDialog(item?: BootstrapPayload['classes'][number]) {
   editingClassId.value = item?.id ?? null;
   classForm.value = item
-    ? { grade_no: item.grade_no, class_no: item.class_no, head_teacher_name: item.head_teacher_name || '', default_room_id: item.default_room_id }
-    : { grade_no: 7, class_no: 1, head_teacher_name: '', default_room_id: null };
+    ? {
+        entry_year: item.entry_year,
+        class_no: item.class_no,
+        head_teacher_name: item.head_teacher_name || '',
+        default_room_id: item.default_room_id,
+      }
+    : {
+        entry_year: currentSchoolYearFallback(),
+        class_no: 1,
+        head_teacher_name: '',
+        default_room_id: null,
+      };
   classDialogVisible.value = true;
 }
 
@@ -245,7 +275,12 @@ function openClassBatchDialog() {
 }
 
 function parseClassBatchLines(lines: string) {
-  const parsedItems: Array<{ grade_no: number; class_no: number; head_teacher_name: string; default_room_id: number | null }> = [];
+  const parsedItems: Array<{
+    entry_year: number;
+    class_no: number;
+    head_teacher_name: string;
+    default_room_id: number | null;
+  }> = [];
   const rawLines = lines.split(/\r?\n/);
   rawLines.forEach((rawLine, index) => {
     const text = rawLine.trim();
@@ -254,12 +289,12 @@ function parseClassBatchLines(lines: string) {
     }
     const parts = text.split(/[,\t，]+/).map((item) => item.trim());
     if (parts.length < 2) {
-      throw new Error(`第 ${index + 1} 行格式不正确，至少需要“年级,班号”`);
+      throw new Error(`第 ${index + 1} 行格式不正确，至少需要“入学年份,班号”`);
     }
-    const gradeNo = Number(parts[0]);
+    const entryYear = Number(parts[0]);
     const classNo = Number(parts[1]);
-    if (!Number.isInteger(gradeNo) || gradeNo < 1 || gradeNo > 12) {
-      throw new Error(`第 ${index + 1} 行的年级必须是 1-12 的整数`);
+    if (!Number.isInteger(entryYear) || entryYear < 2000 || entryYear > 2100) {
+      throw new Error(`第 ${index + 1} 行的入学年份必须是 2000-2100 的整数`);
     }
     if (!Number.isInteger(classNo) || classNo < 1 || classNo > 99) {
       throw new Error(`第 ${index + 1} 行的班号必须是 1-99 的整数`);
@@ -272,8 +307,9 @@ function parseClassBatchLines(lines: string) {
       }
       defaultRoomId = parsedRoomId;
     }
+    // 年级不在这里输入：后端按「当前学年 − 入学年份 + 7」推导。
     parsedItems.push({
-      grade_no: gradeNo,
+      entry_year: entryYear,
       class_no: classNo,
       head_teacher_name: parts[2] || '',
       default_room_id: defaultRoomId,
@@ -313,7 +349,12 @@ async function saveClassProfilePermissions() {
 
 async function saveClassBatch() {
   if (!authStore.token) return;
-  let items: Array<{ grade_no: number; class_no: number; head_teacher_name: string; default_room_id: number | null }> = [];
+  let items: Array<{
+    entry_year: number;
+    class_no: number;
+    head_teacher_name: string;
+    default_room_id: number | null;
+  }> = [];
   try {
     items = parseClassBatchLines(classBatchForm.value.lines);
   } catch (error) {

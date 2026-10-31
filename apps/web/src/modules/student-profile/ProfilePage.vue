@@ -289,6 +289,7 @@ import StudentPanel from '@/components/student/StudentPanel.vue';
 import StudentStatStrip, { type StudentStatItem } from '@/components/student/StudentStatStrip.vue';
 import { useAuthStore } from '@/stores/auth';
 import { formatDateTime as formatDateTimeValue } from '@/utils/datetime';
+import { formatCohort, formatGrade } from '@/utils/grade';
 
 type ProfileEditPermissions = {
   can_edit_name: boolean;
@@ -479,7 +480,7 @@ const statItems = computed<StudentStatItem[]>(() => {
     {
       label: '班级',
       value: profile?.class_name ?? '--',
-      note: `${profile?.grade_no ?? '--'} 年级 · 学号 ${profile?.student_no ?? '--'}`,
+      note: `${formatGrade(profile?.grade_no)} · 学号 ${profile?.student_no ?? '--'}`,
     },
     {
       label: '累计签到',
@@ -509,9 +510,9 @@ const infoRows = computed(() => {
     { label: '姓名', value: profile.name, note: '' },
     { label: '学号', value: profile.student_no, note: '' },
     { label: '登录账号', value: profile.username, note: '' },
-    { label: '班级', value: profile.class_name, note: `${profile.grade_no} 年级` },
+    { label: '班级', value: profile.class_name, note: formatGrade(profile.grade_no) },
     { label: '性别', value: profile.gender, note: '' },
-    { label: '入学年份', value: `${profile.entry_year} 年`, note: '' },
+    { label: '入学年份', value: formatCohort(profile.entry_year), note: '' },
   ];
 });
 

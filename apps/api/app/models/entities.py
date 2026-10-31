@@ -52,11 +52,18 @@ class ComputerSeat(TimestampMixin, Base):
 
 class SchoolClass(TimestampMixin, Base):
     __tablename__ = "school_classes"
+    # 班级跟届走：同一届的班级三年内是同一行记录，grade_no 随升班递增，
+    # 因此身份由 (entry_year, class_no) 决定，class_name 里的年级只是会变的派生量，
+    # 不能作为唯一键（同一班号在不同届可以重名）。
+    __table_args__ = (
+        UniqueConstraint("entry_year", "class_no", name="uq_school_classes_entry_year_class_no"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    entry_year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     grade_no: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     class_no: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    class_name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    class_name: Mapped[str] = mapped_column(String(50), nullable=False)
     # 班级码：学生登录页换取本班名单的短口令，可为空以兼容尚未回填的历史库。
     class_code: Mapped[str | None] = mapped_column(String(12), nullable=True, unique=True, index=True)
     head_teacher_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -678,6 +685,9 @@ class LessonPlan(TimestampMixin, Base):
     # 下架开关：与 status 生命周期正交，只控制学生/访客端是否可见
     is_hidden: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     assigned_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # 所属学期：学案创建时冻结的学期标识（如 "2026-1"），不随「当前学期」设置滚动。
+    # 为空表示历史数据尚未归属学期，回填前按 assigned_date 推导。
+    semester_key: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
 
     lesson: Mapped[CurriculumLesson | None] = relationship(back_populates="lesson_plans")
     tasks: Mapped[list[Task]] = relationship(back_populates="lesson_plan")

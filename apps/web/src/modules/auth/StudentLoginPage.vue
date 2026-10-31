@@ -57,7 +57,7 @@
                 type="button"
                 @click="openRosterByClass(item)"
               >
-                {{ item.class_name }}
+                {{ item.class_label }}
               </button>
             </div>
             <n-empty v-else :description="classLoadError ? '班级列表加载失败' : '还没有可选的班级'" size="small" />
@@ -183,6 +183,7 @@ import { apiGet, apiPost } from '@/api/http';
 import SaPanel from '@/components/sa/SaPanel.vue';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
+import { formatGrade } from '@/utils/grade';
 
 type LoginPayload = {
   access_token: string;
@@ -190,7 +191,14 @@ type LoginPayload = {
   user: { id: string; username: string; display_name: string; role: string; roles: string[] };
 };
 
-type ClassOptionItem = { id: number; class_name: string; grade_no: number; class_no: number };
+type ClassOptionItem = {
+  id: number;
+  class_name: string;
+  class_label: string;
+  entry_year: number;
+  grade_no: number;
+  class_no: number;
+};
 type ClassOptionGrade = { grade_no: number; classes: ClassOptionItem[] };
 
 type RosterStudent = {
@@ -233,7 +241,7 @@ const isNamePickingStep = computed(() => step.value !== 'class');
 
 const gradeFilters = computed(() => [
   { label: '全部', value: null as number | null },
-  ...classOptions.value.map((item) => ({ label: `${item.grade_no} 年级`, value: item.grade_no as number | null })),
+  ...classOptions.value.map((item) => ({ label: formatGrade(item.grade_no), value: item.grade_no as number | null })),
 ]);
 
 const visibleClasses = computed(() => {

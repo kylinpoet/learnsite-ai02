@@ -148,6 +148,8 @@ import { ElMessage } from '@/ui/feedback';
 type AttendanceClassItem = {
   id: number;
   class_name: string;
+  class_label: string;
+  entry_year: number;
   grade_no: number;
   class_no: number;
   student_count: number;
@@ -203,7 +205,7 @@ const filters = ref({
 
 const classOptions = computed(() =>
   (attendance.value?.classes || []).map((item) => ({
-    label: `${item.class_name} · 已到 ${item.present_count}/${item.student_count}`,
+    label: `${item.class_label} · 已到 ${item.present_count}/${item.student_count}`,
     value: item.id,
   })),
 );

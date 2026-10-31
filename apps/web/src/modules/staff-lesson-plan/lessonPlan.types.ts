@@ -4,6 +4,10 @@ export type PlanSummary = {
   status: string;
   is_hidden: boolean;
   assigned_date: string;
+  /** 所属学期标识（如 "2026-1"），为空表示尚未归属学期。 */
+  semester_key: string | null;
+  /** 所属学期展示名，如「2026学年第一学期」。 */
+  semester_label: string;
   task_count: number;
   preview_image_url?: string | null;
   content_excerpt?: string;
@@ -113,6 +117,8 @@ export type LessonPlanDraftState = {
   content: string;
   content_mode: 'visual' | 'source';
   assigned_date: string;
+  /** 所属学期标识；为空时后端按「当前学期」设置归类。 */
+  semester_key: string | null;
   status: string;
   is_hidden: boolean;
   tasks: PlanFormTask[];

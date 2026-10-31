@@ -4,6 +4,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from '@/api/http';
 import { useAppStore } from '@/stores/app';
 import { useAuthStore } from '@/stores/auth';
 import { ElMessage, ElMessageBox } from '@/ui/feedback';
+import { currentSemesterNo } from '@/utils/semester';
 import type {
   AIProviderModelDiscoveryResult,
   AIProviderRecord,
@@ -11,6 +12,7 @@ import type {
   AssistantRuntimeSettings,
   BootstrapPayload,
   PromotionPreviewPayload,
+  PromotionResultPayload,
 } from '../adminTypes';
 
 export const AI_PROVIDER_CONFIG_UPDATED_EVENT = 'learnsite:ai-provider-config-updated';
@@ -20,6 +22,8 @@ export type SystemFormState = {
   platform_name: string;
   school_name: string;
   active_grade_nos: number[];
+  current_school_year: number;
+  current_semester_no: number;
   theme_code: string;
   student_register_enabled: boolean;
   assistant_enabled: boolean;
@@ -32,6 +36,12 @@ export type SystemFormState = {
   class_transfer_unreview_reason_presets_text: string;
 };
 
+/** 按校历推算当前学年：9 月开学进入新学年。 */
+export function currentSchoolYearFallback() {
+  const now = new Date();
+  return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+}
+
 // 模块级单例：nav 计数、外壳与各 pane 共享同一份数据。
 const bootstrap = ref<BootstrapPayload | null>(null);
 const aiProviders = ref<AIProviderRecord[]>([]);
@@ -39,6 +49,8 @@ const systemForm = ref<SystemFormState>({
   platform_name: 'OW³教学评AI平台',
   school_name: '',
   active_grade_nos: [],
+  current_school_year: currentSchoolYearFallback(),
+  current_semester_no: currentSemesterNo(),
   theme_code: 'emblem',
   student_register_enabled: false,
   assistant_enabled: false,
@@ -63,8 +75,6 @@ const assistantRuntimeForm = ref<AssistantRuntimeSettings>({
 const promotionForm = ref({
   source_class_ids: [] as number[],
   grade_increment: 1,
-  copy_teacher_assignments: true,
-  archive_source_classes: true,
 });
 const promotionPreview = ref<PromotionPreviewPayload | null>(null);
 const isLoading = ref(true);
@@ -92,18 +102,19 @@ export function useAdminBootstrap() {
   const themeOptions = computed(() =>
     (bootstrap.value?.theme_presets ?? []).map((item) => ({ label: item.name, value: item.code }))
   );
+  // 班级跟届走后同一班号可能跨届重名，选择器与列表统一用带届别的标签消歧。
   const classOptions = computed(() =>
-    (bootstrap.value?.classes ?? []).map((item) => ({ label: item.class_name, value: item.id }))
+    (bootstrap.value?.classes ?? []).map((item) => ({ label: item.class_label, value: item.id }))
   );
   const classOptionsWithCount = computed(() =>
     (bootstrap.value?.classes ?? []).map((item) => ({
-      label: `${item.class_name}（${item.student_count}人）`,
+      label: `${item.class_label}（${item.student_count}人）`,
       value: item.id,
     }))
   );
   const classOptionsWithSpacedCount = computed(() =>
     (bootstrap.value?.classes ?? []).map((item) => ({
-      label: `${item.class_name}（${item.student_count} 人）`,
+      label: `${item.class_label}（${item.student_count} 人）`,
       value: item.id,
     }))
   );
@@ -180,27 +191,21 @@ export function useAdminBootstrap() {
       return;
     }
 
-    await ElMessageBox.confirm('确认执行升班吗？该操作会迁移学生并可能归档原班级。');
+    await ElMessageBox.confirm(
+      '确认执行升班吗？班级将原地升入下一年级，学生与班级归属保持不变；修完九年级的班级会被归档。'
+    );
     isExecutingPromotion.value = true;
     try {
       const payload = await apiPost<
         BootstrapPayload & {
           promotion_preview?: PromotionPreviewPayload;
-          promotion_result?: {
-            moved_student_count: number;
-            created_target_count: number;
-            reused_target_count: number;
-            archived_count: number;
-            blocked_count: number;
-          };
+          promotion_result?: PromotionResultPayload;
         }
       >(
         '/settings/admin/promotions/execute',
         {
           source_class_ids: [...promotionForm.value.source_class_ids],
           grade_increment: promotionForm.value.grade_increment,
-          copy_teacher_assignments: promotionForm.value.copy_teacher_assignments,
-          archive_source_classes: promotionForm.value.archive_source_classes,
         },
         authStore.token
       );
@@ -209,8 +214,9 @@ export function useAdminBootstrap() {
       promotionPreview.value = payload.promotion_preview || null;
       const result = payload.promotion_result;
       if (result) {
+        const graduateNote = result.graduated_count ? `，归档毕业班级 ${result.graduated_count} 个` : '';
         ElMessage.success(
-          `升班完成：迁移 ${result.moved_student_count} 人，新建 ${result.created_target_count} 班，归档 ${result.archived_count} 班`
+          `升班完成：${result.promoted_class_count} 个班级升入新年级（涉及 ${result.promoted_student_count} 名学生）${graduateNote}`
         );
       } else {
         ElMessage.success('升班活动已完成');

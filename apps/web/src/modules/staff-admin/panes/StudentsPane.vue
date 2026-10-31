@@ -69,7 +69,7 @@
           <SaTableColumn label="学号" min-width="110" prop="student_no" />
           <SaTableColumn label="账号" min-width="110" prop="username" />
           <SaTableColumn label="姓名" min-width="120" prop="display_name" />
-          <SaTableColumn label="班级" min-width="120" prop="class_name" />
+          <SaTableColumn label="班级" min-width="160" prop="class_label" />
           <SaTableColumn label="状态" min-width="90">
             <template #default="{ row }">
               <span :class="['sf-pill', row.is_active ? 'sf-pill--pos' : 'sf-pill--warn']">
@@ -108,7 +108,11 @@
             <n-button secondary @click="openStudentImportPicker">选择文件</n-button>
             <span class="section-note">{{ selectedStudentImportFileName || '未选择文件' }}</span>
           </div>
-          <p class="section-note">支持 .csv / .txt / .tsv / .xlsx；表头需包含姓名 + 学号或账号 + 班级（或年级与班号）。</p>
+          <p class="section-note">
+            支持 .csv / .txt / .tsv / .xlsx；表头需包含姓名 + 学号或账号 + 班级。
+            「班级」列填班号（如 01）；「入学年份」决定学生属于哪一届，留空按当前学年处理。
+            该届该班号还不存在时会自动建班。
+          </p>
         </n-form-item>
         <n-form-item label="默认初始密码">
           <n-input v-model:value="studentImportForm.default_password" placeholder="不少于 6 位" />

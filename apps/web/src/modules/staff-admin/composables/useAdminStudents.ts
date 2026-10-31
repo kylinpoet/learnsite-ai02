@@ -52,6 +52,8 @@ export function useAdminStudents(bootstrap: { value: BootstrapPayload | null }) 
         item.username,
         item.display_name,
         item.class_name,
+        item.class_label,
+        item.entry_year ? `${item.entry_year}届` : '',
       ].some((text) => (text || '').toLowerCase().includes(keyword));
     });
   });
@@ -184,7 +186,10 @@ export function useAdminStudents(bootstrap: { value: BootstrapPayload | null }) 
       bootstrap.value = payload;
       const result = payload.import_result;
       if (result) {
-        const summary = `导入完成：新增 ${result.created_count}，更新 ${result.updated_count}，跳过 ${result.skipped_count}`;
+        const autoClassNote = result.created_class_count
+          ? `，自动新建班级 ${result.created_class_count} 个（${(result.created_class_labels ?? []).join('、')}）`
+          : '';
+        const summary = `导入完成：新增 ${result.created_count}，更新 ${result.updated_count}，跳过 ${result.skipped_count}${autoClassNote}`;
         const successCount = result.created_count + result.updated_count;
         if (result.skipped_count > 0) {
           if (successCount > 0) {

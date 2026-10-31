@@ -104,7 +104,7 @@ const selectedPlan = computed(() => props.plans.find((item) => item.id === props
 
 const classOptions = computed(() =>
   props.classes.map((item) => ({
-    label: `${item.grade_no} 年级 ${item.class_name} · ${item.student_count} 人`,
+    label: `${item.class_label} · ${item.student_count} 人`,
     value: item.id,
   })),
 );

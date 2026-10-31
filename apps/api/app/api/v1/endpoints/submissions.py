@@ -28,9 +28,11 @@ from app.models import (
 )
 from app.schemas.common import ApiResponse
 from app.services.group_operation_logs import log_group_operation
+from app.services.semester import format_semester_key_label, normalize_semester_key
 from app.services.staff_access import get_accessible_class_ids, is_admin_staff
 from app.services.student_groups import load_student_group_membership
 from app.services.submission_files import guess_media_type, is_previewable_file, stored_file_path
+from app.services.system_settings import read_current_semester_key
 
 router = APIRouter()
 
@@ -237,6 +239,8 @@ def serialize_teacher_task_item(task: Task, submissions_override: list[Submissio
         "course_id": plan.id,
         "course_title": plan.title,
         "assigned_date": plan.assigned_date.isoformat(),
+        "semester_key": plan.semester_key,
+        "semester_label": format_semester_key_label(plan.semester_key),
         "lesson_title": lesson.title,
         "unit_title": lesson.unit.title,
         "submission_count": len(submissions),
@@ -282,12 +286,19 @@ def serialize_teacher_submission(submission: Submission) -> dict:
 def build_teacher_overview_task_submissions(
     staff: User,
     db: Session,
+    *,
+    semester_key: str | None = None,
 ) -> tuple[list[tuple[Task, list[Submission]]], list[Submission]]:
+    """教师视角的任务与提交集合。
+
+    semester_key 给定时只返回该学期的学案下的活动——课堂教学按学期进行，
+    成绩汇总也必须能只看一学期，而不是全部历史。
+    """
     accessible_student_ids = accessible_student_ids_for_staff(staff, db)
     if not accessible_student_ids:
         return [], []
 
-    tasks = db.scalars(
+    statement = (
         select(Task)
         .where(Task.submissions.any())
         .options(
@@ -299,7 +310,10 @@ def build_teacher_overview_task_submissions(
             .selectinload(User.student_profile)
             .selectinload(StudentProfile.school_class),
         )
-    ).all()
+    )
+    if semester_key is not None:
+        statement = statement.join(Task.lesson_plan).where(LessonPlan.semester_key == semester_key)
+    tasks = db.scalars(statement).all()
     tasks.sort(key=lambda item: item.sort_order)
     tasks.sort(key=lambda item: (item.lesson_plan.assigned_date, item.lesson_plan.id), reverse=True)
 
@@ -315,7 +329,11 @@ def build_teacher_overview_task_submissions(
     return task_submissions, all_submissions
 
 
-def serialize_teacher_student_summary(submissions: list[Submission]) -> dict:
+def serialize_teacher_student_summary(
+    submissions: list[Submission],
+    *,
+    semester_key: str | None = None,
+) -> dict:
     grouped_submissions: dict[int, list[Submission]] = {}
     for submission in submissions:
         grouped_submissions.setdefault(submission.student_id, []).append(submission)
@@ -359,6 +377,8 @@ def serialize_teacher_student_summary(submissions: list[Submission]) -> dict:
 
     return {
         "summary": {
+            "semester_key": semester_key,
+            "semester_label": format_semester_key_label(semester_key),
             "student_count": len(items),
             "submission_count": len(submissions),
             "reviewed_count": sum(1 for item in submissions if item.submit_status == "reviewed"),
@@ -379,12 +399,13 @@ def serialize_teacher_student_summary(submissions: list[Submission]) -> dict:
     }
 
 
-def build_teacher_student_summary_csv(items: list[dict]) -> bytes:
+def build_teacher_student_summary_csv(items: list[dict], *, semester_label: str = "") -> bytes:
     output = StringIO()
     writer = csv.writer(output)
     writer.writerow(
         [
             "序号",
+            "学期",
             "班级",
             "学号",
             "姓名",
@@ -400,6 +421,7 @@ def build_teacher_student_summary_csv(items: list[dict]) -> bytes:
         writer.writerow(
             [
                 index,
+                semester_label,
                 item.get("class_name") or "",
                 item.get("student_no") or "",
                 item.get("student_name") or "",
@@ -738,19 +760,28 @@ def my_submissions(
 
 @router.get("/teacher", response_model=ApiResponse)
 def teacher_submissions_overview(
+    semester_key: str | None = Query(default=None, max_length=16),
     staff: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> ApiResponse:
-    task_submissions, all_submissions = build_teacher_overview_task_submissions(staff, db)
+    # 不传学期时默认只看当前学期：成绩汇总按学期统计，而不是全部历史。
+    resolved_semester_key = (
+        read_current_semester_key(db) if semester_key is None else normalize_semester_key(semester_key)
+    )
+    task_submissions, all_submissions = build_teacher_overview_task_submissions(
+        staff, db, semester_key=resolved_semester_key
+    )
     task_payloads = [serialize_teacher_task_item(task, submissions) for task, submissions in task_submissions]
     reviewed_count = sum(1 for item in all_submissions if item.submit_status == "reviewed")
     pending_count = sum(1 for item in all_submissions if item.submit_status != "reviewed")
     recommended_count = sum(1 for item in all_submissions if is_recommended_submission(item))
     scored_items = [item.score for item in all_submissions if item.score is not None]
-    student_summary = serialize_teacher_student_summary(all_submissions)
+    student_summary = serialize_teacher_student_summary(all_submissions, semester_key=resolved_semester_key)
 
     return ApiResponse(
         data={
+            "semester_key": resolved_semester_key,
+            "current_semester_key": read_current_semester_key(db),
             "summary": {
                 "task_count": len(task_payloads),
                 "submission_count": len(all_submissions),
@@ -767,17 +798,26 @@ def teacher_submissions_overview(
 
 @router.get("/teacher/students/export")
 def export_teacher_student_summary(
+    semester_key: str | None = Query(default=None, max_length=16),
     staff: User = Depends(require_staff),
     db: Session = Depends(get_db),
 ) -> Response:
-    _, all_submissions = build_teacher_overview_task_submissions(staff, db)
-    student_summary = serialize_teacher_student_summary(all_submissions)
+    resolved_semester_key = (
+        read_current_semester_key(db) if semester_key is None else normalize_semester_key(semester_key)
+    )
+    _, all_submissions = build_teacher_overview_task_submissions(
+        staff, db, semester_key=resolved_semester_key
+    )
+    student_summary = serialize_teacher_student_summary(all_submissions, semester_key=resolved_semester_key)
     student_items = student_summary["items"]
     if not student_items:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前没有可导出的学生成绩汇总")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="当前学期没有可导出的学生成绩汇总")
 
     filename = build_teacher_student_summary_filename(len(student_items))
-    csv_content = build_teacher_student_summary_csv(student_items)
+    csv_content = build_teacher_student_summary_csv(
+        student_items,
+        semester_label=str(student_summary["summary"]["semester_label"]),
+    )
     return Response(
         content=csv_content,
         media_type="text/csv; charset=utf-8",
