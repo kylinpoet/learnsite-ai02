@@ -40,3 +40,6 @@ apps/api/tts_probe.mp3
 
 # 本地 AI 会话计划（.zcode/plans 等工作产物，不入库）
 .zcode/
+
+# 参考源码：外部项目整份副本（自带 .git，体积大），仅本地查阅，不入库
+reference-src/
