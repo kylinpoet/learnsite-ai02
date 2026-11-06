@@ -53,7 +53,7 @@ export function useAdminStudents(bootstrap: { value: BootstrapPayload | null }) 
         item.display_name,
         item.class_name,
         item.class_label,
-        item.entry_year ? `${item.entry_year}届` : '',
+        item.entry_year ? `${item.entry_year}级` : '',
       ].some((text) => (text || '').toLowerCase().includes(keyword));
     });
   });
@@ -167,10 +167,6 @@ export function useAdminStudents(bootstrap: { value: BootstrapPayload | null }) 
   ): Promise<boolean> {
     if (!authStore.token) return false;
     const password = form.default_password.trim();
-    if (password.length < 6) {
-      ElMessage.warning('默认初始密码不能少于 6 位');
-      return false;
-    }
 
     isImportingStudents.value = true;
     const formData = new FormData();
@@ -232,11 +228,6 @@ export function useAdminStudents(bootstrap: { value: BootstrapPayload | null }) 
         .filter((item) => selectedAdminStudentIds.value.includes(item.id))
         .map((item) => [item.id, item] as const)
     );
-
-    if (action === 'reset_password' && adminStudentBatchPassword.value.trim().length < 6) {
-      ElMessage.warning('批量重置密码至少需要 6 位');
-      return;
-    }
 
     const actionLabelMap: Record<AdminStudentBatchAction, string> = {
       activate: '恢复账号',

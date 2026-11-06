@@ -4,7 +4,7 @@ Revision ID: c8d2e4f6a9b1
 Revises: b7c1d2e3f4a5
 Create Date: 2026-10-31 09:00:00.000000
 
-班级「跟届走」改造：school_classes 增加 entry_year（入学年份／届），
+班级「跟入学级走」改造：school_classes 增加 entry_year（入学年份／级），
 唯一身份从 class_name 改为 (entry_year, class_no)。
 
 注意：运行时的真实迁移入口是 app/db/init_db.py 的 ensure_runtime_schema
@@ -33,7 +33,7 @@ def upgrade() -> None:
         batch_op.create_index(
             batch_op.f('ix_school_classes_entry_year'), ['entry_year'], unique=False
         )
-        # 身份改为 (届, 班号)：班名里的年级是派生量，会随升班变化，不能作唯一键。
+        # 身份改为 (入学级, 班号)：班名里的年级是派生量，会随升班变化，不能作唯一键。
         batch_op.drop_constraint('uq_school_classes_class_name', type_='unique')
         batch_op.create_unique_constraint(
             'uq_school_classes_entry_year_class_no', ['entry_year', 'class_no']
@@ -46,7 +46,7 @@ def upgrade() -> None:
         "WHERE entry_year = 0"
     )
 
-    # 学生的届别以所属班级为准（历史库里的值来自旧的错误公式）。
+    # 学生的入学级以所属班级为准（历史库里的值来自旧的错误公式）。
     op.execute(
         "UPDATE student_profiles "
         "SET entry_year = ("

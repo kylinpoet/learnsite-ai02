@@ -36,7 +36,7 @@
 
         <div class="st-switch-row">
           <div class="st-switch-row__main">
-            <p class="st-switch-row__title">班级跟届走</p>
+            <p class="st-switch-row__title">班级跟入学级走</p>
             <p class="st-switch-row__desc">
               升班只把班级原地升入下一年级，学生、分组、座位与教师分配全部保持不变；
               修完九年级的班级自动归档。

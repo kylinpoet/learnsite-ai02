@@ -277,7 +277,7 @@ def create_students_for_class(session, school_class: SchoolClass, names: list[st
                 grade_no=school_class.grade_no,
                 class_id=school_class.id,
                 gender="未知",
-                # 届别以班级为准，学生自己不再单独推导（历史上这里硬编码 2026 且差一年）。
+                # 入学级以班级为准，学生自己不再单独推导（历史上这里硬编码 2026 且差一年）。
                 entry_year=school_class.entry_year,
             )
         )
@@ -449,7 +449,7 @@ def ensure_runtime_schema() -> None:
         # 重建后列集合已变化，重新探测，避免下面重复 ADD COLUMN
         lesson_plan_columns = {column["name"] for column in inspect(engine).get_columns("lesson_plans")}
 
-    # 班级跟届走改造：旧库的 school_classes 只有 class_name 唯一约束、没有 entry_year。
+    # 班级跟入学级走改造：旧库的 school_classes 只有 class_name 唯一约束、没有 entry_year。
     # 身份要改为 (entry_year, class_no)，而 SQLite 无法就地删除 UNIQUE 约束，只能重建表。
     if engine.dialect.name == "sqlite" and "school_classes" in table_names and "entry_year" not in school_class_columns:
         with engine.connect() as connection:
@@ -586,8 +586,8 @@ def ensure_runtime_schema() -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_school_classes_entry_year ON school_classes (entry_year)")
         )
-        # 学生的届别以所属班级为准（幂等）：班级跟届走后年级会随升班变化，
-        # 而届别不变，历史库里的 student_profiles.entry_year 来自旧的错误公式，需要对齐一次。
+        # 学生的入学级以所属班级为准（幂等）：班级跟入学级走后年级会随升班变化，
+        # 而入学级不变，历史库里的 student_profiles.entry_year 来自旧的错误公式，需要对齐一次。
         connection.execute(
             text(
                 """

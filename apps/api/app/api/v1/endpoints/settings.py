@@ -114,8 +114,8 @@ STUDENT_IMPORT_HEADER_LABELS = {
     "entry_year": "入学年份",
 }
 # 导入表不再收「年级」：年级由「当前学年 − 入学年份」推导（初中入学即七年级），
-# 学生自己填年级反而会与届别冲突。「班级」列写的是班号（01、02），
-# 班级身份由 (入学年份, 班号) 决定；找不到则按届别自动补建。
+# 学生自己填年级反而会与入学级冲突。「班级」列写的是班号（01、02），
+# 班级身份由 (入学年份, 班号) 决定；找不到则按入学级自动补建。
 STUDENT_IMPORT_HEADER_ALIASES = {
     "student_no": {"student_no", "student", "学号", "学生编号"},
     "username": {"username", "account", "账号", "登录账号"},
@@ -131,7 +131,7 @@ class SystemSettingsPayload(BaseModel):
     platform_name: str = Field(default="OW³教学评AI平台", min_length=1, max_length=160)
     school_name: str = Field(min_length=1, max_length=120)
     active_grade_nos: list[int] = Field(min_length=1)
-    # 当前学年：年级与届别换算的基准，随校历每年更新。
+    # 当前学年：年级与入学级换算的基准，随校历每年更新。
     current_school_year: int = Field(default_factory=default_current_school_year, ge=2000, le=2100)
     # 当前学期：课堂教学与成绩汇总的统计范围基准，每学期开学时更新。
     current_semester_no: int = Field(default_factory=default_current_semester_no, ge=1, le=2)
@@ -163,9 +163,9 @@ class AssistantRuntimeSettingsPayload(BaseModel):
 
 
 class AdminClassPayload(BaseModel):
-    # 入学年份即「届」，是班级的稳定身份；班级跟届走，年级是派生量：
-    # 年级 = 当前学年 − 入学年份 + 7。因此 grade_no 可省略（按届别推导），
-    # 显式给出时会校验是否与届别自洽，避免出现「2026 届的九年级」这种矛盾数据。
+    # 入学年份即「级」，是班级的稳定身份；班级跟入学级走，年级是派生量：
+    # 年级 = 当前学年 − 入学年份 + 7。因此 grade_no 可省略（按入学级推导），
+    # 显式给出时会校验是否与入学级自洽，避免出现「2026 级的九年级」这种矛盾数据。
     entry_year: int = Field(default_factory=default_current_school_year, ge=2000, le=2100)
     grade_no: int | None = Field(default=None, ge=1, le=12)
     class_no: int = Field(ge=1, le=99)
@@ -195,7 +195,7 @@ class AdminPromotionPreviewPayload(BaseModel):
 
 
 class AdminPromotionExecutePayload(AdminPromotionPreviewPayload):
-    # 班级跟届走后升班不再新建班级、也不搬学生，故无需「复制教师关联」；
+    # 班级跟入学级走后升班不再新建班级、也不搬学生，故无需「复制教师关联」；
     # 归档只在修完九年级（毕业）时自动发生，不再是可选开关。
     # 两个字段保留仅为兼容旧前端，接收后忽略。
     copy_teacher_assignments: bool = True
@@ -249,7 +249,8 @@ ADMIN_STUDENT_BATCH_ACTIONS = ("activate", "deactivate", "reset_password", "dele
 class AdminStudentBatchActionPayload(BaseModel):
     action: str = Field(min_length=1, max_length=40)
     student_user_ids: list[int] = Field(min_length=1, max_length=500)
-    password: str | None = Field(default=None, min_length=6, max_length=50)
+    # 学生重置密码不限位数；留空表示按学号规则生成默认密码。
+    password: str | None = Field(default=None, max_length=50)
 
     @field_validator("password", mode="before")
     @classmethod
@@ -624,7 +625,7 @@ def build_student_import_preview(
         for item in db.scalars(select(SchoolClass).order_by(SchoolClass.entry_year.asc(), SchoolClass.class_no.asc())).all()
         if item.id not in archived_class_ids
     ]
-    # 班级身份是 (入学年份, 班号)：同一班号在不同届是不同班级。
+    # 班级身份是 (入学年份, 班号)：同一班号在不同入学级是不同班级。
     class_by_identity = {(item.entry_year, item.class_no): item for item in classes}
 
     users = db.scalars(
@@ -707,7 +708,7 @@ def build_student_import_preview(
         target_class = class_by_identity.get(identity)
         class_created = False
         if target_class is None:
-            # 该届该班号还没建班：按届别自动补建，年级由入学年份推导。
+            # 该入学级该班号还没建班：按入学级自动补建，年级由入学年份推导。
             target_class = SchoolClass(
                 entry_year=entry_year,
                 grade_no=grade_no,
@@ -722,7 +723,7 @@ def build_student_import_preview(
             created_class_names.add(target_class.class_name)
             created_class_labels.add(format_class_label(target_class.class_name, entry_year))
         else:
-            # 班级已存在则以其当前年级为准：班级跟届走，学生跟着班级的进度。
+            # 班级已存在则以其当前年级为准：班级跟入学级走，学生跟着班级的进度。
             grade_no = target_class.grade_no
 
         gender = normalize_student_import_gender(
@@ -740,10 +741,10 @@ def build_student_import_preview(
             allow_empty=True,
         )
         password = (row_password or default_password).strip()
-        if len(password) < 6:
+        if not password:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"第 {row_number} 行的密码不能少于 6 位",
+                detail=f"第 {row_number} 行的密码不能为空",
             )
 
         row_key = (resolved_student_no, resolved_username)
@@ -857,7 +858,7 @@ def build_student_import_preview(
         "skipped_count": len(skipped_rows),
         "skipped_rows": skipped_rows,
         "processed_count": len(imported_rows) + len(skipped_rows),
-        # 自动补建的班级：导入表只写 (入学年份, 班号)，没有的班级按届别补出来。
+        # 自动补建的班级：导入表只写 (入学年份, 班号)，没有的班级按入学级补出来。
         "created_class_count": len(created_class_labels),
         "created_class_labels": sorted(created_class_labels),
     }
@@ -1218,7 +1219,7 @@ def serialize_class(
         "grade_no": school_class.grade_no,
         "class_no": school_class.class_no,
         "class_name": school_class.class_name,
-        # 带届别的标签：班级跟届走后同一班号可能跨届重名，列表与选择器用它消歧。
+        # 带入学级的标签：班级跟入学级走后同一班号可能跨入学级重名，列表与选择器用它消歧。
         "class_label": format_class_label(school_class.class_name, school_class.entry_year),
         "head_teacher_name": school_class.head_teacher_name,
         "default_room_id": school_class.default_room_id,
@@ -1386,11 +1387,11 @@ def make_class_display_name(grade_no: int, class_no: int) -> str:
 
 
 def resolve_class_grade_no(entry_year: int, grade_no: int | None, db: Session) -> int:
-    """确定班级年级：优先按届别推导，显式给出的年级需与届别自洽。
+    """确定班级年级：优先按入学级推导，显式给出的年级需与入学级自洽。
 
-    班级跟届走时年级 = 当前学年 − 入学年份 + 7。允许显式传入年级是为了
-    支持「跨届插班后手动修正」等场景，但两者矛盾时直接报错，
-    避免写进「2026 届的九年级」这类无法自圆其说的数据。
+    班级跟入学级走时年级 = 当前学年 − 入学年份 + 7。允许显式传入年级是为了
+    支持「跨入学级插班后手动修正」等场景，但两者矛盾时直接报错，
+    避免写进「2026 级的九年级」这类无法自圆其说的数据。
     """
     derived = resolve_grade_no(entry_year, read_current_school_year(db))
     if grade_no is None:
@@ -1399,7 +1400,7 @@ def resolve_class_grade_no(entry_year: int, grade_no: int | None, db: Session) -
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"{entry_year} 届对应的是 {format_grade_label(derived)}，"
+                f"{entry_year} 级对应的是 {format_grade_label(derived)}，"
                 f"与填写的 {format_grade_label(grade_no)} 不一致。"
                 f"若确需保留该年级，请同步修改入学年份。"
             ),
@@ -1414,7 +1415,7 @@ def class_identity_taken(
     *,
     exclude_class_id: int | None = None,
 ) -> bool:
-    """判断某一届的某个班号是否已被占用（身份即 (届别, 班号)）。"""
+    """判断某一级的某个班号是否已被占用（身份即 (入学级, 班号)）。"""
     query = select(SchoolClass.id).where(
         SchoolClass.entry_year == entry_year,
         SchoolClass.class_no == class_no,
@@ -1440,7 +1441,7 @@ def build_promotion_preview(
     *,
     grade_increment: int,
 ) -> dict:
-    """班级跟届走：升班就是把该班的年级原地加一级，学生不换班、不新建班级。
+    """班级跟入学级走：升班就是把该班的年级原地加一级，学生不换班、不新建班级。
 
     超过九年级即毕业，对应班级归档（不再是「搬到新班级并归档原班」）。
     """
@@ -1463,7 +1464,7 @@ def build_promotion_preview(
                 "student_count": len(school_class.students),
                 "status": "graduate" if graduating else "ready",
                 "reason": (
-                    f"已修完九年级，将归档（{school_class.entry_year}届毕业）"
+                    f"已修完九年级，将归档（{school_class.entry_year}级毕业）"
                     if graduating
                     else "原班升一级，学生与班级数据保持不变"
                 ),
@@ -1934,7 +1935,7 @@ def execute_promotions(
             )
             continue
 
-        # 班级跟届走：年级原地加一级，班名同步重算；学生留在原班，只同步年级。
+        # 班级跟入学级走：年级原地加一级，班名同步重算；学生留在原班，只同步年级。
         old_class_name = source.class_name
         source.grade_no = target_grade_no
         source.class_name = make_class_display_name(target_grade_no, source.class_no)
@@ -1988,7 +1989,7 @@ def create_class(
     if class_identity_taken(payload.entry_year, payload.class_no, db):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"{payload.entry_year}届 {payload.class_no}班 已存在，请改用其他班号",
+            detail=f"{payload.entry_year}级 {payload.class_no}班 已存在，请改用其他班号",
         )
     grade_no = resolve_class_grade_no(payload.entry_year, payload.grade_no, db)
 
@@ -2020,7 +2021,7 @@ def create_classes_batch(
 
     room_cache = {room.id: room for room in db.scalars(select(ComputerRoom)).all()}
     archived_class_ids = read_archived_class_ids(db)
-    # 身份是届别 + 班号，不是班级名：跟届走后同名班级可以跨届并存。
+    # 身份是入学级 + 班号，不是班级名：跟入学级走后同名班级可以跨入学级并存。
     class_by_identity = {
         (item.entry_year, item.class_no): item
         for item in db.scalars(select(SchoolClass)).all()
@@ -2057,7 +2058,7 @@ def create_classes_batch(
             )
             continue
 
-        # 年级由届别推导；显式给出但与届别矛盾的行跳过并说明原因，不整批失败。
+        # 年级由入学级推导；显式给出但与入学级矛盾的行跳过并说明原因，不整批失败。
         try:
             grade_no = resolve_class_grade_no(item.entry_year, item.grade_no, db)
         except HTTPException as exc:
@@ -2090,7 +2091,7 @@ def create_classes_batch(
                 details.append({**detail, "status": "updated", "reason": "已更新现有班级"})
             else:
                 skipped_count += 1
-                details.append({**detail, "status": "skipped", "reason": "该届该班号已存在"})
+                details.append({**detail, "status": "skipped", "reason": "该入学级该班号已存在"})
             continue
 
         school_class = SchoolClass(
@@ -2146,7 +2147,7 @@ def update_class(
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"{payload.entry_year}届 {payload.class_no}班 已存在，请改用其他班号",
+            detail=f"{payload.entry_year}级 {payload.class_no}班 已存在，请改用其他班号",
         )
 
     grade_no = resolve_class_grade_no(payload.entry_year, payload.grade_no, db)
@@ -2157,7 +2158,7 @@ def update_class(
     school_class.class_name = make_class_display_name(grade_no, payload.class_no)
     school_class.head_teacher_name = (payload.head_teacher_name or "").strip() or None
     school_class.default_room_id = payload.default_room_id
-    # 届别是学生的稳定身份，班级改届时同步学生，避免两边漂移。
+    # 入学级是学生的稳定身份，班级改入学级时同步学生，避免两边漂移。
     for profile in school_class.students:
         profile.entry_year = payload.entry_year
         profile.grade_no = grade_no
@@ -2205,6 +2206,44 @@ def delete_class(
     if school_class is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="班级不存在")
 
+    # 先判定能不能删，再动归档状态：否则一次失败的删除也会把班级悄悄取消归档。
+    student_count = len(school_class.students)
+    session_count = len(school_class.classroom_sessions)
+    if student_count or session_count:
+        class_display = format_class_label(school_class.class_name, school_class.entry_year)
+        occupied_parts: list[str] = []
+        if student_count:
+            occupied_parts.append(f"{student_count} 名学生")
+        if session_count:
+            occupied_parts.append(f"{session_count} 条课堂开课记录")
+
+        steps: list[str] = []
+        if student_count:
+            steps.append(
+                f"移走或删除学生：进入「系统设置 › 学生」，用班级筛选出「{class_display}」，"
+                f"勾选这 {student_count} 名学生后点「删除」；有学习记录的学生会被跳过，"
+                "确需连同学习数据一起清除时改用「强制删除」。"
+                "只想把学生转到别的班时，可用含「班级」列的文件在「学生 › 批量导入」中"
+                "勾选「更新已存在学生」导入，学生按学号改挂到新班级。"
+            )
+        if session_count:
+            steps.append(
+                f"清空课堂开课记录：这 {session_count} 条记录由学案开课产生，"
+                "需要在「学案」中删除对应学案才会一并清除"
+                "（学案为全校共用，删除会同时影响其它班级使用该学案的课堂记录）。"
+            )
+
+        numbered = "\n".join(f"{index + 1}. {text}" for index, text in enumerate(steps))
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"「{class_display}」下还有 {'、'.join(occupied_parts)}，不能直接删除。"
+                f"\n\n请先清空后再删除：\n{numbered}\n\n"
+                "如果只是不再使用这个班级，也可以直接保留在列表中，不影响其它功能；"
+                "已毕业的班级执行「升班与归档」时会自动归档，保留学生与课堂记录。"
+            ),
+        )
+
     archived_class_ids = read_archived_class_ids(db)
     if class_is_archived(class_id, archived_class_ids):
         archived_class_ids.discard(class_id)
@@ -2218,9 +2257,6 @@ def delete_class(
             )
         ]
         write_class_archive_records(archive_records, db)
-
-    if school_class.students or school_class.classroom_sessions:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="班级下已有学生或课堂记录，不能直接删除")
 
     permissions_by_class = read_student_profile_edit_permissions_by_class(db)
     if class_id in permissions_by_class:
@@ -2364,9 +2400,8 @@ async def import_students(
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="导入文件内容为空")
 
+    # 默认密码不限位数，也不强制填写：每行的实际密码为空时会单独报错。
     normalized_password = default_password.strip()
-    if len(normalized_password) < 6:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="默认密码长度不能少于 6 位")
 
     rows = load_import_rows(file.filename or "students.csv", file_bytes)
     preview = build_student_import_preview(
@@ -2418,11 +2453,11 @@ def download_student_import_template(
     for line in (
         "姓名：必填。",
         "学号 / 账号：至少填一个，两者都填时以学号作学号、账号作登录名。",
-        "入学年份：该届学生的入学年份，例如 2026。留空则按系统「当前学年」处理。",
+        "入学年份：该入学级学生的入学年份，例如 2026。留空则按系统「当前学年」处理。",
         "班级：只填班号，例如 01、02（不要写“701班”）。",
-        "      班级由「入学年份 + 班号」确定；该届该班号还不存在时会自动建班。",
+        "      班级由「入学年份 + 班号」确定；该入学级该班号还不存在时会自动建班。",
         "性别：选填，男 / 女。",
-        "初始密码：选填，留空使用导入时填写的默认密码，至少 6 位。",
+        "初始密码：选填，留空使用导入时填写的默认密码，不限位数。",
     ):
         help_sheet.append([line])
 

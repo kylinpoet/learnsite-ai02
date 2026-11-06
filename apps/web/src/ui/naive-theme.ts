@@ -28,12 +28,17 @@ export function readThemeOverrides(): GlobalThemeOverrides {
   const navActiveFill = read('--ls-nav-active-fill', primarySoft);
   const navHoverColor = read('--ls-nav-hover-color', primary);
   const navActiveColor = read('--ls-nav-active-color', primary);
+  // 主色的悬停/按下态必须用内容区专用变量：--ls-nav-* 是给深色侧栏用的
+  //（默认主题下是白色），拿它当 primaryColorHover 会让浅底卡片上的
+  // 文字按钮 / primary 按钮在 hover 时变成白字，肉眼看不见。
+  const primaryHover = read('--ls-primary-hover', navHoverColor);
+  const primaryPressed = read('--ls-primary-pressed', navActiveColor);
 
   return {
     common: {
       primaryColor: primary,
-      primaryColorHover: navHoverColor,
-      primaryColorPressed: navActiveColor,
+      primaryColorHover: primaryHover,
+      primaryColorPressed: primaryPressed,
       primaryColorSuppl: primary,
       borderRadius: '10px',
       borderRadiusSmall: '8px',

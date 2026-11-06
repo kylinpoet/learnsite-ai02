@@ -1,7 +1,7 @@
 /**
- * 年级与届别的显示格式。
+ * 年级与入学级的显示格式。
  *
- * 初中三年制：七年级(7) ~ 九年级(9)。班级「跟届走」——入学年份（届）是学生的稳定身份，
+ * 初中三年制：七年级(7) ~ 九年级(9)。班级「跟入学级走」——入学年份（级）是学生的稳定身份，
  * 年级会随升班变化，因此展示年级时一律走这里的格式化，避免各处内联拼接出现
  * 「7 年级」「七年级」「初一」混用。
  */
@@ -38,17 +38,17 @@ export function formatGrade(gradeNo: number | null | undefined, fallback = '--')
   return GRADE_LABELS[gradeNo] ?? `${gradeNo} 年级`;
 }
 
-/** 届别的写法，例如 2026 → 2026届。 */
+/** 入学级的写法，例如 2026 → 2026级。 */
 export function formatCohort(entryYear: number | null | undefined, fallback = '--'): string {
   if (entryYear === null || entryYear === undefined) {
     return fallback;
   }
-  return `${entryYear}届`;
+  return `${entryYear}级`;
 }
 
 /**
- * 带届别的班级标签，例如「701班 · 2026届」。
- * 班级跟届走后同一班号可以跨届并存，班级列表与选择器用它区分。
+ * 带入学级的班级标签，例如「701班 · 2026级」。
+ * 班级跟入学级走后同一班号可以跨入学级并存，班级列表与选择器用它区分。
  */
 export function formatClassLabel(
   className: string,

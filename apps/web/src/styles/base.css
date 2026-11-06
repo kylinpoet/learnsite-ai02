@@ -26,7 +26,7 @@ a {
 }
 
 a:hover {
-  color: var(--ls-nav-hover-color, var(--ls-primary));
+  color: var(--ls-primary-hover, var(--ls-primary));
 }
 
 h1,
@@ -43,9 +43,9 @@ h4 {
 }
 
 .router-link-active {
-  background: var(--ls-nav-active-bg, var(--ls-primary-soft));
-  color: var(--ls-nav-active-color, var(--ls-primary));
-  box-shadow: var(--ls-nav-active-shadow, none);
+  background: var(--ls-primary-soft);
+  color: var(--ls-primary);
+  box-shadow: none;
   font-weight: 700;
 }
 

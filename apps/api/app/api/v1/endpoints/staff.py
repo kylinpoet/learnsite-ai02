@@ -123,13 +123,6 @@ class StaffStudentResetPasswordPayload(BaseModel):
             return value or None
         return value
 
-    @field_validator("new_password")
-    @classmethod
-    def validate_password_length(cls, value: str | None) -> str | None:
-        if value is not None and len(value) < 6:
-            raise ValueError("重置密码长度不能少于 6 位")
-        return value
-
 
 class StaffStudentStatusPayload(BaseModel):
     is_active: bool
@@ -187,13 +180,6 @@ class StaffStudentBatchActionPayload(BaseModel):
         if isinstance(value, str):
             value = value.strip()
             return value or None
-        return value
-
-    @field_validator("new_password")
-    @classmethod
-    def validate_password_length(cls, value: str | None) -> str | None:
-        if value is not None and len(value) < 6:
-            raise ValueError("重置密码长度不能少于 6 位")
         return value
 
 

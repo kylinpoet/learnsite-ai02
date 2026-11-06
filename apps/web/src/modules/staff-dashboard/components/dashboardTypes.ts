@@ -32,7 +32,7 @@ export type RoomBrief = { id: number; name: string; row_count: number; col_count
 export type LaunchpadClass = {
   id: number;
   class_name: string;
-  /** 带届别的标签（如「701班 · 2026届」），跨届重名时用于消歧。 */
+  /** 带入学级的标签（如「701班 · 2026级」），跨入学级重名时用于消歧。 */
   class_label: string;
   entry_year: number;
   class_code: string;

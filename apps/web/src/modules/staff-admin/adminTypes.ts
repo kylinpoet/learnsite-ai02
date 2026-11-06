@@ -10,7 +10,7 @@ export type BootstrapPayload = {
     platform_name: string;
     school_name: string;
     active_grade_nos: number[];
-    /** 当前学年，年级与届别换算的基准。 */
+    /** 当前学年，年级与入学级换算的基准。 */
     current_school_year: number;
     /** 当前学期序号（1 = 第一学期，2 = 第二学期），成绩汇总与课堂的统计基准。 */
     current_semester_no: number;
@@ -42,7 +42,7 @@ export type BootstrapPayload = {
     grade_no: number;
     class_no: number;
     class_name: string;
-    /** 带届别的标签（如「701班 · 2026届」），跨届重名时用于消歧。 */
+    /** 带入学级的标签（如「701班 · 2026级」），跨入学级重名时用于消歧。 */
     class_label: string;
     head_teacher_name: string | null;
     default_room_id: number | null;

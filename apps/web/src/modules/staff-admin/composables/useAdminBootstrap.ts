@@ -102,7 +102,7 @@ export function useAdminBootstrap() {
   const themeOptions = computed(() =>
     (bootstrap.value?.theme_presets ?? []).map((item) => ({ label: item.name, value: item.code }))
   );
-  // 班级跟届走后同一班号可能跨届重名，选择器与列表统一用带届别的标签消歧。
+  // 班级跟入学级走后同一班号可能跨入学级重名，选择器与列表统一用带入学级的标签消歧。
   const classOptions = computed(() =>
     (bootstrap.value?.classes ?? []).map((item) => ({ label: item.class_label, value: item.id }))
   );

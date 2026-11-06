@@ -57,7 +57,7 @@
                 type="button"
                 @click="openRosterByClass(item)"
               >
-                {{ item.class_label }}
+                {{ item.class_name }}
               </button>
             </div>
             <n-empty v-else :description="classLoadError ? '班级列表加载失败' : '还没有可选的班级'" size="small" />

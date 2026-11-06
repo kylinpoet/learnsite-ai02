@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'c8d2e4f6a1b3'
-# 与本工作区的班级届别改造（c8d2e4f6a9b1）串成单链，避免两个 head 让
+# 与本工作区的班级入学级改造（c8d2e4f6a9b1）串成单链，避免两个 head 让
 # init_db 的 ensure_alembic_stamp 报 MultipleHeads。
 down_revision: Union[str, Sequence[str], None] = 'c8d2e4f6a9b1'
 branch_labels: Union[str, Sequence[str], None] = None

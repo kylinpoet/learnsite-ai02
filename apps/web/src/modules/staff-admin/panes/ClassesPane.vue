@@ -58,10 +58,10 @@
 
     <n-modal v-model:show="classDialogVisible" :title="editingClassId ? '编辑班级' : '新增班级'" preset="card" style="width: 520px">
       <n-form label-placement="top">
-        <n-form-item label="入学年份（届）">
+        <n-form-item label="入学年份（级）">
           <n-input-number v-model:value="classForm.entry_year" :max="2100" :min="2000" />
           <template #feedback>
-            该届学生的入学年份，例如 2026 届填 2026。班级跟届走，升班时不变。
+            该入学级学生的入学年份，例如 2026 级填 2026。班级跟入学级走，升班时不变。
           </template>
         </n-form-item>
         <n-form-item label="年级">
@@ -132,7 +132,7 @@
             type="textarea"
           />
         </n-form-item>
-        <n-form-item label="覆盖该届该班号已存在的班级">
+        <n-form-item label="覆盖该入学级该班号已存在的班级">
           <n-switch v-model:value="classBatchForm.overwrite_existing" />
         </n-form-item>
       </n-form>
@@ -158,6 +158,7 @@ import { useAuthStore } from '@/stores/auth';
 import { formatGrade, resolveGradeNo } from '@/utils/grade';
 import type { BootstrapPayload, ClassProfileEditPermissions } from '../adminTypes';
 import { currentSchoolYearFallback, useAdminBootstrap } from '../composables/useAdminBootstrap';
+import { escapeHtml } from '../composables/useAdminStudents';
 
 const authStore = useAuthStore();
 const { bootstrap, roomOptions } = useAdminBootstrap();
@@ -184,7 +185,7 @@ const isSavingClassBatch = ref(false);
 const isSavingClassProfilePermission = ref(false);
 const editingClassId = ref<number | null>(null);
 const editingClassProfilePermissionId = ref<number | null>(null);
-// 年级不是独立输入：它由「入学年份 + 当前学年」推导，避免填出「2026 届的九年级」。
+// 年级不是独立输入：它由「入学年份 + 当前学年」推导，避免填出「2026 级的九年级」。
 const classForm = ref({
   entry_year: currentSchoolYearFallback(),
   class_no: 1,
@@ -208,7 +209,7 @@ const editingClassProfilePermissionName = computed(() => {
   return bootstrap.value?.classes.find((item) => item.id === classId)?.class_label || '';
 });
 
-/** 表单里展示推导出的年级：班级跟届走时年级 = 当前学年 − 入学年份 + 7。 */
+/** 表单里展示推导出的年级：班级跟入学级走时年级 = 当前学年 − 入学年份 + 7。 */
 const derivedGradeLabel = computed(() => formatGrade(resolveGradeNo(classForm.value.entry_year)));
 
 function isDialogCancelled(error: unknown) {
@@ -405,7 +406,18 @@ async function deleteClass(classId: number) {
     if (isDialogCancelled(error)) {
       return;
     }
-    ElMessage.error(error instanceof Error ? error.message : '删除班级失败');
+    const message = error instanceof Error ? error.message : '删除班级失败';
+    // 「不能直接删除」的说明是多步骤指引，toast 放不下，改用对话框完整呈现。
+    if (message.includes('不能直接删除')) {
+      await ElMessageBox.alert(escapeHtml(message).replace(/\n/g, '<br/>'), '这个班级暂时不能删除', {
+        confirmButtonText: '知道了',
+        dangerouslyUseHTMLString: true,
+        customClass: 'admin-batch-skip-dialog',
+        type: 'warning',
+      });
+      return;
+    }
+    ElMessage.error(message);
   }
 }
 </script>

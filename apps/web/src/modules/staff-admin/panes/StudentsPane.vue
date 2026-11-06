@@ -41,7 +41,7 @@
           <n-input
             v-model:value="adminStudentBatchPassword"
             class="st-batchbar__pwd"
-            placeholder="批量重置的新密码（至少 6 位）"
+            placeholder="批量重置的新密码（不限位数）"
             show-password-on="click"
             type="password"
           />
@@ -110,12 +110,12 @@
           </div>
           <p class="section-note">
             支持 .csv / .txt / .tsv / .xlsx；表头需包含姓名 + 学号或账号 + 班级。
-            「班级」列填班号（如 01）；「入学年份」决定学生属于哪一届，留空按当前学年处理。
-            该届该班号还不存在时会自动建班。
+            「班级」列填班号（如 01）；「入学年份」决定学生属于哪一级，留空按当前学年处理。
+            该入学级该班号还不存在时会自动建班。
           </p>
         </n-form-item>
         <n-form-item label="默认初始密码">
-          <n-input v-model:value="studentImportForm.default_password" placeholder="不少于 6 位" />
+          <n-input v-model:value="studentImportForm.default_password" placeholder="不限位数" />
         </n-form-item>
         <n-form-item label="遇到同学号或账号时">
           <div class="switch-field">

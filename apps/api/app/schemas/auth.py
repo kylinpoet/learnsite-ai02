@@ -74,7 +74,7 @@ class ClassGuestPayload(BaseModel):
 class ClassOptionItem(BaseModel):
     id: int
     class_name: str
-    # 带届别的标签，如「701班 · 2026届」：同一班号跨届并存时靠它区分。
+    # 带入学级的标签，如「701班 · 2026级」：同一班号跨入学级并存时靠它区分。
     class_label: str
     entry_year: int
     grade_no: int

@@ -52,9 +52,9 @@ class ComputerSeat(TimestampMixin, Base):
 
 class SchoolClass(TimestampMixin, Base):
     __tablename__ = "school_classes"
-    # 班级跟届走：同一届的班级三年内是同一行记录，grade_no 随升班递增，
+    # 班级跟入学级走：同一级的班级三年内是同一行记录，grade_no 随升班递增，
     # 因此身份由 (entry_year, class_no) 决定，class_name 里的年级只是会变的派生量，
-    # 不能作为唯一键（同一班号在不同届可以重名）。
+    # 不能作为唯一键（同一班号在不同入学级可以重名）。
     __table_args__ = (
         UniqueConstraint("entry_year", "class_no", name="uq_school_classes_entry_year_class_no"),
     )

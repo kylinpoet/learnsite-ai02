@@ -69,9 +69,10 @@ PROFILE_EDIT_PERMISSION_DENIED_MESSAGE = {
 
 
 class StudentPasswordChangePayload(BaseModel):
+    # 学生密码不限制位数，只要求非空，避免把空串写成可登录凭据。
     current_password: str = Field(min_length=1, max_length=50)
-    new_password: str = Field(min_length=6, max_length=50)
-    confirm_password: str = Field(min_length=6, max_length=50)
+    new_password: str = Field(min_length=1, max_length=50)
+    confirm_password: str = Field(min_length=1, max_length=50)
 
 
 class StudentNameUpdatePayload(BaseModel):

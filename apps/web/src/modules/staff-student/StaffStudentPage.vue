@@ -1624,7 +1624,7 @@ async function runBatchAction(action: StudentBatchAction) {
       const input = await ElMessageBox.prompt(
         '请输入批量重置的新密码（留空将回退为各自学号后 6 位）',
         '批量重置密码',
-        { inputPlaceholder: '至少 6 位', inputType: 'password', confirmButtonText: '重置' }
+        { inputPlaceholder: '不限位数', inputType: 'password', confirmButtonText: '重置' }
       );
       newPassword = input.value?.trim() || null;
     } else {
@@ -1693,7 +1693,7 @@ async function openResetPassword(row: StudentItem) {
     const input = await ElMessageBox.prompt(
       `请输入 ${row.display_name} 的新密码（留空将回退为学号后 6 位）`,
       '重置密码',
-      { inputPlaceholder: '至少 6 位', inputType: 'password', confirmButtonText: '重置' }
+      { inputPlaceholder: '不限位数', inputType: 'password', confirmButtonText: '重置' }
     );
     const payload = await apiPost<{ new_password: string }>(
       `/staff/students/${row.user_id}/reset-password`,

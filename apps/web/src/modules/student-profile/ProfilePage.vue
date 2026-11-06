@@ -95,7 +95,7 @@
                 <n-form-item label="确认新密码">
                   <n-input v-model:value="passwordForm.confirm_password" show-password-on="click" type="password" />
                 </n-form-item>
-                <p class="sw-row__meta">至少 6 位，建议含字母和数字；忘记密码请联系教师重置。</p>
+                <p class="sw-row__meta">不限位数，建议含字母和数字；忘记密码请联系教师重置。</p>
                 <div class="action-group">
                   <n-button :loading="isSavingPassword" type="primary" @click="submitPasswordChange">
                     保存新密码

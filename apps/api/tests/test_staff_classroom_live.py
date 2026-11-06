@@ -83,8 +83,8 @@ def _create_live_class() -> dict:
         teacher = db.scalar(select(User).where(User.username == "t1"))
         assert teacher is not None
 
-        # 班级身份是 (entry_year, class_no)：测试班固定为 2099 届，
-        # 与演示数据（2026 届等）互不干扰，班号 1/2 可以复用。
+        # 班级身份是 (entry_year, class_no)：测试班固定为 2099 级，
+        # 与演示数据（2026 级等）互不干扰，班号 1/2 可以复用。
         school_class = SchoolClass(
             entry_year=2099,
             grade_no=99,

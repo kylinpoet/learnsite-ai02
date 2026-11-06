@@ -2852,8 +2852,8 @@ def test_admin_can_crud_room_class_teacher_and_curriculum():
         assert room_payload.status_code == 200
         room = next(item for item in room_payload.json()["data"]["rooms"] if item["name"] == "九年级机房A")
 
-        # 班级身份是 (入学年份, 班号)。年级由届别推导：九年级 = 两年前入学的那一届。
-        # 演示数据里 2026 届已占用 1/2/3 号班，这里用 2024 届 + 不同的班号避免撞键。
+        # 班级身份是 (入学年份, 班号)。年级由入学级推导：九年级 = 两年前入学的那一级。
+        # 演示数据里 2026 级已占用 1/2/3 号班，这里用 2024 级 + 不同的班号避免撞键。
         # 学年随校历变化，因此按当前学年反推而不是写死年份。
         from app.services.system_settings import read_current_school_year
 
@@ -2872,7 +2872,7 @@ def test_admin_can_crud_room_class_teacher_and_curriculum():
             if item["entry_year"] == grade9_entry_year and item["class_no"] == 11
         )
         assert school_class["class_name"] == "911班"
-        assert school_class["class_label"] == f"911班 · {grade9_entry_year}届"
+        assert school_class["class_label"] == f"911班 · {grade9_entry_year}级"
 
         teacher_payload = client.post(
             f"{API_PREFIX}/settings/admin/teachers",
@@ -5059,7 +5059,7 @@ def test_admin_can_batch_create_classes_and_import_students():
         # 两个班都已存在，不该新建班级。
         assert import_payload["created_class_count"] == 0
 
-        # 该届该班号不存在时自动建班，而不是跳过。
+        # 该入学级该班号不存在时自动建班，而不是跳过。
         auto_class_csv = "\n".join(
             [
                 "姓名,学号,账号,入学年份,班级,性别,初始密码",
@@ -5077,7 +5077,7 @@ def test_admin_can_batch_create_classes_and_import_students():
         assert auto_class_result["created_count"] == 1
         assert auto_class_result["skipped_count"] == 0
         assert auto_class_result["created_class_count"] == 1
-        assert auto_class_result["created_class_labels"] == [f"905班 · {grade9_entry_year}届"]
+        assert auto_class_result["created_class_labels"] == [f"905班 · {grade9_entry_year}级"]
 
         # 缺少班级的行跳过并说明原因。
         skipped_csv_content = "\n".join(
@@ -5238,6 +5238,67 @@ def test_admin_can_batch_create_classes_and_import_students():
         assert all(
             item["id"] != class_902["id"]
             for item in delete_class_response.json()["data"]["classes"]
+        )
+
+
+def test_class_delete_blocked_message_names_class_and_next_steps():
+    """班级有学生/开课记录时，拦截提示必须点名班级、给出数量与可执行的下一步。
+
+    回归背景：原提示只有一句「班级下已有学生或课堂记录，不能直接删除」，
+    管理员不知道是哪个班、有多少、该去哪里清空。
+    """
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+
+        create_response = client.post(
+            f"{API_PREFIX}/settings/admin/classes",
+            headers=admin,
+            json={"entry_year": 2026, "class_no": 91, "head_teacher_name": "", "default_room_id": None},
+        )
+        assert create_response.status_code == 200
+        target_class = next(
+            item for item in create_response.json()["data"]["classes"] if item["class_no"] == 91
+        )
+
+        # 给这个班挂一名学生，制造删除阻塞条件。
+        import_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            files={
+                "file": (
+                    "students.csv",
+                    "姓名,学号,账号,入学年份,班级,性别,初始密码\n"
+                    "测试生,91001,91001,2026,91,男,abc123\n",
+                    "text/csv",
+                )
+            },
+            data={"update_existing": "false", "default_password": "abc123"},
+        )
+        assert import_response.status_code == 200
+
+        blocked = client.delete(
+            f"{API_PREFIX}/settings/admin/classes/{target_class['id']}",
+            headers=admin,
+        )
+        assert blocked.status_code == 409
+        detail = blocked.json()["detail"]
+
+        # 点名具体班级（带入学级），并报出占用数量。
+        assert target_class["class_label"] in detail
+        assert "1 名学生" in detail
+        # 给出可执行的下一步与出口，而不是只抛一句拦截。
+        assert "系统设置 › 学生" in detail
+        assert "强制删除" in detail
+        assert "升班与归档" in detail
+        # 交互友好的分步排版（前端按换行渲染成对话框）。
+        assert "\n" in detail
+
+        # 被拦住后班级必须仍然存在，且不能被悄悄改动。
+        still_there = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
+        assert still_there.status_code == 200
+        assert any(
+            item["id"] == target_class["id"]
+            for item in still_there.json()["data"]["classes"]
         )
 
 
@@ -5650,7 +5711,7 @@ def test_admin_can_promote_classes_and_archive_history():
         bootstrap_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
         assert bootstrap_response.status_code == 200
         bootstrap_payload = bootstrap_response.json()["data"]
-        # 用班号 + 届别定位，而不是班级名：跟届走后班名会随升班变化。
+        # 用班号 + 入学级定位，而不是班级名：跟入学级走后班名会随升班变化。
         class_701 = next(
             item
             for item in bootstrap_payload["classes"]
@@ -5689,7 +5750,7 @@ def test_admin_can_promote_classes_and_archive_history():
         assert execute_response.status_code == 200
         execute_payload = execute_response.json()["data"]
         result_payload = execute_payload["promotion_result"]
-        # 班级跟届走：原班升一级，学生不搬家，也不产生归档。
+        # 班级跟入学级走：原班升一级，学生不搬家，也不产生归档。
         assert result_payload["promoted_class_count"] == 1
         assert result_payload["promoted_student_count"] == student_count
         assert result_payload["graduated_count"] == 0
@@ -5697,11 +5758,11 @@ def test_admin_can_promote_classes_and_archive_history():
         promoted_class = next(
             item for item in execute_payload["classes"] if item["id"] == class_701["id"]
         )
-        # 关键不变式：同一行记录，班级 id 与届别不变，年级 +1、班名同步重算。
+        # 关键不变式：同一行记录，班级 id 与入学级不变，年级 +1、班名同步重算。
         assert promoted_class["entry_year"] == original_entry_year
         assert promoted_class["grade_no"] == original_grade_no + 1
         assert promoted_class["class_name"] == "801班"
-        assert promoted_class["class_label"] == f"801班 · {original_entry_year}届"
+        assert promoted_class["class_label"] == f"801班 · {original_entry_year}级"
 
         # 学生仍在原班级（class_id 不变），只有 grade_no 跟着升。
         students_after = {
@@ -5768,7 +5829,7 @@ def test_promoting_ninth_grade_class_archives_it_on_graduation():
         )
         assert archived_item["original_class_name"] == "921班"
 
-        # 归档记录带届别，便于区分同名班级。
+        # 归档记录带入学级，便于区分同名班级。
         record_response = client.get(f"{API_PREFIX}/settings/admin/bootstrap", headers=admin)
         assert record_response.status_code == 200
 
@@ -6208,3 +6269,131 @@ def test_lesson_plan_semester_scoping_and_grade_summary_filter():
                     "current_semester_no": original_semester_no,
                 },
             )
+
+
+def test_student_passwords_have_no_minimum_length_but_must_not_be_blank():
+    """学生密码不再限制位数：导入、教师重置、批量重置、学生自助修改都接受短密码。
+
+    唯一的底线是「不能为空」——空串会被当成可登录凭据写进 password_hash。
+    """
+    with TestClient(app) as client:
+        teacher = staff_headers(client, "t1")
+        admin = staff_headers(client, "admin")
+
+        dashboard = client.get(f"{API_PREFIX}/staff/dashboard", headers=teacher).json()["data"]
+        class_id = dashboard["launchpad"]["classes"][0]["id"]
+        student = client.get(f"{API_PREFIX}/staff/students?class_id={class_id}", headers=teacher).json()["data"]["items"][0]
+        student_no = student["student_no"]
+        student_user_id = student["user_id"]
+
+        # 教师单个重置：2 位密码即可，且能直接登录。
+        reset_response = client.post(
+            f"{API_PREFIX}/staff/students/{student_user_id}/reset-password",
+            headers=teacher,
+            json={"new_password": "ab"},
+        )
+        assert reset_response.status_code == 200, reset_response.text
+        login_short = client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": student_no, "password": "ab"}
+        )
+        assert login_short.status_code == 200
+
+        # 学生自助改成 1 位密码：只要求非空、两次一致、且不等于旧密码。
+        student_token = login_short.json()["data"]["access_token"]
+        student_auth = {"Authorization": f"Bearer {student_token}"}
+        change_response = client.post(
+            f"{API_PREFIX}/profiles/student/password",
+            headers=student_auth,
+            json={"current_password": "ab", "new_password": "7", "confirm_password": "7"},
+        )
+        assert change_response.status_code == 200, change_response.text
+        assert client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": student_no, "password": "7"}
+        ).status_code == 200
+
+        # 空密码仍被拒绝，不能把空串写成凭据。
+        assert client.post(
+            f"{API_PREFIX}/profiles/student/password",
+            headers=student_auth,
+            json={"current_password": "7", "new_password": "", "confirm_password": ""},
+        ).status_code == 422
+
+        # 教师批量重置：1 位密码同样通过。
+        batch_response = client.post(
+            f"{API_PREFIX}/staff/students/batch-action",
+            headers=teacher,
+            json={"student_user_ids": [student_user_id], "action": "reset_password", "new_password": "z"},
+        )
+        assert batch_response.status_code == 200, batch_response.text
+        assert client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": student_no, "password": "z"}
+        ).status_code == 200
+
+        # 管理端批量重置：走 AdminStudentBatchActionPayload，位数同样不限。
+        admin_batch_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/batch-action",
+            headers=admin,
+            json={"student_user_ids": [student_user_id], "action": "reset_password", "password": "q"},
+        )
+        assert admin_batch_response.status_code == 200, admin_batch_response.text
+        assert client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": student_no, "password": "q"}
+        ).status_code == 200
+
+
+def test_student_import_accepts_short_passwords_and_rejects_blank():
+    """导入学生时不再校验密码位数；行内密码与默认密码同时为空才报错。"""
+    with TestClient(app) as client:
+        admin = staff_headers(client, "admin")
+
+        short_csv = "\n".join(
+            [
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                "短密码学生,79901,79901,2026,79,男,ab",
+            ]
+        )
+        import_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            data={"update_existing": "false", "default_password": "9"},
+            files={"file": ("short-password.csv", short_csv.encode("utf-8-sig"), "text/csv")},
+        )
+        assert import_response.status_code == 200, import_response.text
+        assert import_response.json()["data"]["import_result"]["created_count"] == 1
+        assert client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": "79901", "password": "ab"}
+        ).status_code == 200
+
+        # 默认密码为空时，行内密码仍然生效。
+        default_blank_csv = "\n".join(
+            [
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                "默认空密码学生,79902,79902,2026,79,女,xy",
+            ]
+        )
+        default_blank_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            data={"update_existing": "false", "default_password": ""},
+            files={"file": ("default-blank.csv", default_blank_csv.encode("utf-8-sig"), "text/csv")},
+        )
+        assert default_blank_response.status_code == 200, default_blank_response.text
+        assert client.post(
+            f"{API_PREFIX}/auth/student/login", json={"username": "79902", "password": "xy"}
+        ).status_code == 200
+
+        # 行内密码与默认密码同时为空白：明确报错，而不是静默写入空密码。
+        blank_csv = "\n".join(
+            [
+                "姓名,学号,账号,入学年份,班级,性别,初始密码",
+                "空密码学生,79903,79903,2026,79,男,   ",
+            ]
+        )
+        blank_response = client.post(
+            f"{API_PREFIX}/settings/admin/students/import",
+            headers=admin,
+            data={"update_existing": "false", "default_password": "   "},
+            files={"file": ("blank-password.csv", blank_csv.encode("utf-8-sig"), "text/csv")},
+        )
+        assert blank_response.status_code == 400, blank_response.text
+        assert "不能为空" in blank_response.text

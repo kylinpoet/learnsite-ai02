@@ -119,7 +119,7 @@ SYSTEM_SETTING_DEFAULTS: dict[str, object] = {
     "group_drive_allowed_extensions": ",".join(DEFAULT_GROUP_DRIVE_ALLOWED_EXTENSIONS),
     "class_transfer_review_note_presets_text": DEFAULT_CLASS_TRANSFER_REVIEW_NOTE_PRESETS_TEXT,
     "class_transfer_unreview_reason_presets_text": DEFAULT_CLASS_TRANSFER_UNREVIEW_REASON_PRESETS_TEXT,
-    # 当前学年：年级与届别的换算基准，随校历每年更新，不再硬编码。
+    # 当前学年：年级与入学级的换算基准，随校历每年更新，不再硬编码。
     CURRENT_SCHOOL_YEAR_KEY: default_current_school_year(),
     # 当前学期：课堂教学与成绩汇总的统计范围基准，每学期开学时更新一次。
     CURRENT_SEMESTER_NO_KEY: default_current_semester_no(),
@@ -211,7 +211,7 @@ def normalize_school_year(value: object, fallback: int) -> int:
 
 
 def read_current_school_year(db: Session, *, fallback: int | None = None) -> int:
-    """读取当前学年。用于年级/届别换算，缺省时按校历推算而不是写死年份。"""
+    """读取当前学年。用于年级/入学级换算，缺省时按校历推算而不是写死年份。"""
     resolved_fallback = default_current_school_year() if fallback is None else fallback
     raw = load_setting_value(CURRENT_SCHOOL_YEAR_KEY, db)
     return normalize_school_year(raw, resolved_fallback)
